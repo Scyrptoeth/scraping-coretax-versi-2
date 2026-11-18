@@ -76,6 +76,7 @@ function search(){
   if(state.pkg){
     routes.push({title:'Rincian mutu data',aliases:'pencocokan baris CSV dan isi tabel',act:()=>go('muat','mutu')});
     if(state.pkg.report.valid && state.year){
+      routes.push({title:'JD · Jadwal pemeriksaan',aliases:'KKP Keluaran SPP SPHP tenggat',act:()=>go('kerja','jadwal')});
       const workKey=JSON.stringify([state.pkg.report.manifestHash||state.pkg.fileKey,state.year]);
       const work=state.work.get(workKey)||{rows:[],drafts:[]};
       state.work.set(workKey,work);
@@ -195,6 +196,7 @@ function help(root){
   root.append(card('Bantuan',detail('Membuka dan memeriksa paket',el('p','Seret paket ke Muat paket. Untuk paket terenkripsi masukkan kata sandi. Periksa integritas, periode, dan WP aktif sebelum mengolah data.')),detail('Membaca SPT dan data mentah',el('p','Pilih tahun dan buka satu baris pada Daftar SPT untuk melihat induk, lampiran, atau membandingkan pembetulan. Untuk tabel sumber lain, gunakan Profil WP dan Data mentah.')),detail('Kertas kerja dan berita acara',el('p','Tambah butir, catat sumber serta simpulan, lalu unduh berkas kerja sebelum menutup tab. Buka kembali berkas kerja bersama paket dan tahun yang sama.')),detail('Data lokal dan pintasan',el('p','Paket dan catatan sesi dilepas saat tab ditutup. Tema dan peran tersimpan sebagai preferensi. Gunakan Ctrl+K untuk pencarian, 1–9 untuk tab, dan ? untuk daftar pintasan.'))));
 }
 function render(){
+  const previousTab=state.tab,previousSection=state.section;
   [state.tab,state.section]=route();const root=$('screen');root.replaceChildren();notice('');
   const formLink=state.tab==='spt'&&formSection.exec(state.section);let form;
   if(formLink){
@@ -244,7 +246,11 @@ function render(){
     }
   }
   else if(['profil','tabel'].includes(state.tab))renderEntries(root,state,state.tab==='profil');
-  else if(state.tab==='kerja')renderWork(root,state);
+  else if(state.tab==='kerja'){
+    renderWork(root,state);
+    if(state.section==='jadwal'&&(previousTab!=='kerja'||previousSection!=='jadwal'))$('inspection-schedule-title')?.focus();
+    if(previousTab==='kerja'&&previousSection==='jadwal'&&state.section==='kkp')$('kkp-open-schedule')?.focus();
+  }
   else if(['probis','peraturan'].includes(state.tab))renderCatalog(root,state.tab,{manifest:state.pkg?.manifest,entries:state.pkg?.entries,query:state.query,openBusinessSearch:state.section==='klu',
     requests:state.pkg?.report.valid && state.year?()=>probisRequests(state):null});
   else help(root);

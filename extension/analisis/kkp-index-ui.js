@@ -5,7 +5,14 @@ import {count} from './model.js';
 import {clearIndexReview,markEdit,rowIdentity} from './team-work.js';
 import {companyProvisionalSupport} from './kkp-company-without-return.js';
 
-function indexDirectory(groups,current,reviewed,open){
+function outputSection(go){
+  const section=el('section'),schedule=button('JD · Jadwal pemeriksaan',()=>go('kerja','jadwal'));
+  section.setAttribute('aria-label','Keluaran');schedule.id='kkp-open-schedule';
+  section.append(el('h3','Keluaran'),schedule);
+  return section;
+}
+
+function indexDirectory(groups,current,reviewed,open,go){
   const directory=el('section',null,'card index-directory');
   directory.setAttribute('aria-label','Daftar indeks KKP');
   directory.append(el('h2','Daftar indeks KKP'));
@@ -31,6 +38,7 @@ function indexDirectory(groups,current,reviewed,open){
     }
     directory.append(section);
   }
+  directory.append(outputSection(go));
   return directory;
 }
 
@@ -151,14 +159,14 @@ export function renderIndex(target,state,work,index){
   if(!index.groups.length){
     target.append(card('Indeks KKP',el('p','Belum ada isian SPT yang dapat dipetakan ke indeks pada tahun ini.'),
       button('Excel semua KKP',downloadBook),
-      ...index.warnings.map(s=>el('p',s,'hint'))));return;
+      ...index.warnings.map(s=>el('p',s,'hint')),outputSection(state.go)));return;
   }
   const group=index.groups.find(g=>g.key===work.activeIndex)||index.groups[0];
   const openIndex=key=>{
     work.activeIndex=key;state.repaint();
     document.getElementById('kkp-current-title')?.focus();
   };
-  const directory=indexDirectory(index.groups,group,reviewed,openIndex);
+  const directory=indexDirectory(index.groups,group,reviewed,openIndex,state.go);
   const summary=g=>{
     const s=indexStatus(g,reviewed);
     return g.ref+' · '+g.title+' · '+s.state+' ('+s.tested+'/'+g.lines.length+')';

@@ -1,8 +1,8 @@
 # Scraping Coretax Versi 2
 
-**Prarilis 0.10.0.** Setiap tarikan memakai satu NPWP. Pilih satu atau beberapa tabel untuk WP itu di tab Coretax yang sudah terbuka, atau tambahkan ekspor JSON/CSV. Pemutar lokal membantu mencocokkan baris, membandingkan SPT dan memilih temuan untuk kertas kerja. Beberapa paket yang sudah disimpan dapat dibuka untuk perbandingan.
+**Prarilis 0.11.0.** Setiap tarikan memakai satu NPWP. Pilih satu atau beberapa tabel untuk WP itu di tab Coretax yang sudah terbuka, atau tambahkan ekspor JSON/CSV. Pemutar lokal membantu mencocokkan baris, membandingkan SPT dan memilih temuan untuk kertas kerja. Beberapa paket yang sudah disimpan dapat dibuka untuk perbandingan.
 
-[Unduh dan pasang melalui GitHub Pages](https://scyrptoeth.github.io/scraping-coretax-versi-2/) · [Situs Vercel](https://scraping-coretax-versi-2.vercel.app/) · [Paket prarilis GitHub](https://github.com/Scyrptoeth/scraping-coretax-versi-2/releases/tag/v0.10.0)
+[Unduh dan pasang melalui GitHub Pages](https://scyrptoeth.github.io/scraping-coretax-versi-2/) · [Situs Vercel](https://scraping-coretax-versi-2.vercel.app/) · [Paket prarilis GitHub](https://github.com/Scyrptoeth/scraping-coretax-versi-2/releases/tag/v0.11.0)
 
 ## Mencoba ekstensi
 
@@ -16,7 +16,7 @@
 
 Prarilis ini dikembangkan secara mandiri dengan acuan VERITAX v1.32.0. Penarikan seluruh modul Coretax dalam satu perintah, kesetaraan seluruh UI, perhitungan fiskal, dan kelengkapan kertas kerja masih memerlukan pengembangan dan pembandingan.
 
-Di pemutar, filter tahun, jenis dan versi membantu memilih SPT. **Daftar indeks KKP** mengelompokkan indeks menurut pajak. Pada contoh Badan fiktif, kelima kelompok memuat seluruh 20 kode indeks pajak yang diperiksa di Studio. Kelompok **Keluaran** dan alur dokumennya masih berbeda. [Hasil uji prarilis 0.10.0](docs/KESETARAAN.md#hasil-prarilis-0100)
+Di pemutar, filter tahun, jenis dan versi membantu memilih SPT. **Daftar indeks KKP** mengelompokkan indeks menurut pajak. Pada contoh Badan fiktif, kelima kelompok memuat seluruh 20 kode indeks pajak yang diperiksa di Studio. Di **Keluaran**, buka **JD · Jadwal pemeriksaan** untuk mengolah tanggal pemeriksaan dan mengunduh jadwal. Fitur Keluaran lain di Studio masih memiliki perbedaan. [Hasil dan batas pengujian](docs/KESETARAAN.md#hasil-prarilis-0110)
 
 - [Matriks kesetaraan dan sumber bukti](docs/KESETARAAN.md)
 - [Penggunaan penarik, paginasi dan simpanan lokal](docs/SCRAPING.md)

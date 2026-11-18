@@ -93,5 +93,8 @@ async function scenario(mode){
     assert.deepEqual(blocked,[]);
   }finally{await ctx?.close();await rm(temp,{recursive:true,force:true});}
 }
-for(const mode of ['utuh','batas','ulang','jumlah','ganti','henti','kosong','asing','ganda','filter','filter-ganti','tengah','muat'])await scenario(mode);
-console.log('PASS: direct submitted-list preview, selected periods, scope checks, pagination, partial evidence, refresh, verified zero and ZIP playback.');
+export {listPage,site,wp,other,route,pages};
+if(process.argv[1]===fileURLToPath(import.meta.url)){
+  for(const mode of ['utuh','batas','ulang','jumlah','ganti','henti','kosong','asing','ganda','filter','filter-ganti','tengah','muat'])await scenario(mode);
+  console.log('PASS: direct submitted-list preview, selected periods, scope checks, pagination, partial evidence, refresh, verified zero and ZIP playback.');
+}

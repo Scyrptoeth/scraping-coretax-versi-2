@@ -77,3 +77,18 @@ test('progress has an auditable denominator for package findings, eligible index
   const progress=progressReport(pkg,'2025',work,index);assert.equal(progress.done,2);assert.equal(progress.total,3);assert.equal(progress.percent,67);
   assert.equal(progressReport(pkg,'2025',{...work,rows:[]},{byId:new Map()}).percent,null);
 });
+
+test('inspection dates from different sessions are reviewed as one schedule and legacy work can be merged',()=>{
+  const stamp=JSON.stringify(['schedule','jadwal']);
+  const local={schedule:{type:'lengkap',spp:'2026-04-01',holidays:['2026-05-01']},editTimes:{[stamp]:then}};
+  const other={schedule:{type:'konkret',spp:'2026-04-02',holidays:[]},editTimes:{[stamp]:later}};
+  const plan=planMerge(local,other);
+  assert.equal(plan.decisions[0].rule,'pilih');
+  assert.throws(()=>mergeWork(plan),/Pilih versi/);
+  assert.deepEqual(mergeWork(plan,{[stamp]:'berkas'}).schedule,other.schedule);
+  assert.deepEqual(mergeWork(plan,{[stamp]:'lokal'}).schedule,local.schedule);
+  assert.deepEqual(mergeWork(planMerge(local,{rows:[]})).schedule,local.schedule);
+  assert.deepEqual(mergeWork(planMerge({rows:[]},other)).schedule,other.schedule);
+  assert.equal(workAuditRows(local)[0].Bagian,'Jadwal pemeriksaan');
+  assert.deepEqual(validateTimes(local.editTimes,local),local.editTimes);
+});

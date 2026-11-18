@@ -40,7 +40,8 @@ try{
     await page.getByLabel('Tahun pajak',{exact:true}).selectOption(year);
     const directory=page.getByRole('region',{name:'Daftar indeks KKP'});
     await directory.waitFor();
-    assert.equal(await directory.getByRole('button').count(),index.groups.length);
+    assert.equal(await directory.locator('button[aria-controls="kkp-current"]').count(),index.groups.length);
+    await directory.getByRole('region',{name:'Keluaran'}).getByRole('button',{name:'JD · Jadwal pemeriksaan'}).waitFor();
     const indexButton=directory.getByRole('button').filter({has:page.getByText(group.title,{exact:true})});
     await indexButton.focus();
     await indexButton.press('Enter');

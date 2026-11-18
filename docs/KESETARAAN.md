@@ -1,6 +1,16 @@
 # Matriks kesetaraan terhadap VERITAX v1.32.0
 
-Prarilis 0.10.0, 19 November 2026 WIB. Penarik dan pemutar masih memiliki perbedaan dengan VERITAX. **Terverifikasi** berlaku untuk perilaku dan masukan yang disebutkan. **Berbeda** berarti ada selisih yang telah diketahui. **Belum teruji** berarti bukti pembandingan belum tersedia.
+Prarilis 0.11.0, 19 November 2026 WIB. Penarik dan pemutar masih memiliki perbedaan dengan VERITAX. **Terverifikasi** berlaku untuk perilaku dan masukan yang disebutkan. **Berbeda** berarti ada selisih yang telah diketahui. **Belum teruji** berarti bukti pembandingan belum tersedia.
+
+## Hasil prarilis 0.11.0
+
+Di **KKP → Keluaran → JD**, jadwal dapat dihitung untuk pemeriksaan lengkap, terfokus, spesifik, atau spesifik berdasarkan data konkret. Dalam lima skenario fiktif dengan tanggal kejadian yang diketahui, 52 tanggal dapat dipasangkan dengan hasil Studio. Untuk mencocokkan tanggapan, QA dan perpanjangan, petugas mengisi tanggal penerimaan, syarat permohonan, atau dasar perpanjangan yang diperlukan. Excel dan cetak/PDF memakai jadwal yang tampil. [Uji perhitungan jadwal](../tests/inspection-schedule.test.mjs) · [Uji pemutar dan ekspor](../tests/inspection-schedule-browser.mjs)
+
+Uji terpisah membuka satu paket Badan fiktif yang sama dan menghasilkan delapan Excel, satu dari masing-masing pemutar untuk empat jenis pemeriksaan. Dari 42 tahap yang dapat dipasangkan, 39 memiliki tanggal dan sisa hari yang sama. Dua tenggat tanggapan berbeda ketika WP menerima SPHP pada tanggal yang lebih lambat dari tanggal penyampaian. Pada satu skenario, syarat permohonan QA belum dikonfirmasi sehingga tanggal masih kosong di Versi 2.
+
+Pada lima contoh Studio, pengingat yang berhubungan dengan penyegelan muncul meskipun tanggal penyegelan belum diisi. Versi 2 meminta tanggal kejadiannya. Untuk pemeriksaan yang dimulai sebelum 14 Februari 2025, petugas mendapat keterangan peralihan. Kalender kerja mengikuti Sabtu, Minggu dan daftar libur yang dimasukkan petugas. Ketentuan khusus dan penangguhan perlu diperiksa sesuai kasus. [Dasar penghitungan dan peralihan](https://jdih.kemenkeu.go.id/dok/pmk-15-tahun-2025/view)
+
+Pada penarik, kemajuan daftar SPT dapat disimpan per halaman atas pilihan petugas. Setelah kembali ke ekstensi, petugas dapat menggunakan baris yang tersimpan atau membuka kembali daftar sumber untuk memeriksa kelanjutannya. Penarikan SPT dari awal hingga akhir pada sesi kantor masih memerlukan intranet. [Cara menyimpan dan memulihkan pratinjau](SCRAPING.md#hasil-integritas-dan-retensi)
 
 ## Hasil prarilis 0.10.0
 

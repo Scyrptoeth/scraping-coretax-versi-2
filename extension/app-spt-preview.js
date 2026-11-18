@@ -41,7 +41,7 @@ export async function readSubmittedPreview(ext,tab,wp,{checkpoint,limit,onPage})
       keys.forEach(k=>seenRows.add(k));
       if(!report.pages)report.fromFirst=position.atStart;
       report.pages++;report.rows+=rows.length;report.total=range?.total??null;report.filtered=position.filtered;
-      onPage({rows:ordered,columns:index.options.labels,ownerEvidence:index.data.ownerEvidence,indexScope:index.data.indexScope,canAdvance,range},report);
+      await onPage({rows:ordered,columns:index.options.labels,ownerEvidence:index.data.ownerEvidence,indexScope:index.data.indexScope,canAdvance,range},report);
       report.toLast=position.atEnd;
       if(!canAdvance)break;
       if(report.pages>=limit)throw Error('Batas halaman pratinjau tercapai saat halaman berikutnya masih tersedia.');

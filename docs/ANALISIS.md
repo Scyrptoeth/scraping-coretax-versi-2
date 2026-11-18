@@ -89,6 +89,14 @@ Isi UP2, pembuat dan penelaah untuk indeks yang dipilih. Setelah telaah, **Buat 
 4. Gunakan **Excel kertas kerja**, **Word**, atau **Cetak / PDF**. Excel KKP memuat rumus selisih untuk dua nilai pembanding yang terisi. KKA memuat profil, kriteria pemilihan WP, perbandingan SPT dua tahun pada Tabel 4.1, potensi per jenis dan rinciannya pada Tabel 5 dan 5.1, serta usulan petugas. Pilihan indikatif menambahkan Lampiran L-9. [Konsep surat dan berita acara](KONSEP.md)
 5. Gunakan **Unduh berkas kerja** untuk menyimpan pilihan, catatan, draf dan simulasi. **Buka berkas kerja** mencocokkan paket dan tahun. Berkas lama dapat dibuka dengan pilihan awal untuk bidang yang belum ada pada versi sebelumnya.
 
+### Jadwal pemeriksaan
+
+Pilih tahun pajak berkas kerja, lalu buka **KKP**, **Keluaran**, **JD · Jadwal pemeriksaan**. Isikan tanggal kejadian menurut dokumen. Tanggal penyampaian SPHP dan tanggal WP menerimanya memiliki kolom tersendiri. Pemeriksaan dapat berlangsung setelah tahun pajak yang dipilih. Tanggal acuan pada layar digunakan untuk menghitung sisa hari.
+
+Cantumkan hari libur dan cuti bersama yang berlaku pada rentang pemeriksaan. Periksa catatan di bawah tabel untuk mengetahui tanggal atau syarat yang masih diperlukan. Jadwal membedakan masa pengujian, pembahasan dan pelaporan. Untuk pemeriksaan yang dimulai sebelum aturan mulai berlaku, periksa ketentuan peralihan. [PMK 15 Tahun 2025 tentang Pemeriksaan Pajak](https://jdih.kemenkeu.go.id/dok/pmk-15-tahun-2025/view)
+
+**Simpan jadwal** menyimpan isian pada sesi WP dan tahun yang aktif. Gunakan **Unduh berkas kerja** untuk membawanya ke sesi lain. Dua versi jadwal yang berbeda ditampilkan utuh saat penggabungan agar petugas dapat memilih tanggal dan dasar yang sesuai. **Excel jadwal** dan **Cetak / PDF** memuat jadwal beserta catatan penghitungan. Perubahan yang diekspor sebelum disimpan ditandai sebagai pratinjau.
+
 ### Menggabungkan hasil kerja tim
 
 Muat paket dan tahun yang sama, lalu pilih **Buka berkas kerja**. Jika sesi sudah berisi isian, pratinjau menampilkan jumlah entri baru, sama, lebih baru dan bertentangan. **Gabungkan isian** mempertahankan pekerjaan yang hanya ada di sesi lokal. **Ganti isi sesi ini** menggunakan seluruh isi berkas yang dibuka.

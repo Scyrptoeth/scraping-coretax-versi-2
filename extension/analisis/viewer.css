@@ -87,4 +87,10 @@ main,footer{max-width:1400px;margin:0 auto;padding:0 18px}#crumb{font-size:.84re
 .index-choice small{grid-column:2;color:var(--muted);font-weight:400}
 .index-choice[aria-pressed=true]{background:var(--pale);border-color:var(--accent);box-shadow:inset 3px 0 var(--accent)}
 .index-choice,.index-directory,#kkp-current-title{scroll-margin-top:5rem}
+.inspection-schedule-form{display:grid;gap:.7rem;margin-bottom:1rem}
+.inspection-schedule-form .label{display:grid;grid-template-columns:minmax(0,1fr);gap:4px}
+.inspection-schedule-form .label select{min-width:0;width:100%}
+.inspection-schedule-form>.label{max-width:26rem}
+.schedule-condition{display:flex;align-items:flex-start;gap:.5rem}
+.schedule-condition input{flex:none;margin:.2rem 0 0}
 @media print{.index-directory,#kkp-current>.toolbar{display:none}}

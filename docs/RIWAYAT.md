@@ -1,5 +1,11 @@
 # Riwayat Scraping Coretax Versi 2
 
+## 19 November 2026 WIB · Prarilis 0.11.0
+
+Pemutar menyediakan **JD · Jadwal pemeriksaan** dengan empat jenis pemeriksaan. Petugas dapat melihat dasar setiap tenggat, memasukkan hari libur, mengunduh Excel dan mencetak jadwal. Isian melekat pada paket WP dan tahun pajak. Fitur ini memperhitungkan tanggal pemeriksaan yang dapat berbeda dari tahun pajak berkas kerja. [Panduan jadwal](ANALISIS.md#jadwal-pemeriksaan)
+
+Penarik dapat menyimpan kemajuan pratinjau daftar SPT untuk penugasan yang dipilih. Pembacaan yang berhenti di tengah dapat diperiksa dari halaman yang sudah tersimpan. Jumlah baris sumber dan cakupan masih terlihat ketika petugas memuatnya secara luring. [Cara menggunakan simpanan](SCRAPING.md#hasil-integritas-dan-retensi) · [Batas pembandingan](KESETARAAN.md#hasil-prarilis-0110)
+
 ## 19 November 2026 WIB · Prarilis 0.10.0
 
 **Penarik.** Pratinjau WP dapat menemukan daftar SPT dilaporkan pada tab Coretax yang sudah terbuka untuk satu NPWP. Jumlah halaman dan baris sumber ditampilkan bersama cakupannya. Pilihan versi SPT mengikuti jenis dan periode. Alur ini sudah diuji di Chrome dengan tabel fiktif hingga ZIP dibuka di pemutar. Pembacaan langsung pada tab operasional masih perlu dicocokkan. [Penggunaan pratinjau](SCRAPING.md#mengambil-sumber)
