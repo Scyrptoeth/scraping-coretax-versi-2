@@ -320,6 +320,35 @@ export async function visibleTables(selected) {
   }
   if (selected.scope) {
     const checked=checkScope(currentRows,current.labels);
+    if (selected.openSpt) {
+      if (checked.skip || !checked.indexScope || selected.scope.source!=='sptdaftar') return {skip:'WP atau daftar SPT dilaporkan belum cocok.'};
+      const matches=currentRows.map((row,i)=>current.labels.every((k,j)=>row[k]===selected.openSpt[j])?i:-1).filter(i=>i>=0);
+      if(matches.length!==1)return {skip:'Baris SPT berubah atau muncul lebih dari sekali.'};
+      const positive=/^(?:lihat|tampilkan|buka|view|show)(?: (?:detail |rincian )?(?:spt|surat pemberitahuan|tax return|return sheet))?$|^(?:detail|rincian)(?: spt)?$/i;
+      const blockedAction=/sendemail|viewreceipt|downloadpdf|(?:^|[-_])(?:send|download|kirim|unduh|hapus|delete|edit|ubah|submit|sign|tandaterima)(?:button)?(?:$|[-_])/i;
+      const buttons=[...current.data[matches[0]].querySelectorAll('a[href],button,input[type=button],[role=button]')].filter(el=>{
+        if(!visible(el) || el.matches(':disabled,[aria-disabled=true]') || el.closest('tr,[role=row]')!==current.data[matches[0]])return false;
+        if(blockedAction.test(el.id))return false;
+        const labelledBy=(el.getAttribute('aria-labelledby') || '').split(/\s+/).filter(Boolean);
+        if(labelledBy.some(id=>!document.getElementById(id)))return false;
+        const names=[el.getAttribute('aria-label'),el.title,el.innerText,
+          labelledBy.map(id=>document.getElementById(id)?.textContent || '').join(' '),
+          ...Array.from(el.labels || [],label=>label.textContent),
+          ...Array.from(el.querySelectorAll('img[alt],svg > title'),icon=>icon.getAttribute('alt') || icon.textContent),
+          el.matches('input[type=button]')?el.value:'',el.id==='ViewButton'?el.id:'']
+          .map(s=>(s || '').replace(/\s+/g,' ').trim()).filter(Boolean);
+        if(!names.length || !names.every(s=>s==='ViewButton' || positive.test(s)))return false;
+        if(el.matches('a'))return el.origin===location.origin && !el.username && !el.password && !el.ping && !el.hasAttribute('download') &&
+          ['', '_self','_blank'].includes(el.target) && !/(?:^|[/?&=_-])(?:edit|delete|create|submit|sign|hapus|ubah|kirim|receipt|download|unduh|sendemail|viewreceipt|submitteddownloadpdf|requestdownloadpdf)(?:button)?(?:$|[/?&=_-])/i.test(el.pathname+el.search);
+        return el.matches('button[type=button],input[type=button]') || (el.matches('button:not([type])') && !el.form);
+      });
+      if(buttons.length!==1)return {skip:'Baris ini belum memiliki satu tombol lihat yang dapat dikenali.'};
+      const control=buttons[0];
+      // Dispatch in this turn while the verified row and taxpayer are still current.
+      const target=control.matches('a') ? control.href : null;
+      control.click();
+      return {opened:true,target};
+    }
     if(checked.skip || !selected.advance) return {...checked,canAdvance:!!nextButton(currentTable)};
   }
   if (!selected.advance) return currentRows;

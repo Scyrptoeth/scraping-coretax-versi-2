@@ -1,6 +1,6 @@
 # Matriks kesetaraan terhadap VERITAX v1.32.0
 
-Prarilis 0.4.0, 18 November 2026. Kedua aplikasi masih memiliki perbedaan dengan VERITAX. **Terverifikasi** berlaku untuk perilaku dan masukan yang disebutkan. **Berbeda** berarti ada selisih yang telah diketahui. **Belum teruji** berarti bukti pembandingan belum tersedia.
+Prarilis 0.5.0, 18 November 2026. Kedua aplikasi masih memiliki perbedaan dengan VERITAX. **Terverifikasi** berlaku untuk perilaku dan masukan yang disebutkan. **Berbeda** berarti ada selisih yang telah diketahui. **Belum teruji** berarti bukti pembandingan belum tersedia.
 
 ## Hasil sampai prarilis 0.3.0
 
@@ -41,6 +41,18 @@ Pada satu ZIP WP Badan yang dibuka di kedua pemutar, hasil uji mencakup daftar s
 VERITAX Studio 1.32.0 berhasil membuka ZIP yang dirakit penarik Versi 2 dari enam sumber JSON fiktif. Studio memeriksa enam hash dan menampilkan rekening, saldo buku besar, daftar SPT beserta arsip, induk PPN dan lampiran A2. Nilai KB, masa, tanggal dan bukti penerimaan cocok dengan masukan. [Uji lintas pemutar](../tests/veritax-interop-browser.mjs)
 
 KKP Badan memperlakukan kode pilihan pengembalian sebagai keterangan pada SPT. Ketika berkas kerja lama memuat angka pada pengujian tersebut, petugas dapat membuka riwayat dan menelaah ulang bukti. Angka historis dipisahkan dari penghitungan temuan baru. [Uji berkas kerja](../tests/kkp-index-browser.mjs)
+
+## Hasil prarilis 0.5.0
+
+| Alur | Yang sudah dicocokkan | Batas pengujian |
+| --- | --- | --- |
+| Daftar SPT → induk → lampiran | Pada dua bentuk navigasi fiktif, penarik memeriksa WP dan versi di sumber serta tujuan. Dua bagian terpilih dapat masuk ZIP dengan kolom asalnya. | Kontrol yang hanya berupa ikon tanpa keterangan dan tujuan yang tidak mencantumkan identitas memerlukan pemeriksaan. Uji produksi dan penelusuran semua lampiran masih terbuka. |
+| Arsip besar dan bukti penerimaan | Pemutar membuka ZIP64 satu volume dan mencocokkan 65.533 sidik jari data. Pada empat formulir fiktif, nomor bukti yang ditampilkan dan dicari cocok di kedua pemutar. | Ukuran isi arsip tetap mengikuti batas lokal di [Format ZIP](FORMAT.md). |
+| KKP tanpa SPT Tahunan OP | B-8 dan B-17 memakai bukti potong yang memenuhi syarat sebagai nilai awal. Nilai awal dapat ditelusuri dan ditelaah sebelum masuk temuan. | Indeks lain, seluruh variasi bukti, dan beberapa rumus penghitungan OP masih terbuka. |
+| Pembaruan tarif sesi | Berkas regulasi versi 1 dapat menyediakan tarif bulanan Pasal 13 ayat (2). Pemutar menunjukkan sumber, pratinjau, dan pilihan tarif sesi. Pilihan tersebut terbawa ke simulasi dan identitas kertas kerja. | Pembaruan katalog, rezim, prosedur dan jenis tarif lain melalui berkas yang sama masih terbuka. |
+| Tampilan dan ekspor | Pilihan penamaan berkas menyertakan NPWP. Pengguna dapat menambahkan nama WP dan memulihkan pengaturan tampilan bawaan. | Kesetaraan seluruh pintasan, tata letak dan pencetakan masih terbuka. |
+
+Pada uji lampiran PPN A2, menukar urutan dua faktur menyebabkan 0.5.0 melaporkan perubahan sel di layar dan di Excel. Studio membandingkan nomor dokumen dan mempertahankan pasangan faktur. Untuk analisis pembetulan dengan urutan berbeda pada prarilis ini, cocokkan nomor faktur sebelum menggunakan hasil perbandingan.
 
 ## Kemampuan yang masih perlu dibandingkan
 

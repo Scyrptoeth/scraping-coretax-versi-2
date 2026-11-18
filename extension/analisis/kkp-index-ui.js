@@ -3,7 +3,7 @@ import {button,box,card,dataTable,el,exportSheets,field,notice,select,showDialog
 import {count} from './model.js';
 import {markEdit,rowIdentity} from './team-work.js';
 
-function editRefundCode(line,work,repaint){
+function editRefundCode(line,work,repaint,wp){
   const i=work.rows.findIndex(r=>r.kkpLine===line.id),saved=work.rows[i];
   const form=el('form'),reference=el('input'),note=el('textarea'),officer=el('input'),status=el('p',null,'error');
   status.setAttribute('role','alert');
@@ -16,7 +16,7 @@ function editRefundCode(line,work,repaint){
       dataTable([{'Butir lama':old.topik,'Menurut WP (lama)':old.menurutWp,'Menurut petugas (lama)':old.menurutPetugas,
         'Pokok (lama)':old.principal,'Klasifikasi lama':old.evidence,'Status lama':old.status,'Telaah lama':old.review,
         'Rujukan bukti':old.document,Sumber:old.sumber,Catatan:old.kkpNote,Petugas:old.petugas,Fakta:old.fakta,Simpulan:old.simpulan}],
-      {name:'Riwayat pengujian kode pilihan'}));
+      {wp,name:'Riwayat pengujian kode pilihan'}));
   }
   const save=el('button','Simpan telaah kode');save.type='submit';
   form.append(field('Dokumen atau rujukan bukti',reference),field('Catatan penelaahan kode',note),field('Nama penelaah',officer),status,save);
@@ -32,8 +32,8 @@ function editRefundCode(line,work,repaint){
   showDialog('Telaah kode pilihan pengembalian',form);
 }
 
-export function editIndexLine(line,work,repaint){
-  if(Object.hasOwn(line,'refundCode'))return editRefundCode(line,work,repaint);
+export function editIndexLine(line,work,repaint,wp){
+  if(Object.hasOwn(line,'refundCode'))return editRefundCode(line,work,repaint,wp);
   const saved=work.rows.find(r=>r.kkpLine===line.id), form=el('form'), value=el('input');
   const evidence=el('input'), explanation=el('textarea'), officer=el('input'), principal=el('input'), feedback=el('p',null,'hint');
   const status=el('p',null,'error');status.setAttribute('role','alert');
@@ -44,12 +44,16 @@ export function editIndexLine(line,work,repaint){
   const choose=select([['indicative','Indikatif'],['verified','Berbukti berdasarkan dokumen']],classification,v=>{classification=v;},'Klasifikasi hasil yang berbeda');
   function preview(){
     const delta=value.value===''||line.amount===null?null:value.valueAsNumber-line.amount;
-    feedback.textContent=delta===null?'Koreksi belum dapat dihitung.':'Koreksi terhadap SPT '+count(delta)+'.';
+    feedback.textContent=delta===null?'Koreksi belum dapat dihitung.':(line.withoutReturn?'Selisih terhadap pembanding nol ':'Koreksi terhadap SPT ')+count(delta)+'.';
   }
   value.oninput=preview;preview();
   const linked=work.indexDocuments.filter(d=>d.index===line.groupKey&&['Diterima','Diterima sebagian'].includes(d.status));
-  form.append(el('p','Masa '+line.period+' · P'+line.version+' · '+line.topic),
-    el('p','Sumber SPT · '+line.source),el('p','Menurut SPT/WP · '+(line.amount===null?'Tidak tersedia':count(line.amount))),
+  if(line.withoutReturn){
+    form.append(el('p',line.explanation),el('p','Nilai awal dari bukti potong · '+(line.prefill===null?'Belum tersedia':count(line.prefill))));
+    if(line.prefill!==null)form.append(button('Salin nilai awal ke isian pengujian',()=>{value.value=line.prefill;preview();}));
+  }
+  form.append(el('p','Masa '+line.period+' · '+(line.withoutReturn?'Tanpa SPT pada daftar':'P'+line.version)+' · '+line.topic),
+    el('p','Sumber · '+line.source),el('p',(line.withoutReturn?'Pembanding KKP':'Menurut SPT/WP')+' · '+(line.amount===null?'Tidak tersedia':count(line.amount))),
     field('Nilai setelah pengujian',value),feedback,field('Dokumen atau rujukan bukti',evidence),field('Penjelasan hasil uji',explanation),
     field('Nama penguji',officer),choose,field('Pokok berdasarkan pengujian (Rp, opsional)',principal),status);
   if(linked.length)form.append(select([['','Pilih dokumen'],...linked.map(d=>[String(d.number),'DOK.'+d.number+' · '+d.name+' · '+d.status])],'',v=>{
@@ -67,7 +71,7 @@ export function editIndexLine(line,work,repaint){
     }catch(e){status.textContent=e.message;}
   };
   const save=el('button','Simpan hasil uji');save.type='submit';
-  const confirm=button('Konfirmasi sesuai SPT (sudah diuji)',()=>apply(line.amount));confirm.disabled=line.amount===null;
+  const confirm=button(line.withoutReturn?'Catat hasil uji nol':'Konfirmasi sesuai SPT (sudah diuji)',()=>apply(line.amount));confirm.disabled=line.amount===null;
   form.append(box('toolbar',save,confirm));form.onsubmit=e=>{e.preventDefault();apply(value.valueAsNumber);};
   showDialog('Pengujian '+line.ref,form);
 }
@@ -93,6 +97,7 @@ function editDocument(group,index,work,repaint,existing){
 }
 
 export function renderIndex(target,state,work,index){
+  const wp=state.pkg.manifest.wp;
   if(!index.groups.length){
     target.append(card('Indeks KKP',el('p','Belum ada isian SPT yang dapat dipetakan ke indeks pada tahun ini.'),
       ...index.warnings.map(s=>el('p',s,'hint'))));return;
@@ -116,7 +121,8 @@ export function renderIndex(target,state,work,index){
   });
   const rowList=group.lines.map(l=>{
     const r=reviewed.get(l.id);
-    return {Masa:l.period,'Versi SPT':'P'+l.version,Uraian:l.topic,'Menurut SPT/WP':l.amount,'Menurut petugas':r?.menurutPetugas??null,
+    return {Masa:l.period,'Versi SPT':l.withoutReturn?'Tanpa SPT pada daftar':'P'+l.version,Uraian:l.topic,
+      [l.withoutReturn?'Pembanding KKP':'Menurut SPT/WP']:l.amount,...(l.withoutReturn?{'Nilai awal dari bukti potong':l.prefill}:{}),'Menurut petugas':r?.menurutPetugas??null,
       Koreksi:r&&l.amount!==null?r.menurutPetugas-l.amount:null,Status:r?.simpulan||'Belum diuji',Sumber:l.source,
       'Cakupan sumber':l.partial?'Ditandai belum lengkap':'','Rujukan bukti':r?.document||'',
       ...(Object.hasOwn(l,'refundCode')?{'Kode pilihan pengembalian':l.refundCode}:{})};
@@ -124,11 +130,13 @@ export function renderIndex(target,state,work,index){
   const documents=work.indexDocuments.filter(d=>d.index===group.key);
   const docRows=documents.map(d=>({Nomor:'DOK.'+d.number,Dokumen:d.name,Status:d.status,'Tanggal permintaan':d.date,Tenggat:d.due,Rujukan:d.reference}));
   target.append(card('Indeks KKP',selected,el('p',group.ref+(meta.revision?' (P'+meta.revision+')':'')+' · '+group.title),
-    dataTable(rowList,{name:'Pengujian per indeks',openRow:r=>editIndexLine(group.lines[rowList.indexOf(r)],work,state.repaint)}),
-    fieldset,box('toolbar',rev,button('Excel KKP ini',()=>exportSheets([indexSheets(group,reviewed,work.indexNotes,work.indexDocuments)],'KKP-'+group.ref+'-'+state.year)),
-      button('Excel semua KKP',()=>exportSheets(completeIndexBook(state.pkg,state.year,index,reviewed,work.indexNotes,work.indexDocuments,work.simulation),'KKP-Indeks-'+state.year))),
+    dataTable(rowList,{wp,name:'Pengujian per indeks',openRow:r=>editIndexLine(group.lines[rowList.indexOf(r)],work,state.repaint,wp)}),
+    ...group.lines.filter(l=>l.withoutReturn).flatMap(l=>[el('p',l.explanation),...l.coverage.map(s=>el('p',s,'hint')),
+      dataTable(l.details,{wp,name:'Rincian bukti potong untuk '+l.ref,incremental:true})]),
+    fieldset,box('toolbar',rev,button('Excel KKP ini',()=>exportSheets([indexSheets(group,reviewed,work.indexNotes,work.indexDocuments)],'KKP-'+group.ref+'-'+state.year,wp)),
+      button('Excel semua KKP',()=>exportSheets(completeIndexBook(state.pkg,state.year,index,reviewed,work.indexNotes,work.indexDocuments,work.simulation),'KKP-Indeks-'+state.year,wp))),
     el('h3','Dokumen pendukung'),button('Tambah permintaan dokumen',()=>editDocument(group,index,work,state.repaint)),
-    dataTable(docRows,{name:'Dokumen indeks terpilih',empty:'Belum ada permintaan dokumen untuk indeks ini.',
+    dataTable(docRows,{wp,name:'Dokumen indeks terpilih',empty:'Belum ada permintaan dokumen untuk indeks ini.',
       openRow:r=>editDocument(group,index,work,state.repaint,documents[docRows.indexOf(r)])}),
-    ...index.warnings.map(s=>el('p',s,'hint'))));
+    ...index.warnings.filter(s=>!group.lines.some(l=>l.coverage?.includes(s))).map(s=>el('p',s,'hint'))));
 }

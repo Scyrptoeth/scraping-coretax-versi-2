@@ -3,6 +3,7 @@ import {readFile, readdir} from 'node:fs/promises';
 import test from 'node:test';
 import {planSptDetails} from '../extension/app-spt-plan.js';
 import {readPackage} from '../extension/archive/package.js';
+import {appendPackageEntry} from '../extension/app-package-entries.js';
 
 const wp = '0000000000000001', other = '0000000000000002';
 const period = {from:{y:2025,m:6}, to:{y:2025,m:8}};
@@ -37,6 +38,21 @@ test('plan keeps each revision and annual year while reconciling archives and na
   assert.equal(fromTable.parts[0].key,documents[1].parts[0].key);
   assert.equal(fromTable.receipt,'BPE-DEMO-1');
   assert.equal(fromTable.recordId,null);
+});
+
+test('recognize exact submitted-return captions and the calendar-year corporate period',()=>{
+  const cases=[
+    ['SPT Masa PPh Pasal 21/26','ICT_WITR','Juni 2025','2025-06'],
+    ['SPT Masa PPh Unifikasi','ICT_WTR','Juni 2025','2025-06'],
+    ['SPT PPh Badan Rupiah','ICT_RCITR','Januari - Desember 2025','2025'],
+    ['SPT Masa PPN','VAT_VATR','Juni 2025','2025-06']
+  ];
+  for(const [title,type,display,expected] of cases){
+    const source={'Jenis Surat Pemberitahuan Pajak':title,'Model SPT':'Amendment 001','Masa Pajak':display,'ID SPT':'id-fiktif'};
+    const [doc]=plan([table([source])]).documents;
+    assert.deepEqual([doc?.type,doc?.period,doc?.revision],[type,expected,1]);
+    assert.equal(plan([table([{...source,'Jenis Surat Pemberitahuan Pajak':title+' Lain'}])]).documents.length,0);
+  }
 });
 
 test('ambiguous references, missing scope and foreign documents never acquire parts', () => {
@@ -83,6 +99,19 @@ test('queued source evidence identifies a named attachment without declaring a v
   const result = plan([table([row('r1')]),queued]);
   assert.deepEqual(result.documents[0].parts.map(p=>[p.name,p.status]),[['induk','pending'],['a1','pending']]);
   assert.equal(result.counts.readyParts,0);
+  const receiptOnly=plan([table([row('',{DocumentReceiptNumber:'FICTIVE-BPE'})]),section('l2',{
+    complete:false,spt:{recordId:'',nomor:'FICTIVE-BPE'}})]);
+  assert.deepEqual(receiptOnly.documents[0].parts.map(p=>[p.name,p.status]),[['induk','pending'],['l2','pending']]);
+  assert.equal(receiptOnly.counts.unmatchedParts,0);
+  const visible={...queued,id:'capture-fictitious',page:{Payload:{Data:[{Uraian:'Fiktif',Jumlah:'7'}]}},
+    detailProof:{period:'2025-06',revision:0,part:'l2',label:'Lampiran 2',recordId:null,receipt:'FICTIVE-BPE'}};
+  const archives=new Map();appendPackageEntry(archives,visible,wp);
+  const entry=[...archives.values()][0];
+  assert.equal(entry.path,'sptisi/capture-fictitious.json');
+  assert.equal(entry.cap.lengkap,false);
+  assert.equal(entry.cap.konteks.spt.recordId,'');
+  assert.equal(entry.cap.konteks.spt.nomor,'FICTIVE-BPE');
+  assert.deepEqual(entry.pages[0],visible.page);
 });
 
 test('all four reference demonstration packages plan the same in-scope document versions as their captured files', async t => {

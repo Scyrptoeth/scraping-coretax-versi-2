@@ -1,5 +1,5 @@
 import {packageLedger} from './profile.js';
-import {rowsOf,sptDay,submittedDay,worksheet} from './model.js';
+import {receiptNumber,rowsOf,sptDay,submittedDay,worksheet} from './model.js';
 import {box,button,card,dataTable,el,exportSheets,select,showDialog} from './ui.js';
 
 function sourceRows(pkg,source,path) {
@@ -51,7 +51,7 @@ export function eventsFor(pkg,year) {
     const late=due && reported>due;
     const amendment=/amend|pembetulan|correction/i.test(r.ReturnSheetModel||'');
     const group=amendment?'Pembetulan SPT':late?'SPT melewati tanggal pada sumber':'Pelaporan SPT';
-    add(reported,group,[kinds[r.ReturnSheetTypeCode]||r.ReturnSheetTypeCode,r.TaxPeriodCode,r.ReturnSheetModel].filter(Boolean).join(' · '),r['Berkas sumber'],periodYear(r.TaxPeriodCode),r.DocumentReceiptNumber);
+    add(reported,group,[kinds[r.ReturnSheetTypeCode]||r.ReturnSheetTypeCode,r.TaxPeriodCode,r.ReturnSheetModel].filter(Boolean).join(' · '),r['Berkas sumber'],periodYear(r.TaxPeriodCode),receiptNumber(r));
   }
   for(const r of packageLedger(pkg)){
     if(r.IsCancelled===true||r.IsCancelled==='true')continue;
@@ -123,12 +123,13 @@ export function linksFor(pkg,year) {
 }
 
 function sourceDialog(state,record) {
+  const wp=state.pkg.manifest.wp;
   const paths=String(record['Berkas sumber']||'').split('\n').filter(Boolean);
-  const body=box('',dataTable(Object.entries(record).map(([Isian,Nilai])=>({Isian,Nilai})),{name:'Rincian sumber'}));
+  const body=box('',dataTable(Object.entries(record).map(([Isian,Nilai])=>({Isian,Nilai})),{wp,name:'Rincian sumber'}));
   for(const path of new Set(paths)){
     const entry=state.pkg.entries.find(e=>e.path===path);if(!entry)continue;
     const form=state.pkg.forms.find(f=>[...f.parts.values()].includes(entry));
-    body.append(button('Buka '+path,()=>showDialog(path,dataTable(rowsOf(entry),{name:'Tabel sumber'}))));
+    body.append(button('Buka '+path,()=>showDialog(path,dataTable(rowsOf(entry),{wp,name:'Tabel sumber'}))));
     if(form)body.append(button('Buka formulir '+form.type+' · '+form.period,()=>{
       document.getElementById('dialog').close();state.go('spt','form-'+state.pkg.formNamespace+'-'+(state.pkg.forms.indexOf(form)+1));
     }));
@@ -200,6 +201,7 @@ function relationshipDiagram(rows,wp,open) {
   return graph;
 }
 export function renderAdvanced(target,state) {
+  const wp=state.pkg.manifest.wp;
   const events=eventsFor(state.pkg,state.year),links=linksFor(state.pkg,state.year);
   const timeline=box(''),chart=box(''),periods=box('toolbar'),categories=[...new Set(events.map(r=>r.Kelompok))];
   let category='',byDate='',month='';
@@ -214,11 +216,11 @@ export function renderAdvanced(target,state) {
     const period=month||byDate;
     timeline.replaceChildren();
     if(month)timeline.append(el('p','Peristiwa bulan '+month));
-    timeline.append(dataTable(available.filter(r=>!period||r.Tanggal.startsWith(period)),{name:'Kronologi peristiwa',openRow:r=>sourceDialog(state,r)}));
+    timeline.append(dataTable(available.filter(r=>!period||r.Tanggal.startsWith(period)),{wp,name:'Kronologi peristiwa',openRow:r=>sourceDialog(state,r)}));
   }
   target.append(card('Garis waktu WP',el('p','Lihat riwayat registrasi dan dokumen bersama pelaporan serta ketetapan tahun pajak terpilih. Pilih titik untuk menelusuri tahun atau bulan kejadian.','hint'),categoriesControl,periods,chart,timeline));
   paint();
   target.append(card('Peta hubungan WP',el('p','Peta mencakup pihak terkait, lokasi, pemilik lokasi dan hingga enam lawan transaksi per kelompok. Kecocokan nama perlu dikonfirmasi melalui identitas dan dokumen.','hint'),
-    relationshipDiagram(links,state.pkg.manifest.wp?.nama||'WP aktif',r=>sourceDialog(state,r)),dataTable(links,{name:'Hubungan dan sumber',openRow:r=>sourceDialog(state,r)}),
-    button('Excel garis waktu dan hubungan',()=>exportSheets([{name:'Garis waktu',rows:worksheet(events)},{name:'Hubungan',rows:worksheet(links)}],'RAHASIA-Riwayat-Hubungan-'+state.year))));
+    relationshipDiagram(links,state.pkg.manifest.wp?.nama||'WP aktif',r=>sourceDialog(state,r)),dataTable(links,{wp,name:'Hubungan dan sumber',openRow:r=>sourceDialog(state,r)}),
+    button('Excel garis waktu dan hubungan',()=>exportSheets([{name:'Garis waktu',rows:worksheet(events)},{name:'Hubungan',rows:worksheet(links)}],'RAHASIA-Riwayat-Hubungan-'+state.year,wp))));
 }

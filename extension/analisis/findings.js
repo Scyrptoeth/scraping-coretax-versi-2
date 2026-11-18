@@ -1,5 +1,6 @@
 import {periodFacts, rowsOf, sptDay, submittedDay, typeNames, worksheet} from './model.js';
 import {differenceCell} from '../archive/table.js';
+import {rateSourceLabel} from './rate-updates.js';
 
 export const scopeOptions = [['verified','Berbukti saja'],['all','Berbukti + indikatif']];
 export const reviewOptions = ['Dalam pengujian','Terjelaskan','Tidak relevan'];
@@ -130,6 +131,7 @@ export function workpaper(pkg, year, work, mode, role) {
     ['Butir indikatif dikeluarkan',excluded.length],['Pokok terisi dari butir yang dikeluarkan (Rp)',
       skipped.some(x=>x['Pokok terisi (Rp)']!==null)?skipped.reduce((s,x)=>s+(x['Pokok terisi (Rp)']??0),0):null]];
   const principalRows=[['Jenis','Jumlah butir','Pokok terisi (Rp)','Tanpa nominal'],...summary.map(r=>Object.values(r))];
+  context.push(['Pilihan tarif bunga sesi',rateSourceLabel()]);
   const table=(title,rows)=>({title,rows});
   const facts=periodFacts(pkg,year);
   const allTables=mode==='kkp' ? [

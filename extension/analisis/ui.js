@@ -1,5 +1,6 @@
 import {createXlsx} from '../archive/table.js';
 import {compare, count, selectRows, serialize, worksheet} from './model.js';
+import {outputFilename} from './preferences.js';
 
 export function el(tag, content, classes) {
   const element = document.createElement(tag);
@@ -46,17 +47,18 @@ export function showDialog(title,content) {
   const d=document.getElementById('dialog');document.getElementById('dialog-title').textContent=title;
   document.getElementById('dialog-body').replaceChildren(content); if(!d.open)d.showModal();return d;
 }
-export function exportSheets(sheets, filename) {
-  return createXlsx({sheets}).then(blob=>download(blob,filename+'.xlsx')).catch(error=>notice('Excel gagal dibuat. '+error.message,true));
+export function exportSheets(sheets, filename, wp) {
+  const name=outputFilename(filename,'xlsx',wp);
+  return createXlsx({sheets}).then(blob=>download(blob,name)).catch(error=>notice('Excel gagal dibuat. '+error.message,true));
 }
-export function dataTable(rows, {name='Tabel',openRow,filename='Tabel',empty='Tidak ada baris pada sumber ini.',formatNumber=count,incremental=false}={}) {
+export function dataTable(rows, {name='Tabel',openRow,filename='Tabel',empty='Tidak ada baris pada sumber ini.',formatNumber=count,incremental=false,wp}={}) {
   const root=box('table-panel');
   if (!rows.length) {root.append(el('p',empty,'hint'));return root;}
   const search=el('input');search.type='search';search.placeholder='Cari di tabel';search.setAttribute('aria-label','Cari di tabel '+name);
   const area=box('scroll');const pager=box('pager'); const pageSize=incremental?200:50;
   let index=0,order={key:'',dir:1},visible=rows;
   const keys=[...new Set(rows.flatMap(Object.keys))];
-  const tools=box('toolbar',search,button('Excel bagian ini',()=>exportSheets([{name,rows:worksheet(selectRows(rows,search.value,order))}],filename)));
+  const tools=box('toolbar',search,button('Excel bagian ini',()=>exportSheets([{name,rows:worksheet(selectRows(rows,search.value,order))}],filename,wp)));
   root.append(tools,area,pager);
   function appendRows(body,from,to) {
     const fragment=document.createDocumentFragment();

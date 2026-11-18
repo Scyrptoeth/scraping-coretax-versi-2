@@ -1,4 +1,4 @@
-import {flatten, rowsOf, sptDay, submittedDay, typeNames, worksheet} from './model.js';
+import {flatten, receiptNumber, rowsOf, sptDay, submittedDay, typeNames, worksheet} from './model.js';
 import {box, button, card, dataTable, detail, el, exportSheets} from './ui.js';
 
 const first = rows => rows[0] || {};
@@ -105,8 +105,8 @@ function timeline(groups) {
   return rows.sort((a,b)=>b.Tanggal.localeCompare(a.Tanggal));
 }
 export function linkedPaymentGroups(f, ledger) {
-    const refs=new Set([f.id,f.meta?.DocumentReceiptNumber,'SPT-'+f.id].filter(Boolean));
-    const liabilities=ledger.filter(r=>r.AccountingTypeCode==='TaxReturn' && refs.has(r.ReferenceNumber) &&
+    const refs=new Set([f.id,receiptNumber(f.meta),'SPT-'+f.id].filter(Boolean).map(String));
+    const liabilities=ledger.filter(r=>r.AccountingTypeCode==='TaxReturn' && refs.has(String(r.ReferenceNumber)) &&
       number(r.Amount)!==null && r.Amount<0 && r.PeriodCode && r.RevenueCode);
     const grouped=new Map();
     for(const row of liabilities){
@@ -200,7 +200,7 @@ export function profileSections(pkg) {
   const filed=sourceRows(pkg.entries.filter(e=>e.cap?.sumber==='sptdaftar'||e.path==='spt/daftar.json'));
   const dates=filed.map(row=>{
     const reported=submittedDay(row), deadline=sptDay(row.ExpectedReturnDate);
-    return {Jenis:row.ReturnSheetTypeCode,Masa:row.TaxPeriodCode,Model:row.ReturnSheetModel,BPE:row.DocumentReceiptNumber,'Tanggal lapor':reported,'Batas pada sumber':deadline,
+    return {Jenis:row.ReturnSheetTypeCode,Masa:row.TaxPeriodCode,Model:row.ReturnSheetModel,BPE:receiptNumber(row),'Tanggal lapor':reported,'Batas pada sumber':deadline,
       'Posisi tanggal':row.ReturnSheetModel!=='Normal'?'Pembetulan / model lain':!reported||!deadline?'Belum dapat dibandingkan':reported>deadline?'Lewat tanggal pada sumber':'Dalam tanggal pada sumber','Berkas sumber':row['Berkas sumber']};
   });
   add('lapor',obligations,'Pemenuhan pelaporan',dates,'Perbandingan memakai tanggal yang disimpan dalam paket. Masa tanpa data memerlukan pemeriksaan ketersediaan sumber.');
@@ -235,7 +235,7 @@ export function profileSections(pkg) {
       ...rowsOf(f.parts.get('keluarga')).flatMap(x=>list(x.FamilyMembers)).map(member=>({'Tahun SPT':f.year,...member,'Berkas sumber':f.parts.get('keluarga').path})),
       ...list(r.PitrL1Form?.ListDependantsFamilyMembers).map(member=>({'Tahun SPT':f.year,...member,'Berkas sumber':f.parts.get('induk')?.path}))
     ]));
-    add('op-riwayat',group,'Riwayat SPT Tahunan OP',forms.filter(f=>f.type==='OP').map(f=>({Jenis:typeNames.OP,Tahun:f.year,Versi:f.version,'Tanggal lapor':f.reportDate ?? submittedDay(f.meta),BPE:f.meta.DocumentReceiptNumber,Sumber:f.key})));
+    add('op-riwayat',group,'Riwayat SPT Tahunan OP',forms.filter(f=>f.type==='OP').map(f=>({Jenis:typeNames.OP,Tahun:f.year,Versi:f.version,'Tanggal lapor':f.reportDate ?? submittedDay(f.meta),BPE:receiptNumber(f.meta),Sumber:f.key})));
   }
   return sections;
 }
@@ -246,6 +246,7 @@ export function indexedProfileSections(pkg) {
   return cachedSections.get(pkg);
 }
 export function renderProfile(target,state) {
+  const wp=state.pkg.manifest.wp;
   const sections=indexedProfileSections(state.pkg), groups=[...new Set(sections.map(s=>s.group))];
   const sectionFromEntry=sections.find(s=>s.refs.includes(state.selectedEntry));
   const active=sections.find(s=>s.id===state.section)||sectionFromEntry||sections[0];
@@ -271,9 +272,9 @@ export function renderProfile(target,state) {
     const summary=active.cards && box('grid',...active.cards.map(([name,value])=>box('kpi',el('small',name),
       el('b',value==null || value===''?'—':typeof value==='number'?value.toLocaleString('id-ID'):value))));
     panel.replaceChildren(el('h2',active.title),...(summary?[summary]:[]),...(active.note?[el('p',active.note,'hint')]:[]),
-      dataTable(active.rows,{name:active.title,filename:'RAHASIA-Profil-'+active.id,empty:'Belum ada baris yang dapat ditampilkan dari sumber dalam paket ini.'}),...(refs?[refs]:[]));
+      dataTable(active.rows,{wp,name:active.title,filename:'RAHASIA-Profil-'+active.id,empty:'Belum ada baris yang dapat ditampilkan dari sumber dalam paket ini.'}),...(refs?[refs]:[]));
   }
   mobile.onchange=()=>state.go('profil',mobile.value);
-  const actions=box('toolbar',button('Excel semua bagian',()=>exportSheets(sections.map(s=>({name:s.title,rows:worksheet(s.rows)})),'RAHASIA-Profil-WP')),button('Cetak / PDF',()=>window.print()));
+  const actions=box('toolbar',button('Excel semua bagian',()=>exportSheets(sections.map(s=>({name:s.title,rows:worksheet(s.rows)})),'RAHASIA-Profil-WP',wp)),button('Cetak / PDF',()=>window.print()));
   paint();target.append(card('Profil WP',actions),box('split',view.matches?mobile:rail,panel));
 }

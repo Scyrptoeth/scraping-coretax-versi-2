@@ -1,5 +1,6 @@
 import { createDocx } from "../archive/document.js";
 import { readXlsx } from "../archive/read-table.js";
+import {outputFilename} from './preferences.js';
 import { box, button, card, download, el, exportSheets, field, notice, select, toggleSet } from "./ui.js";
 import { allowedDrafts, blankFinding, draftFindings, draftOutput, draftSheets, draftTitles, importAnswers, newDraft, suggestQuestions, visibleFindings } from "./draft-model.js";
 
@@ -73,11 +74,12 @@ export function renderDrafts(target, state, pkg, work, onSave) {
     }
     const fileBase=type+"-"+safeName(doc.year)+"-"+safeName(doc.number);
     const word=async (variant="main")=>{
-      try { download(await createDocx(draftOutput(doc,variant)),fileBase+(variant==="main"?"":"-"+variant)+".docx"); }
+      const name=outputFilename(fileBase+(variant==="main"?"":"-"+variant),"docx",pkg.manifest.wp);
+      try { download(await createDocx(draftOutput(doc,variant)),name); }
       catch(e) { notice("Word gagal dibuat. "+e.message,true); }
     };
     const actions=box("toolbar",button("Unduh Word",()=>word()),button("Cetak / PDF",()=>printOutput(draftOutput(doc,"main"))),
-      button("Unduh Excel",()=>exportSheets(draftSheets(doc),fileBase)));
+      button("Unduh Excel",()=>exportSheets(draftSheets(doc),fileBase,pkg.manifest.wp)));
     if(type==="BAPK")actions.append(button("Surat panggilan (Word)",()=>word("invitation")),button("Naskah tanpa jawaban",()=>word("blank")));
     actions.append(button("Hapus konsep",()=>{
       if(!window.confirm("Hapus konsep "+type+" yang sedang dibuka?"))return;

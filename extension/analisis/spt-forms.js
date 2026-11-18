@@ -1,4 +1,4 @@
-import {differences,flatten,payloads,rowsOf,sptDay,submittedDay,typeNames,worksheet} from './model.js';
+import {differences,flatten,payloads,receiptNumber,rowsOf,sptDay,submittedDay,typeNames,worksheet} from './model.js';
 import {box,button,card,dataTable,detail,el,exportSheets,select,showDialog} from './ui.js';
 import {linkedPaymentGroups,packageLedger} from './profile.js';
 import {annualVat} from './annual-vat.js';
@@ -107,7 +107,7 @@ export function partRows(f,part,raw=false) {
 }
 function header(f,pkg){
   return [['Jenis',typeNames[f.type]||f.type],['Masa / tahun',f.period],['Versi',versionName(f)],
-    ['WP',pkg.manifest.wp?.nama??''],['NPWP',pkg.manifest.wp?.npwp??''],['BPE',f.meta.DocumentReceiptNumber??''],['Tanggal lapor',f.reportDate??submittedDay(f.meta)]];
+    ['WP',pkg.manifest.wp?.nama??''],['NPWP',pkg.manifest.wp?.npwp??''],['BPE',receiptNumber(f.meta)],['Tanggal lapor',f.reportDate??submittedDay(f.meta)]];
 }
 export function formSheets(forms,pkg,raw=false) {
   const sheets=[];
@@ -139,12 +139,13 @@ function printForms(forms,pkg) {
   try{window.print();}finally{view.remove();document.body.classList.remove('print-catalog-active');if(wasOpen)dialog.showModal();}
 }
 export function exportControls(forms,pkg){
-  const buttons=[button('Excel gabungan',()=>exportSheets(formSheets(forms,pkg),'RAHASIA-SPT-gabungan')),
+  const buttons=[button('Excel gabungan',()=>exportSheets(formSheets(forms,pkg),'RAHASIA-SPT-gabungan',pkg.manifest.wp)),
     button('Cetak gabungan (PDF)',()=>printForms(forms,pkg))];
   buttons.forEach(b=>b.disabled=!forms.length);
   return box('toolbar',...buttons);
 }
 export function openForm(form,pkg,onVersionChange){
+  const wp=pkg.manifest.wp;
   const content=box('form-body'),versions=pkg.forms.filter(f=>f.type===form.type&&f.period===form.period).sort((a,b)=>b.version-a.version);
   let part=sortedParts(form)[0],raw=false,locate='';
   function paint(){
@@ -153,7 +154,7 @@ export function openForm(form,pkg,onVersionChange){
     },'Versi');
     const parts=select(sortedParts(form).map(p=>[p,labelPart(form,p)]),part,p=>{part=p;locate='';paint();},'Induk / lampiran');
     const controls=box('toolbar',version,parts,button(raw?'Tampilan formulir':'Kode field & lampiran lengkap',()=>{raw=!raw;paint();}),
-      button(raw?'Excel data mentah':'Excel formulir',()=>exportSheets(formSheets([form],pkg,raw),'RAHASIA-SPT-'+form.type+'-'+form.period+'-P'+form.version)),
+      button(raw?'Excel data mentah':'Excel formulir',()=>exportSheets(formSheets([form],pkg,raw),'RAHASIA-SPT-'+form.type+'-'+form.period+'-P'+form.version,wp)),
       button('Cetak / PDF',()=>printForms([form],pkg)));
     if(versions.length>1) controls.append(button('Bandingkan versi',()=>{
       let other=versions.find(f=>f.version<form.version)||versions.find(f=>f.key!==form.key);
@@ -163,7 +164,7 @@ export function openForm(form,pkg,onVersionChange){
         const rows=differences(payloads(other.parts.get(selected)),payloads(form.parts.get(selected)));
         panel.replaceChildren(select(versions.filter(f=>f.key!==form.key).map(f=>[f.key,versionName(f)]),other.key,k=>{other=versions.find(f=>f.key===k);diff();},'Versi pembanding'),
           select(all,selected,v=>{selected=v;diff();},'Bagian yang dibandingkan'),
-          el('p',versionName(other)+' → '+versionName(form)+' · '+selected),dataTable(rows,{name:'Perubahan',empty:'Tidak ada perubahan isian pada dua versi ini.'}));
+          el('p',versionName(other)+' → '+versionName(form)+' · '+selected),dataTable(rows,{wp,name:'Perubahan',empty:'Tidak ada perubahan isian pada dua versi ini.'}));
       }
       diff();content.replaceChildren(panel,button('Kembali ke formulir',paint));
     }));
@@ -172,12 +173,12 @@ export function openForm(form,pkg,onVersionChange){
     keyword.oninput=()=>{
       const q=keyword.value.trim().toLocaleLowerCase('id');hits.replaceChildren();if(!q)return;
       const matched=findFields(form,q);
-      hits.append(dataTable(matched,{name:'Hasil pencarian formulir',empty:'Tidak ditemukan pada formulir ini.',openRow:row=>{
+      hits.append(dataTable(matched,{wp,name:'Hasil pencarian formulir',empty:'Tidak ditemukan pada formulir ini.',openRow:row=>{
         part=row.Bagian;locate=part==='induk'?row['Kode isian']:String(row.Nilai??'');paint();
       }}));
     };
     const rows=partRows(form,part,raw);
-    const table=dataTable(rows,{name:labelPart(form,part)});
+    const table=dataTable(rows,{wp,name:labelPart(form,part)});
     const search=table.querySelector('input[type=search]');
     if(search&&locate){search.value=locate;search.dispatchEvent(new Event('input'));}
     content.replaceChildren(el('p',[pkg.manifest.wp?.nama,pkg.manifest.wp?.npwp,form.period,versionName(form)].filter(Boolean).join(' · ')),
@@ -195,7 +196,7 @@ const vatAxes=[
   ['Pajak keluaran','OutputTaxMustBeSelfCollected.VAT'],['Kompensasi masukan','CarryForwardOfInputTax.VAT'],
   ['Pajak masukan diperhitungkan','InputTaxCanBeCalculated.VAT'],['Kurang/(lebih) bayar','VATUnderOrOverPaid.VAT']
 ];
-export function summaryPanels(forms,year) {
+export function summaryPanels(forms,year,wp) {
   const current=forms.filter(f=>f.latest);
   const vats=current.filter(f=>f.type==='PPN').map(f=>{
     const source=main(f),row={Masa:f.period,Versi:versionName(f)};
@@ -212,14 +213,14 @@ export function summaryPanels(forms,year) {
   const withholding=monthlyWithholding(forms,year);
   const annualPanel=annual?card('Rekap PPN tahunan',
     el('p',annual.available+' dari 12 masa mempunyai versi SPT terakhir. Kompensasi dan posisi kurang/lebih bayar dibaca per masa. Kolom lainnya dijumlahkan untuk masa yang tersedia.','hint'),
-    dataTable(annual.rows,{name:'Rekap PPN tahunan',filename:'Rekap-PPN-'+year}),
-    annual.notes.length?detail('Sumber angka PK',dataTable(annual.notes,{name:'Sumber angka PK'})):null):null;
+    dataTable(annual.rows,{wp,name:'Rekap PPN tahunan',filename:'Rekap-PPN-'+year}),
+    annual.notes.length?detail('Sumber angka PK',dataTable(annual.notes,{wp,name:'Sumber angka PK'})):null):null;
   const withholdingPanel=withholding.columns.length>1 || withholding.warnings.length?card('Rekap PPh potong/pungut',
     el('p','Nilai memakai versi terakhir per jenis dan masa. Buka sumber per pasal untuk melihat isian asal dan perhitungannya.','hint'),
     withholding.unreportedColumns.length?el('p','Kolom tanpa angka pada seluruh masa: '+withholding.unreportedColumns.join(', ')+'. Jumlah nilai tersedia pada kolom tersebut adalah 0.','hint'):null,
     ...withholding.warnings.map(text=>el('p',text,'notice')),
-    withholding.columns.length>1?dataTable([...withholding.rows,withholding.total],{name:'Rekap PPh potong/pungut',filename:'Rekap-PPh-'+year}):null,
-    withholding.sources.length?detail('Sumber per pasal',dataTable(withholding.sources,{name:'Sumber per pasal'})):null):null;
-  return [annualPanel,card('PPN per masa',dataTable(vats,{name:'PPN per masa'})),withholdingPanel,card('Potong dan pungut per masa',dataTable(payments,{name:'Potong pungut'})),
-    card('Kalender pelaporan',el('p','Untuk SPT normal, batas yang jatuh pada Sabtu atau Minggu digeser ke Senin. Periksa hari libur lain dan relaksasi sebelum menilai kepatuhan.','hint'),dataTable(calendar,{name:'Kalender pelaporan'}))];
+    withholding.columns.length>1?dataTable([...withholding.rows,withholding.total],{wp,name:'Rekap PPh potong/pungut',filename:'Rekap-PPh-'+year}):null,
+    withholding.sources.length?detail('Sumber per pasal',dataTable(withholding.sources,{wp,name:'Sumber per pasal'})):null):null;
+  return [annualPanel,card('PPN per masa',dataTable(vats,{wp,name:'PPN per masa'})),withholdingPanel,card('Potong dan pungut per masa',dataTable(payments,{wp,name:'Potong pungut'})),
+    card('Kalender pelaporan',el('p','Untuk SPT normal, batas yang jatuh pada Sabtu atau Minggu digeser ke Senin. Periksa hari libur lain dan relaksasi sebelum menilai kepatuhan.','hint'),dataTable(calendar,{wp,name:'Kalender pelaporan'}))];
 }

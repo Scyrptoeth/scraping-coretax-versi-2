@@ -72,7 +72,7 @@ try{
     await page.getByRole('button',{name:'Cetak gabungan (PDF)'}).click();
     assert.deepEqual(await page.evaluate(()=>window.testPrinted),[selectedForms.length,selectedForms.reduce((n,f)=>n+f.parts.size,0)]);
     const combined=page.waitForEvent('download');await page.getByRole('button',{name:'Excel gabungan'}).click();
-    assert.equal((await combined).suggestedFilename(),'RAHASIA-SPT-gabungan.xlsx');
+    assert.equal((await combined).suggestedFilename(),'RAHASIA-SPT-gabungan-'+pkg.manifest.wp.npwp+'.xlsx');
     await page.getByRole('button',{name:'Ringkasan SPT',exact:true}).click();
     await page.getByRole('table',{name:'Kalender pelaporan',exact:true}).waitFor();
     if(kinds.has('PPN')){

@@ -22,6 +22,10 @@ try{
   await page.goto(url);
   const names=(await readdir(fixtures)).filter(n=>n.startsWith('CONTOH-')&&n.endsWith('.zip'));assert.equal(names.length,4);
   const checks=new Set();
+  const download=async title=>{
+    const [file]=await Promise.all([page.waitForEvent('download'),page.getByRole('button',{name:title,exact:true}).click()]);
+    return readFile(await file.path());
+  };
   for(const name of names){
     const bytes=await readFile(join(fixtures,name)),pkg=indexPackage(await readPackage(bytes));
     const op=pkg.forms.some(f=>f.type==='OP'),year=pkg.forms.find(f=>f.type===(op?'OP':'BADAN')).year;
@@ -38,12 +42,33 @@ try{
     const table=page.getByRole('table',{name:'Pengujian per indeks'});
     await table.getByText(group.lines[0].topic,{exact:true}).first().waitFor();
     for(const g of index.groups)checks.add(g.key);
+    if(op){
+      const professional=name.includes('PEKERJAAN-BEBAS');
+      await page.getByLabel('Tahun pajak',{exact:true}).selectOption(professional?'2025':'2023');
+      const cases=professional?[['B-8',1020000000,24],['B-17',81300000,25]]:[['B-17',7000000,1]];
+      for(const [ref,expected,n] of cases){
+        await page.getByLabel('Pilih indeks KKP').selectOption('OP/'+ref);
+        await table.getByRole('cell',{name:expected.toLocaleString('id-ID'),exact:true}).waitFor();
+        await table.getByText('Belum diuji',{exact:true}).waitFor();
+        const details=page.getByRole('table',{name:'Rincian bukti potong untuk '+ref});
+        assert.equal(await details.locator('tbody tr').count(),n);
+        await table.getByRole('button',{name:'Buka'}).click();
+        const dialog=page.getByRole('dialog'),value=dialog.getByLabel('Nilai setelah pengujian');
+        assert.equal(await value.inputValue(),'');
+        await dialog.getByRole('button',{name:'Salin nilai awal ke isian pengujian'}).click();
+        assert.equal(await value.inputValue(),String(expected));
+        await dialog.getByRole('button',{name:'Tutup',exact:true}).click();
+        const sheet=await readZip(await download('Excel KKP ini'));
+        const xml=decodeText(sheet.get('xl/worksheets/sheet1.xml').data);
+        assert.match(xml,new RegExp('<c r="L7"[^>]*><v>'+expected+'</v>'));
+        assert.match(xml,/Rincian bukti potong/);
+        const book=await readZip(await download('Excel semua KKP'));
+        for(const i of [3,4])assert.doesNotMatch(decodeText(book.get('xl/worksheets/sheet'+i+'.xml').data),/<row r="2">/);
+      }
+      checks.add('tanpa-spt');
+    }
     if(op||checks.has('runtime-review'))continue;
     checks.add('runtime-review');
-    const download=async title=>{
-      const [file]=await Promise.all([page.waitForEvent('download'),page.getByRole('button',{name:title,exact:true}).click()]);
-      return readFile(await file.path());
-    };
     const line=group.lines[0], tested=line.amount+123;assert.ok(Number.isFinite(line.amount));
     await page.getByRole('button',{name:'Tambah permintaan dokumen'}).click();
     const dialog=page.getByRole('dialog');
@@ -107,8 +132,10 @@ try{
     await page.locator('#role').selectOption('Pemeriksa');
   }
   assert.ok(checks.has('runtime-review'));assert.ok(checks.has('UNIFIKASI/G'));assert.ok(checks.has('UNIFIKASI/K'));
+  assert.ok(checks.has('tanpa-spt'));
   assert.deepEqual(errors,[]);
-  console.log('PASS: four fictitious packages in the installed V2 extension, '+(checks.size-1)+' index families, documented correction, revision, Excel, workfile, KKA and SP2DK.');
+  const families=[...checks].filter(k=>k.includes('/')).length;
+  console.log('PASS: four fictitious packages in the installed V2 extension, '+families+' index families, B-8 and B-17 without an annual return, documented correction, revision, Excel, workfile, KKA and SP2DK.');
 }finally{
   if(browser)await browser.close();
   await rm(profile,{recursive:true,force:true});

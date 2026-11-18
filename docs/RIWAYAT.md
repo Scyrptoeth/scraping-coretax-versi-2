@@ -1,5 +1,11 @@
 # Riwayat Scraping Coretax Versi 2
 
+## 18 November 2026 · Prarilis 0.5.0
+
+Dari pratinjau satu WP, penarik dapat membuka tampilan SPT melalui tindakan baca yang dapat dikenali pada baris sumber. Penarik mencocokkan dokumen kembali di halaman tujuan dan menyimpan bagian yang tersedia beserta asalnya. Uji Chrome memakai halaman Coretax fiktif dengan navigasi di tab yang sama dan di tab baru. [Penarik](SCRAPING.md)
+
+Pemutar membuka ZIP64 satu volume, mengenali nomor bukti penerimaan dari dua kolom Coretax dan menyediakan pilihan nama berkas keluaran. KKP OP dapat menyajikan pembanding B-8 dan B-17 saat ketiadaan SPT Tahunan OP dapat ditelusuri. Petugas dapat mempratinjau perubahan tarif bunga, menerapkannya untuk sesi berjalan dan memeriksa sumbernya di simulasi. [Format ZIP](FORMAT.md) · [Pemutar dan kertas kerja](ANALISIS.md)
+
 ## 18 November 2026 · Prarilis 0.4.0
 
 Daftar SPT memakai versi terakhir sebagai pilihan awal. Pemutar menampilkan dasar nilai untuk tiap jenis formulir, memilih tanggal penerimaan yang valid saat tanggal utama masih berisi tahun penanda, dan memisahkan batas sumber dari batas setelah akhir pekan. Rekap PPN dan PPh menyajikan masa, jumlah, dan rujukan untuk menelusuri perbedaan. Dasbor WP Badan menyertakan enam indikator dan berkas sumbernya.

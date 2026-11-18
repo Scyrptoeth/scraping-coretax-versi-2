@@ -10,6 +10,7 @@ for(const [code,label] of selectableForms) {
   for(const value of [code,label,'SPT '+label]) typeLabels.set(typeText(value),code);
 }
 typeLabels.set('spt pph badan rupiah','ICT_RCITR');
+typeLabels.set('spt masa pph pasal 21/26','ICT_WITR');
 export const isSptList=source=>Object.hasOwn(lists,source);
 
 export function listRowType(row) {
@@ -74,6 +75,15 @@ export function packagePath(item) {
   if(item.source==='bbsaldo') return 'bukubesar-saldo.json';
   if(Object.hasOwn(profiles,item.source)) return 'profil/'+profiles[item.source]+'.json';
   if(Object.hasOwn(lists,item.source)) return 'spt/'+lists[item.source]+'.json';
+  if(item.source==='sptisi' && item.detailProof) {
+    const {recordId,period,part,revision}=item.detailProof;
+    if (Object.hasOwn(forms,item.spt) && /^[a-z0-9_-]{1,80}$/i.test(recordId || '') &&
+        /^\d{4}(-(?:0[1-9]|1[0-2]))?$/.test(period) && Number.isInteger(revision) && revision>=0 && revision<=999 &&
+        /^[a-z0-9][a-z0-9-]{0,45}$/.test(part)) {
+      return 'spt/'+forms[item.spt]+'/'+period+'/p'+String(revision).padStart(2,'0')+'_'+recordId+'/'+part+'.json';
+    }
+    return 'sptisi/'+item.id+'.json';
+  }
   const rows=rowsOf(item.page), period=periodLabel(rows);
   if(['bb','bbtotal'].includes(item.source) && period.length===7) {
     return (item.source==='bb'?'bukubesar/':'bukubesar-total/')+period+'.json';
@@ -111,6 +121,15 @@ export function appendPackageEntry(groups,item,wp) {
       if(part==='induk')context.jenisBagian='induk';
       else if(part.endsWith('-total'))context.jenisBagian='footer';
       else if(Array.isArray(item.page.Payload?.Data) || Array.isArray(item.page.Payload))context.jenisBagian='grid';
+    }
+    if(item.source==='sptisi' && item.detailProof) {
+      const proof=item.detailProof;
+      const [year,month]=proof.period.split('-');
+      const masa=month && /^\d{2}$/.test(month)?month+month+year:proof.period;
+      context.spt={recordId:proof.recordId || '',jenis:item.spt,masa,pemb:proof.revision,tahun:Number(year),npwp:wp,
+        nomor:proof.receipt || ''};
+      context.bagian=proof.part;context.labelBagian=proof.label;
+      context.cuplikanTampilan=true;
     }
     groups.set(path,{path,cap:{sumber:item.source,label:collectorPart?sources[item.source]+' · '+collectorPart:sources[item.source],baris:0,total:null,lengkap:false,
       konteks:context,catatan:['Isi mengikuti halaman atau berkas yang ditambahkan pada penarikan ini.',

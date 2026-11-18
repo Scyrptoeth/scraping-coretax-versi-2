@@ -39,7 +39,7 @@ try{
   await page.getByRole('heading',{name:'Seluruh baris dan kolom cocok'}).waitFor();
   const comparisonDownload=page.waitForEvent('download');
   await page.getByRole('button',{name:'Excel hasil pencocokan'}).click();
-  assert.equal((await comparisonDownload).suggestedFilename(),'Pencocokan-tabel.xlsx');
+  assert.equal((await comparisonDownload).suggestedFilename(),'Pencocokan-tabel-'+content.meta.wp.npwp+'.xlsx');
   await compareCsv('RecordId,ReturnDate,ExpectedReturnDate\ncontoh,2025-05-02,2025-04-30');
   await page.getByRole('button',{name:'Cocokkan baris dan isi'}).click();
   await page.getByRole('table',{name:'Perbedaan dengan CSV',exact:true}).getByRole('cell',{name:'2025-05-02'}).waitFor();

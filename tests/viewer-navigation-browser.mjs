@@ -3,6 +3,7 @@ import {createServer} from 'node:http';
 import {readFile} from 'node:fs/promises';
 import {createRequire} from 'node:module';
 import {createPackage} from '../extension/archive/package.js';
+import {decodeText,readZip} from '../extension/archive/zip.js';
 
 const {chromium}=createRequire(import.meta.url)(process.env.PLAYWRIGHT_MODULE||'playwright');
 const base=new URL('../extension/',import.meta.url);
@@ -18,7 +19,8 @@ async function archive(npwp,id,surname,amount){
   const forms=[['2025-01',0,1],['2024-03',0,21],['2024-03',1,amount]];
   const entries=forms.map(([period,version,value],i)=>({path:'spt/PPN/'+period+'/p0'+version+'_'+id+i+'/induk.json',
     cap:{sumber:'sptisi',lengkap:true},pages:[{Payload:{FormData:JSON.stringify({VATUnderOrOverPaid:{VAT:value}})}}]}));
-  entries.push({path:'spt/daftar.json',cap:{sumber:'sptdaftar'},pages:[{Payload:{Data:forms.map((_,i)=>({RecordId:id+i,DocumentReceiptNumber:'BPE-'+id+i}))}}]},
+  const receipts=[{DocumentReceiptNumber:'BPE-'+id+'0'},{BpsNo:'00000000123'},{BpsNo:'BPE-'+id+'2'}];
+  entries.push({path:'spt/daftar.json',cap:{sumber:'sptdaftar'},pages:[{Payload:{Data:forms.map((_,i)=>({RecordId:id+i,...receipts[i]}))}}]},
     {path:'profil/alamat.json',cap:{sumber:'alamat',label:'Registrasi alamat'},pages:[{Payload:{Data:[{Description:'Alamat contoh '+surname}]}}]});
   const blob=await createPackage({meta:{wp:{npwp,nama:'Contoh '+surname}},entries});
   return {name:surname+'.zip',mimeType:'application/zip',buffer:Buffer.from(await blob.arrayBuffer())};
@@ -49,6 +51,17 @@ try{
   await dialog.getByRole('cell',{name:'21',exact:true}).waitFor();assert.notEqual(page.url(),link);
   await page.keyboard.press('Escape');await page.waitForURL(u=>u.hash==='#/spt');
   assert.equal(await page.getByRole('combobox',{name:'Tahun pajak'}).inputValue(),'2024');
+  await page.getByRole('checkbox',{name:'Versi terakhir'}).uncheck();
+  await page.getByRole('searchbox',{name:'Cari di tabel Daftar SPT'}).fill('00000000123');
+  const list=page.getByRole('table',{name:'Daftar SPT',exact:true});
+  assert.equal(await list.locator('tbody tr').count(),1);
+  await list.getByRole('cell',{name:'00000000123',exact:true}).waitFor();
+  await list.getByRole('button',{name:'Buka',exact:true}).click();
+  const [download]=await Promise.all([page.waitForEvent('download'),dialog.getByRole('button',{name:'Excel formulir',exact:true}).click()]);
+  const wb=await readZip(await readFile(await download.path()));
+  const sheet=decodeText(wb.get('xl/worksheets/sheet1.xml').data);
+  assert.match(sheet,/<c [^>]*t="inlineStr"><is><t [^>]*>00000000123<\/t>/);
+  await page.keyboard.press('Escape');
   await quick('bpe privat a2');await dialog.getByRole('cell',{name:'55',exact:true}).waitFor();assert.equal(page.url(),link);
   await quick('registrasi alamat','Data mentah · Registrasi alamat');await page.getByRole('heading',{name:'Registrasi alamat'}).waitFor();assert.equal(new URL(page.url()).hash,'#/tabel');
   await page.goto(link);await page.reload();await page.getByRole('heading',{name:'Buka formulir tertaut'}).waitFor();

@@ -57,5 +57,20 @@ try{
   await page.getByRole('navigation').getByRole('button',{name:'Probis'}).click();
   await page.getByRole('button',{name:'Untuk WP ini',exact:true}).click();await page.getByRole('heading',{name:'KLU di paket'}).waitFor();
   await page.evaluate(()=>{location.hash='#/klu';});await page.getByPlaceholder('Kode atau nama kegiatan').waitFor();
+  await page.getByRole('navigation').getByRole('button',{name:'Bantuan'}).click();
+  const rateFile=page.getByLabel('Buka berkas pembaruan tarif');
+  const change={format:'SEDOTAX-REGULASI',versi:'1',tanggal:'2026-01-02',sumber:'Tarif uji fiktif',tarif:{'2026-01':{kmk:'UJI-01',p13_2:2.25}}};
+  await rateFile.setInputFiles({name:'tarif-uji.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(change))});
+  await page.getByRole('table',{name:'Perubahan tarif bulanan'}).waitFor();
+  assert.equal(await page.locator('#rate-info').isVisible(),false);
+  await page.getByRole('button',{name:'Terapkan tarif untuk sesi ini'}).click();
+  assert.match(await page.locator('#rate-info').innerText(),/Tarif uji fiktif/);
+  await page.reload();
+  await page.locator('#rate-info').filter({hasText:'memakai tarif bawaan'}).waitFor();
+  await page.getByRole('button',{name:'Terapkan tarif untuk sesi ini'}).click();
+  await page.getByRole('button',{name:'Gunakan tarif bawaan untuk sesi ini'}).click();
+  assert.match(await page.locator('#rate-info').innerText(),/memakai tarif bawaan/);
+  await page.getByRole('button',{name:'Hapus pembaruan tarif tersimpan'}).click();
+  assert.equal(await page.locator('#rate-info').isVisible(),false);
   assert.deepEqual(errors,[]);console.log('Regulations browser passed: filters, sorts, counts, local presets, 92-row XLSX, source links, document history, single Word and print; KLU deep link works with an active package.');
 }finally{await browser.close();await new Promise(resolve=>server.close(resolve));}

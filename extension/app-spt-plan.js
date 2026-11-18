@@ -80,7 +80,8 @@ function partEvidence(item, wp, failed) {
     item = [...groups.values()][0];
   }
   const ctx = item.cap?.konteks, spt = ctx?.spt;
-  if (!spt || !spt.recordId || normalizeId(ctx.npwp) !== wp || (spt.npwp && normalizeId(spt.npwp) !== wp)) return null;
+  if (!spt || !(spt.recordId || referenceValue(textValue(spt.nomor))) ||
+      normalizeId(ctx.npwp) !== wp || (spt.npwp && normalizeId(spt.npwp) !== wp)) return null;
   const period = periodOf(spt.masa, annualTypes.has(spt.jenis));
   const revision = revisionOf(spt.pemb ?? spt.model);
   const part = textValue(ctx.bagian).toLowerCase();
@@ -89,7 +90,7 @@ function partEvidence(item, wp, failed) {
   const error = failed || pages.some(p => p?.IsSuccessful === false);
   const ready = !error && item.cap.lengkap === true && pages.length > 0 &&
     pages.every(p => p && typeof p === 'object' && p.Payload != null);
-  return {slot:keyOf(spt.jenis,period.label,revision),record:textValue(spt.recordId),part,
+  return {slot:keyOf(spt.jenis,period.label,revision),record:textValue(spt.recordId),receipt:referenceValue(textValue(spt.nomor)),part,
     status:error ? 'retry' : ready ? 'ready' : 'pending'};
 }
 
@@ -169,7 +170,9 @@ export function planSptDetails({wp,period,types = forms.map(([type]) => type),it
   for (const failed of failures) evidence.push(partEvidence(failed,owner,true));
   for (const part of evidence) {
     const group = part && bySlot.get(part.slot);
-    if (!group || group.doc.recordId !== part.record) { counts.unmatchedParts++; continue; }
+    const matches = group && (group.doc.recordId && part.record ? group.doc.recordId===part.record :
+      group.doc.receipt && group.doc.receipt===part.receipt);
+    if (!matches) { counts.unmatchedParts++; continue; }
     const old = group.sections.get(part.part);
     if (!old || statusRank[part.status] > statusRank[old]) group.sections.set(part.part, part.status);
   }

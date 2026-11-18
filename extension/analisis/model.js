@@ -64,6 +64,13 @@ export function sptDay(value) {
 export function submittedDay(row) {
   return sptDay(row?.ReturnDate) || sptDay(row?.ReceiptDate) || sptDay(row?.EnteredDate) || sptDay(row?.DateOfSubmit);
 }
+export function receiptNumber(row) {
+  for (const value of [row?.DocumentReceiptNumber, row?.BpsNo]) {
+    if (typeof value === 'string' && value.trim()) return value.trim();
+    if (Number.isSafeInteger(value) && value >= 0) return String(value);
+  }
+  return '';
+}
 function afterWeekend(day) {
   if (!day) return '';
   const utc = new Date(day + 'T00:00:00Z');

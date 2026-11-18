@@ -122,6 +122,7 @@ export function compareSourceRows(source, packaged, mapping) {
 }
 
 function sourceComparison(pkg) {
+  const wp=pkg.manifest.wp;
   const unique=pkg.entries.filter(entry=>entry.pages.length && entry.pages.every(p=>Array.isArray(tableRows(p))));
   if(!unique.length) return el('p','Paket ini belum berisi tabel yang bisa dicocokkan dengan CSV.');
   let selected=unique.find(e=>e.path==='spt/daftar.json') || unique[0],source=[],serial=0;
@@ -142,9 +143,9 @@ function sourceComparison(pkg) {
         const summary={ 'Baris CSV':r.sourceCount,'Baris paket':r.packageCount,'Kolom dipasangkan':r.columns,'Sel diperiksa':r.checked,'Sel sama':r.equal,
           'Baris atau sel berbeda':r.differences.length};
         result.append(el('h3',r.complete?'Seluruh baris dan kolom cocok':r.differences.length?'Ditemukan perbedaan':'Kolom yang dipasangkan cocok'),
-          dataTable([summary],{name:'Ringkasan pencocokan'}),dataTable(r.differences,{name:'Perbedaan dengan CSV',empty:'Tidak ada perbedaan pada kolom yang dipasangkan.'}),
+          dataTable([summary],{wp,name:'Ringkasan pencocokan'}),dataTable(r.differences,{wp,name:'Perbedaan dengan CSV',empty:'Tidak ada perbedaan pada kolom yang dipasangkan.'}),
           button('Excel hasil pencocokan',()=>exportSheets([{name:'Ringkasan',rows:[['Sumber paket',selected.path],...worksheet([summary])]},
-            {name:'Pasangan kolom',rows:[['CSV','Paket'],...Object.entries(map)]},{name:'Perbedaan',rows:worksheet(r.differences)}],'Pencocokan-tabel')));
+            {name:'Pasangan kolom',rows:[['CSV','Paket'],...Object.entries(map)]},{name:'Perbedaan',rows:worksheet(r.differences)}],'Pencocokan-tabel',wp)));
       }catch(e){result.append(el('p',e.message,'notice error'));}
     }));
   }
@@ -162,8 +163,9 @@ function sourceComparison(pkg) {
 }
 
 export function renderQuality(root,pkg,back) {
+  const wp=pkg.manifest.wp;
   const notes=qualityNotes(pkg),rows=box('');
-  const show=level=>rows.replaceChildren(dataTable(notes.filter(n=>!level || n.Tingkat===level),{name:'Catatan mutu',filename:'Catatan-mutu',empty:'Tidak ada catatan pada pilihan ini.'}));
+  const show=level=>rows.replaceChildren(dataTable(notes.filter(n=>!level || n.Tingkat===level),{wp,name:'Catatan mutu',filename:'Catatan-mutu',empty:'Tidak ada catatan pada pilihan ini.'}));
   show('');
   root.append(card('Rincian mutu data',box('toolbar',button('Kembali ke Muat paket',back),
     select([['','Semua tingkat'],...severity],'',show,'Tingkat catatan')),rows),

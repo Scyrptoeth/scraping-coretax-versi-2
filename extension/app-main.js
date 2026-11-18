@@ -5,6 +5,7 @@ import {createPackage,sha256} from './archive/package.js';
 import {batchCollector} from './app-batch.js';
 import {appendPackageEntry,isSptList,metaForSelection,selectSptListRows} from './app-package-entries.js';
 import {planSptDetails} from './app-spt-plan.js';
+import {sptNavigation} from './app-spt-navigation.js';
 
 const $ = id => document.getElementById(id);
 const coretax = 'https://coretax.intranet.pajak.go.id';
@@ -313,7 +314,13 @@ function showSptPlan(box,{counts,documents}) {
     const hint=document.createElement('p');
     hint.textContent='Setiap versi memerlukan induk. Lampiran ikut dihitung jika namanya tersedia di sumber yang ditambahkan.';
     panel.append(hint);
-    const body=captureTable(panel,'Versi SPT yang ditemukan',['Jenis SPT','Masa atau tahun','Pembetulan','Bagian tersedia','Perlu diambil','Perlu diulang']);
+    const navigate=Boolean(ext && checked('sources').includes('sptisi'));
+    if(ext && !navigate){
+      const instructions=document.createElement('p');
+      instructions.textContent='Untuk mencari induk atau lampiran di Coretax, centang Induk dan lampiran SPT lalu buka kembali pratinjau.';
+      panel.append(instructions);
+    }
+    const body=captureTable(panel,'Versi SPT yang ditemukan',['Jenis SPT','Masa atau tahun','Pembetulan','Bagian tersedia','Perlu diambil','Perlu diulang',...(navigate?['Tampilan Coretax']:[])]);
     const labels=new Map(forms);
     let cursor=0;
     const more=button('Tampilkan versi berikutnya',appendRows);
@@ -322,13 +329,62 @@ function showSptPlan(box,{counts,documents}) {
       for(;cursor<end;cursor++) {
         const doc=documents[cursor];
         const parts=status=>doc.parts.filter(part=>part.status===status).map(part=>part.name).join(', ') || '—';
-        captureRow(body,[labels.get(doc.type) || doc.type,doc.period,doc.revision,parts('ready'),parts('pending'),parts('retry')]);
+        captureRow(body,[labels.get(doc.type) || doc.type,doc.period,doc.revision,parts('ready'),parts('pending'),parts('retry'),
+          ...(navigate?[sptViewControls(doc)]:[])]);
       }
       more.hidden=cursor===documents.length;
     }
     panel.append(more);
     appendRows();
   });
+}
+function sptViewControls(doc) {
+  const block=document.createElement('div'),actions=document.createElement('div'),status=document.createElement('span');
+  status.setAttribute('role','status');
+  const wp=captureOwner(),range=period(),periodStart={y:Number(val('year-start')),m:Number(val('month-start'))},
+    periodEnd={y:Number(val('year-end')),m:Number(val('month-end'))};
+  const navigation=sptNavigation({ext,wp,period:{from:periodStart,to:periodEnd},doc});
+  const errorText=error=>/chrome|tab id|https?:\/\/|frame/i.test(error.message)?
+    'Tab Coretax berubah. Pilih ulang tab dan periksa tampilan SPT.':error.message;
+  function check() {
+    if (!block.isConnected || busy || paging || batch.active || wp!==captureOwner() || range!==period() ||
+        !checked('forms').includes(doc.type) || !checked('sources').includes('sptisi') || !$('consent').checked)
+      throw Error('Cakupan berubah. Buka kembali pratinjau WP.');
+  }
+  const open=button('Cari tampilan SPT',async()=>{
+    check();open.disabled=true;actions.replaceChildren();status.textContent='Mencocokkan daftar dan tampilan SPT…';
+    try {
+      const tab=await tabNow();
+      const view=await navigation.inspect(tab.id) || await navigation.open(tab.id);
+      check();
+      if(!view.sections.length){status.textContent='Identitas SPT cocok. Nama induk atau lampiran belum terbaca pada tampilan ini.';return;}
+      status.textContent='Identitas SPT cocok. Pilih bagian yang ingin disimpan dari halaman ini.';
+      const select=document.createElement('select');select.setAttribute('aria-label','Bagian SPT pada sumber');
+      choices(select,view.sections.map(s=>[s.part,s.label]));
+      const save=button('Tambahkan bagian tampak',async()=>{
+        check(); save.disabled=true;
+        try {
+          const result=await navigation.capture(view,select.value);
+          check();
+          const proof={recordId:result.recordId,receipt:result.receipt,period:doc.period,revision:doc.revision,
+            part:result.part,label:result.label,docKey:doc.key};
+          const page={Payload:{Data:result.rows}};
+          const existing=queue.find(e=>e.detailProof?.docKey===doc.key && e.detailProof.part===result.part);
+          if(existing) {
+            if(JSON.stringify(existing.page)!==JSON.stringify(page))throw Error('Isi bagian berubah. Keluarkan cuplikan sebelumnya sebelum menggantinya.');
+            status.textContent='Cuplikan yang sama sudah ada dalam antrean.';return;
+          }
+          addEntry({wp,source:'sptisi',spt:doc.type,period:range,detailProof:proof},page,result.label,'Satu halaman tampilan SPT');
+          renderQueue();status.textContent=result.rows.length+' baris ditambahkan sebagai cuplikan satu halaman.';
+        } catch(error){status.textContent=errorText(error);} finally {save.disabled=false;}
+      });
+      actions.append(select,save);
+    } catch(error) {
+      status.textContent=errorText(error);
+    } finally {open.disabled=false;}
+  });
+  block.append(open,status,actions);
+  return block;
 }
 function jobButtons() {
   const disabled=busy || !$('consent').checked || !val('ids') || !$('ids').validity.valid;
@@ -374,7 +430,7 @@ async function run(resume) {
         progress.value++;
         if(!source) continue;
         checkIdentity(rowsOf(source.page),plan.wp);
-        const key=await vault.digest(JSON.stringify([source.source,source.spt,source.page]));
+        const key=await vault.digest(JSON.stringify([source.source,source.spt,source.detailProof?.docKey,source.detailProof?.part,source.page]));
         if(seen.has(key) && job.meta.opsi.lewatiDuplikat) continue;
         seen.add(key);
         const reported=source.sptSelection?.totalDilaporkanSumber ?? source.total;

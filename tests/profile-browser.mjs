@@ -35,7 +35,8 @@ try{
   await table.getByText('Hanya di registrasi',{exact:true}).waitFor();
   await table.getByText('Hanya di SPT Badan',{exact:true}).waitFor();
   const received=page.waitForEvent('download');await page.getByRole('button',{name:'Excel semua bagian'}).click();
-  const d=await received;assert.equal(d.suggestedFilename(),'RAHASIA-Profil-WP.xlsx');
+  const npwp=(await page.locator('#taxpayer option:checked').innerText()).split(' · ').at(-1);
+  const d=await received;assert.equal(d.suggestedFilename(),'RAHASIA-Profil-WP-'+npwp+'.xlsx');
   const files=await readZip(await readFile(await d.path()));
   assert.match(decodeText(files.get('xl/workbook.xml').data),/Pemegang saham/);
   assert.ok([...files.keys()].some(key=>key.startsWith('xl/worksheets/')&&decodeText(files.get(key).data).includes('Hanya di registrasi')));

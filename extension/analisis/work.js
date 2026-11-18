@@ -4,6 +4,7 @@ import {printOutput,renderDrafts} from './drafts.js';
 import {validateDrafts} from './draft-model.js';
 import {renderSanksi,validateSimulation} from './sanksi.js';
 import {buildIndex,restoreIndexedRows,restoreNotes,validateIndexDocuments} from './kkp-index.js';
+import {outputFilename} from './preferences.js';
 import {editIndexLine,renderIndex} from './kkp-index-ui.js';
 import {identifyRows,markEdit,planMerge,progressReport,rowIdentity,showMergePreview,validateTimes} from './team-work.js';
 import {analysisFields,findingKey,potentialSummary,reviewOptions,scopeDefaults,scopeOptions,workpaper} from './findings.js';
@@ -58,7 +59,7 @@ function edit(parent,work,row,idx,repaint){
   showDialog(idx===null?'Tambah butir':'Ubah butir',form);
 }
 export function renderWork(target,state) {
-  const pkg=state.pkg;const key=JSON.stringify([pkg.report.manifestHash||pkg.fileKey,state.year]);
+  const pkg=state.pkg,wp=pkg.manifest.wp;const key=JSON.stringify([pkg.report.manifestHash||pkg.fileKey,state.year]);
   if(!state.work.has(key))state.work.set(key,{rows:[],drafts:[]});
   const work=state.work.get(key);
   work.indexNotes??={};
@@ -73,7 +74,7 @@ export function renderWork(target,state) {
   const mode=modes.some(([k])=>k===state.section)?state.section:(state.role==='Pemeriksa'?'kkp':'kka');
   const setYear=select(pkg.years,state.year,v=>{state.year=v;state.repaint();},'Tahun pajak');
   const save=()=>download(new Blob([JSON.stringify({format:'SCV2-KERJA',versi:1,paket:pkg.report.manifestHash,tahun:state.year,rows:work.rows,drafts:work.drafts,
-    scopes:work.scopes,analysis:work.analysis,dispositions:work.dispositions,simulation:work.simulation,indexNotes:work.indexNotes,indexDocuments:work.indexDocuments,editTimes:work.editTimes},null,2)],{type:'application/json'}),'Berkas-kerja-'+state.year+'.json');
+    scopes:work.scopes,analysis:work.analysis,dispositions:work.dispositions,simulation:work.simulation,indexNotes:work.indexNotes,indexDocuments:work.indexDocuments,editTimes:work.editTimes},null,2)],{type:'application/json'}),outputFilename('Berkas-kerja-'+state.year,'json',wp));
   const picker=el('input');picker.type='file';picker.accept='.json';picker.className='hidden-file';
   picker.onchange=async()=>{
     const file=picker.files?.[0],expectedYear=state.year;if(!file)return;
@@ -109,7 +110,7 @@ export function renderWork(target,state) {
   const progress=progressReport(pkg,state.year,work,index());
   target.append(card('Kemajuan pekerjaan '+state.year,el('p',progress.total?progress.done+' dari '+progress.total+' butir dan baris telah dikerjakan ('+progress.percent+'%).':'Belum ada butir atau baris KKP untuk tahun ini.'),
     el('p',progress.counts.map(([name,n,all])=>name+' '+n+'/'+all).join(' · '),'hint'),
-    button('Excel laporan progres',()=>exportSheets(progress.sheets,'Kemajuan-WP-'+state.year))));
+    button('Excel laporan progres',()=>exportSheets(progress.sheets,'Kemajuan-WP-'+state.year,wp))));
   if(mode==='ba'){renderDrafts(target,state,pkg,work);return;}
   if(mode==='sim'){renderSanksi(target,state,work);return;}
   if(mode==='kkp')renderIndex(target,state,work,index());
@@ -117,13 +118,15 @@ export function renderWork(target,state) {
   const output=()=>workpaper(pkg,state.year,work,mode,state.role);
   const doc=output();
   const title=doc.title;
-  const controls=box('toolbar',button('Tambah butir',()=>edit(target,work,{},null,state.repaint),''),button('Excel kertas kerja',()=>exportSheets(output().sheets,mode.toUpperCase()+'-'+state.year)),button('Word',async()=>{
-    try{download(await createDocx(output()),mode.toUpperCase()+'-'+state.year+'.docx');}catch(e){notice(e.message,true);}
+  const controls=box('toolbar',button('Tambah butir',()=>edit(target,work,{},null,state.repaint),''),
+    button('Excel kertas kerja',()=>exportSheets(output().sheets,mode.toUpperCase()+'-'+state.year,wp)),button('Word',async()=>{
+    const name=outputFilename(mode.toUpperCase()+'-'+state.year,'docx',wp);
+    try{download(await createDocx(output()),name);}catch(e){notice(e.message,true);}
   }),button('Cetak / PDF',()=>printOutput(output())));
   const summary=work.rows.filter(r=>r.status==='Selesai').length+' dari '+count(work.rows.length)+' butir selesai.';
-  target.append(card(title,el('p','Hasil pengujian · '+summary,'hint'),controls,dataTable(reports,{name:'Lembar kerja',openRow:r=>{
+  target.append(card(title,el('p','Hasil pengujian · '+summary,'hint'),controls,dataTable(reports,{wp,name:'Lembar kerja',openRow:r=>{
     const i=reports.indexOf(r),row=work.rows[i];
-    if(row.kkpLine)editIndexLine(index().byId.get(row.kkpLine),work,state.repaint);
+    if(row.kkpLine)editIndexLine(index().byId.get(row.kkpLine),work,state.repaint,wp);
     else edit(target,work,row,i,state.repaint);
   },empty:'Belum ada butir. Tambahkan butir pengujian atau pilih fakta dari data sumber di bawah.'})));
   if(mode==='kka'){
@@ -140,14 +143,14 @@ export function renderWork(target,state) {
     ' Pokok indikatif terisi yang dikeluarkan Rp'+count(excluded.reduce((s,x)=>s+(x['Pokok terisi (Rp)']??0),0))+'.':'';
   target.append(card('Lingkup keluaran '+mode.toUpperCase(),choice,
     el('p',doc.selected.length+' butir disertakan. '+doc.excluded.length+' butir indikatif dikeluarkan.'+omittedAmount),
-    dataTable(doc.summary,{name:'Potensi pokok per jenis',empty:'Belum ada butir dalam pilihan ini.'})));
+    dataTable(doc.summary,{wp,name:'Potensi pokok per jenis',empty:'Belum ada butir dalam pilihan ini.'})));
   const audit=doc.all.map(f=>({Klasifikasi:f.status,Jenis:f.kind,Periode:f.period,Rincian:f.detail,Sumber:f.source,
     'Potensi pokok (Rp)':f.amount===''?null:f.amount,Penelaahan:work.dispositions[findingKey(f)]||reviewOptions[0]}));
-  target.append(card('Rincian dan penelaahan temuan',dataTable(audit,{name:'Daftar temuan',openRow:r=>{
+  target.append(card('Rincian dan penelaahan temuan',dataTable(audit,{wp,name:'Daftar temuan',openRow:r=>{
     const finding=doc.all[audit.indexOf(r)],id=findingKey(finding);
     const picker=select(reviewOptions,r.Penelaahan,v=>{work.dispositions[id]=v;markEdit(work,'dispositions',id);
       document.getElementById('dialog').close();state.repaint();},'Hasil penelaahan');
     showDialog('Penelaahan temuan',box('stack',el('p',r.Rincian),el('p',r.Sumber),picker));
   }})));
-  const facts=issues(pkg,state.year);target.append(card('Gunakan fakta dari paket',dataTable(facts,{name:'Fakta sumber',openRow:r=>edit(target,work,{topik:r.Butir,sumber:r.Sumber,fakta:r.Fakta+' · '+r.Periode},null,state.repaint)})));
+  const facts=issues(pkg,state.year);target.append(card('Gunakan fakta dari paket',dataTable(facts,{wp,name:'Fakta sumber',openRow:r=>edit(target,work,{topik:r.Butir,sumber:r.Sumber,fakta:r.Fakta+' · '+r.Periode},null,state.repaint)})));
 }

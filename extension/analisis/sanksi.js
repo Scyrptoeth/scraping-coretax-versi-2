@@ -1,4 +1,4 @@
-import {monthlyRates} from './tarif-sanksi.js';
+import {rateForMonth} from './rate-updates.js';
 import {worksheet} from './model.js';
 import {findingsFor,findingKey,reviewOptions} from './findings.js';
 import {box,button,card,dataTable,el,exportSheets,field,select,showDialog} from './ui.js';
@@ -55,7 +55,7 @@ export function validateSimulation(input,year){
 export function simulate(row,end){
   const item=checkedCase(row),start=firstFollowing(item.period);
   const useInterest=item.article!=='increase',useIncrease=item.article!=='interest';
-  const rate=useInterest?monthlyRates.get(start.slice(0,7)):null;
+  const rate=useInterest?rateForMonth(start.slice(0,7)):null;
   const output={start,months:null,rate,interest:null,increase:null,principal:null,sanction:null,total:null,applied:'',reason:''};
   if(!dateValid(end))return {...output,reason:'Isi tanggal rencana ketetapan.'};
   if(end<start)return {...output,reason:'Tanggal rencana mendahului akhir masa yang diuji.'};
@@ -65,7 +65,7 @@ export function simulate(row,end){
     output.months=Math.min(24,asMonth(end)-asMonth(start)+1);
     if(!rate)return {...output,reason:'Tarif resmi untuk '+start.slice(0,7)+' belum tersedia.'};
     if(item.principal==='')return {...output,reason:'Isi dasar bunga sesuai hasil pengujian.'};
-    output.interest=BigInt(item.principal)*BigInt(rate.basisPoints*output.months);
+    output.interest=BigInt(item.principal)*BigInt(rate.basisPoints)*BigInt(output.months);
   }
   let credit=0n;
   if(useIncrease){
@@ -107,6 +107,7 @@ export function simulationTables(sim){
     if(x.rate)sources.set(x.start.slice(0,7),x.rate);
     detail.push({'Jenis pajak':row.tax,'Masa akhir':row.period,Pasal:articles[row.article],'Rencana ketetapan':sim.end,
       'Mulai bunga':row.article==='increase'?null:x.start,'Bulan dikenai':x.months,'Tarif bunga (% per bulan)':x.rate?x.rate.basisPoints/100:null,
+      ...(x.rate?.source?{'Sumber tarif sesi':x.rate.decision+' · '+x.rate.source+' · '+x.rate.date}:{}),
       'Dasar bunga (Rp)':row.principal===''?null:decimal(BigInt(row.principal)*10000n),'Bunga (Rp)':decimal(x.interest),'Kenaikan 75% (Rp)':decimal(x.increase),
       'Pokok (Rp)':decimal(x.principal),'Sanksi terpilih (Rp)':decimal(x.sanction),'Pokok + sanksi (Rp)':decimal(x.total),Keterangan:x.reason||x.applied,'Rujukan pengujian':row.basis});
     for(const t of row.transfers)transfers.push({'Jenis pajak':row.tax,'Masa yang diuji':row.period,'Masa penerima':t.to,'Kompensasi tidak semestinya yang digunakan (Rp)':t.amount===''?null:decimal(BigInt(t.amount)*10000n),'Rujukan pengujian':row.basis});
@@ -114,7 +115,8 @@ export function simulationTables(sim){
   const summary=[...byTax].map(([tax,g])=>({'Jenis pajak':tax,'Masa diuji':g.count,'Belum dapat dihitung':g.pending,
     'Pokok (Rp)':g.pending?null:decimal(g.principal),'Sanksi terpilih (Rp)':g.pending?null:decimal(g.sanction),'Pokok + sanksi (Rp)':g.pending?null:decimal(g.total)}));
   const references=[{Dokumen:'UU 7/2021 · Pasal 13 UU KUP',Periode:'',URL:law},{Dokumen:'PP 50/2022 · Penjelasan Pasal 20',Periode:'',URL:example},
-    ...[...sources].map(([period,rate])=>({Dokumen:'KMK '+rate.decision,Periode:period,URL:rate.url}))];
+    ...[...sources].map(([period,rate])=>({Dokumen:'KMK '+rate.decision,Periode:period,URL:rate.url,
+      ...(rate.source?{'Pembaruan pengguna':rate.source+' · '+rate.date}:{})}))];
   return {summary,detail,transfers,references};
 }
 
@@ -187,22 +189,26 @@ function editCase(state,work,index){
   draw();showDialog(old?'Ubah masa simulasi':'Tambah masa simulasi',form);
 }
 export function renderSanksi(target,state,work){
+  const wp=state.pkg.manifest.wp;
   const sim=work.simulation,date=textInput('date',sim.end);
   date.onchange=()=>{sim.end=date.value;state.repaint();};
   const tables=simulationTables(sim);
   const formatNumber=new Intl.NumberFormat('id-ID',{maximumFractionDigits:4}).format;
   const download=button('Excel simulasi',()=>{
     const sections=[['Ringkasan',tables.summary],['Rincian per masa',tables.detail],['Kompensasi PPN',tables.transfers],['Dasar hukum dan tarif',tables.references]];
-    return exportSheets(sections.map(([name,rows])=>({name,rows:worksheet(rows)})),'Simulasi-SKPKB-'+state.year);
+    return exportSheets(sections.map(([name,rows])=>({name,rows:worksheet(rows)})),'Simulasi-SKPKB-'+state.year,wp);
   });
   download.disabled=!sim.cases.length;
   target.append(card('Simulasi SKPKB',
     el('p','Gunakan pokok yang sudah diuji untuk satu ketetapan per jenis pajak dan masa. Model ini mencakup bunga yang mulai setelah masa atau tahun pajak berakhir.'),
     box('toolbar',field('Tanggal rencana ketetapan',date),button('Tambah masa simulasi',()=>editCase(state,work,-1)),download),
     el('p','Hasil adalah perkiraan sebelum pembulatan rupiah. Dasar bunga dan dasar kenaikan diisi terpisah. Jika kedua sanksi berlaku untuk satu ketetapan PPN atau PPnBM, simulasi memilih nilai tertinggi.','hint')),
-    card('Ringkasan per jenis pajak',dataTable(tables.summary,{name:'Ringkasan simulasi',formatNumber,empty:'Tambahkan masa untuk mulai menghitung.'})),
-    card('Penghitungan per masa',dataTable(tables.detail,{name:'Penghitungan sanksi',formatNumber,openRow:r=>editCase(state,work,tables.detail.indexOf(r))})));
-  if(tables.transfers.length)target.append(card('Penelusuran kompensasi PPN',dataTable(tables.transfers,{name:'Kompensasi yang digunakan'})));
+    card('Ringkasan per jenis pajak',dataTable(tables.summary,{wp,name:'Ringkasan simulasi',formatNumber,empty:'Tambahkan masa untuk mulai menghitung.'})),
+    card('Penghitungan per masa',dataTable(tables.detail,{wp,name:'Penghitungan sanksi',formatNumber,openRow:r=>editCase(state,work,tables.detail.indexOf(r))})));
+  if(tables.transfers.length)target.append(card('Penelusuran kompensasi PPN',dataTable(tables.transfers,{wp,name:'Kompensasi yang digunakan'})));
   target.append(card('Dasar hukum dan tarif',el('p','Tarif Pasal 13 ayat (2) mengikuti KMK pada bulan pertama penghitungan. Tabel memuat Januari 2023 hingga November 2026.'),
-    box('stack',...tables.references.map(r=>official(r.Dokumen+(r.Periode?' · '+r.Periode:''),r.URL)))));
+    box('stack',...tables.references.map(r=>{
+      const description=[r.Dokumen,r.Periode,r['Pembaruan pengguna']].filter(Boolean).join(' · ');
+      return r.URL?official(description,r.URL):el('span',description);
+    }))));
 }

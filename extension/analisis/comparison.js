@@ -1,4 +1,4 @@
-import {periodFields,rowsOf,sourceAmount,typeNames,worksheet} from './model.js';
+import {periodFields,receiptNumber,rowsOf,sourceAmount,typeNames,worksheet} from './model.js';
 import {box,button,card,dataTable,el,exportSheets,select,showDialog} from './ui.js';
 import {annualRatios,measures,peerBenchmark,ratioEvidence,taxpayerId} from './peer-analysis.js';
 const formKey=f=>f.type+'/'+f.period;
@@ -18,7 +18,7 @@ function source(pkg,kind,period,role){
   else if(induk.cap?.lengkap===false)condition='Berkas induk ditandai belum lengkap';
   const basis={Peran:role,'Nama WP':pkg.manifest.wp?.nama,NPWP:pkg.manifest.wp?.npwp,Paket:pkg.fileName,
     Jenis:typeNames[kind]||kind,Masa:period,Versi:versionName(version),'Berkas induk':induk?.path,
-    BPE:f?.meta.DocumentReceiptNumber,'Mata uang':currency,'Kondisi sumber':condition,'Integritas paket':pkg.report.valid?'Konsisten':'Ada peringatan'};
+    BPE:receiptNumber(f?.meta),'Mata uang':currency,'Kondisi sumber':condition,'Integritas paket':pkg.report.valid?'Konsisten':'Ada peringatan'};
   return {basis,currency,form:f};
 }
 function comparePackages(active,other,kind,period){
@@ -36,9 +36,9 @@ function comparePackages(active,other,kind,period){
 }
 
 const selection=new WeakMap();
-function inspectRatio(state,people,metric) {
+function inspectRatio(state,people,metric,wp) {
   const rows=people.map(person=>ratioEvidence(person,metric));
-  const content=box('',dataTable(rows,{name:'Komponen rasio per WP'}));
+  const content=box('',dataTable(rows,{wp,name:'Komponen rasio per WP'}));
   for(const person of people) {
     if(!person.form?.parts.has('induk'))continue;
     const pkg=person.pkg,index=pkg.forms.indexOf(person.form);
@@ -52,10 +52,11 @@ function inspectRatio(state,people,metric) {
 
 export function renderFinancialRatios(target,state) {
   const result=annualRatios(state.pkg,state.year);
+  const wp=state.pkg.manifest.wp;
   if(!result.form && !state.pkg.forms.some(f=>f.type==='BADAN'))return;
   const rows=measures.map(([key,label,unit,n,d])=>({Ukuran:label,Nilai:result.ratios[key],Satuan:unit,Pembilang:result.values[n].name,Penyebut:result.values[d].name}));
   target.append(card('Rasio keuangan SPT Badan',el('p',result.condition+' · '+state.year),
-    dataTable(rows,{name:'Rasio keuangan WP aktif',openRow:row=>inspectRatio(state,[result],measures.find(m=>m[1]===row.Ukuran))})));
+    dataTable(rows,{wp,name:'Rasio keuangan WP aktif',openRow:row=>inspectRatio(state,[result],measures.find(m=>m[1]===row.Ukuran),wp)})));
 }
 
 function renderPeers(target,state,saved) {

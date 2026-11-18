@@ -1,9 +1,12 @@
-// Local ZIP32 codec for CAP packages and OOXML files.
+// Local single-volume ZIP codec for CAP packages and OOXML files.
 export const utf8 = new TextEncoder();
 export const decodeText = (data) => new TextDecoder("utf-8", { fatal: true }).decode(data);
 const localSignature = 0x04034b50;
 const directorySignature = 0x02014b50;
 const endSignature = 0x06054b50;
+const end64Signature = 0x06064b50;
+const locatorSignature = 0x07064b50;
+const maxMembers = 200000;
 const maxTotal = 512 * 1024 * 1024;
 const maxMember = 256 * 1024 * 1024;
 const formatError = (reason) => new Error("ZIP tidak dapat dibuka. " + reason);
@@ -36,11 +39,12 @@ export function crc32(bytes) {
 function header(length) {
   const bytes = new Uint8Array(length);
   const view = new DataView(bytes.buffer);
-  return { bytes, u16: (at, n) => view.setUint16(at, n, true), u32: (at, n) => view.setUint32(at, n, true) };
+  return { bytes, u16: (at, n) => view.setUint16(at, n, true), u32: (at, n) => view.setUint32(at, n, true),
+    u64: (at, n) => view.setBigUint64(at, BigInt(n), true) };
 }
 
 export async function writeZip(members, { compress = true, type = "application/zip" } = {}) {
-  if (members.length > 65534) throw formatError("Jumlah berkas melebihi batas ZIP32.");
+  if (members.length > maxMembers) throw formatError("Jumlah berkas melebihi batas " + maxMembers + ".");
   const central = [], parts = [], paths = new Set();
   let offset = 0, centralLength = 0, unpacked = 0;
   const now = new Date();
@@ -83,13 +87,30 @@ export async function writeZip(members, { compress = true, type = "application/z
     centralLength += 46 + name.length;
     if (offset + centralLength > 0xffffffff) throw formatError("Direktori ZIP terlalu besar.");
   }
+  const zip64 = members.length > 0xffff;
+  const tail = [];
+  if (zip64) {
+    const record = header(56), locator = header(20);
+    record.u32(0, end64Signature);
+    record.u64(4, 44);
+    record.u16(12, 45);
+    record.u16(14, 45);
+    record.u64(24, members.length);
+    record.u64(32, members.length);
+    record.u64(40, centralLength);
+    record.u64(48, offset);
+    locator.u32(0, locatorSignature);
+    locator.u64(8, offset + centralLength);
+    locator.u32(16, 1);
+    tail.push(record.bytes, locator.bytes);
+  }
   const end = header(22);
   end.u32(0, endSignature);
-  end.u16(8, members.length);
-  end.u16(10, members.length);
+  end.u16(8, zip64 ? 0xffff : members.length);
+  end.u16(10, zip64 ? 0xffff : members.length);
   end.u32(12, centralLength);
   end.u32(16, offset);
-  return new Blob([...parts, ...central, end.bytes], { type });
+  return new Blob([...parts, ...central, ...tail, end.bytes], { type });
 }
 
 async function inflate(data, expected) {
@@ -110,6 +131,73 @@ async function inflate(data, expected) {
   return result;
 }
 
+const multiVolume = () => formatError("ZIP multi-volume belum didukung. Pilih satu berkas ZIP yang utuh.");
+
+function integer64(view, at) {
+  const n = Number(view.getBigUint64(at, true));
+  if (!Number.isSafeInteger(n)) throw formatError("Nilai ZIP64 terlalu besar.");
+  return n;
+}
+
+function directoryInfo(view, end) {
+  const u16 = at => view.getUint16(at, true), u32 = at => view.getUint32(at, true);
+  const disk = u16(end + 4), startDisk = u16(end + 6);
+  const diskCount = u16(end + 8), count = u16(end + 10);
+  const size = u32(end + 12), start = u32(end + 16);
+  // The classic format can contain exactly 65,535 entries without a ZIP64 locator.
+  if (start + size === end) {
+    if (disk || startDisk || diskCount !== count) throw multiVolume();
+    return { start, count, end };
+  }
+  const locator = end - 20;
+  if (locator < 0 || u32(locator) !== locatorSignature) {
+    if (disk || startDisk || diskCount !== count) throw multiVolume();
+    throw formatError("Lokasi direktori ZIP tidak sesuai.");
+  }
+  if (u32(locator + 4) !== 0 || u32(locator + 16) !== 1) throw multiVolume();
+  const record = integer64(view, locator + 8);
+  if (record > locator - 56 || u32(record) !== end64Signature || integer64(view, record + 4) !== locator - record - 12)
+    throw formatError("Penanda akhir ZIP64 tidak sesuai.");
+  const actualCount = integer64(view, record + 32), actualSize = integer64(view, record + 40), actualStart = integer64(view, record + 48);
+  if (u32(record + 16) || u32(record + 20) || integer64(view, record + 24) !== actualCount) throw multiVolume();
+  if ((disk && disk !== 0xffff) || (startDisk && startDisk !== 0xffff)) throw multiVolume();
+  const matches = (value, marker, actual) => value === marker || value === actual;
+  if (actualSize !== record - actualStart || !matches(diskCount, 0xffff, actualCount) || !matches(count, 0xffff, actualCount) ||
+      !matches(start, 0xffffffff, actualStart) || !matches(size, 0xffffffff, actualSize))
+    throw formatError("Direktori ZIP64 berbeda dengan penanda akhir ZIP.");
+  return { start: actualStart, count: actualCount, end: record };
+}
+
+function memberLocation(view, pos, extra, extraEnd) {
+  let size = view.getUint32(pos + 24, true), packed = view.getUint32(pos + 20, true);
+  let local = view.getUint32(pos + 42, true), disk = view.getUint16(pos + 34, true);
+  if (size === 0xffffffff || packed === 0xffffffff || local === 0xffffffff || disk === 0xffff) {
+    let found = false;
+    while (extra + 4 <= extraEnd) {
+      const tag = view.getUint16(extra, true), length = view.getUint16(extra + 2, true);
+      let at = extra + 4;
+      extra = at + length;
+      if (extra > extraEnd) throw formatError("Panjang kolom tambahan ZIP64 tidak sesuai.");
+      if (tag !== 1) continue;
+      const take = width => {
+        if (at + width > extra) throw formatError("Kolom ZIP64 anggota tidak lengkap.");
+        const n = width === 8 ? integer64(view, at) : view.getUint32(at, true);
+        at += width;
+        return n;
+      };
+      if (size === 0xffffffff) size = take(8);
+      if (packed === 0xffffffff) packed = take(8);
+      if (local === 0xffffffff) local = take(8);
+      if (disk === 0xffff) disk = take(4);
+      found = true;
+      break;
+    }
+    if (!found) throw formatError("Kolom ZIP64 anggota tidak ditemukan.");
+  }
+  if (disk) throw multiVolume();
+  return { size, packed, local };
+}
+
 export async function readZip(source) {
   const bytes = await asBytes(source);
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
@@ -118,20 +206,19 @@ export async function readZip(source) {
   const first = Math.max(0, end - 65535);
   while (end >= first && (u32(end) !== endSignature || end + 22 + u16(end + 20) !== bytes.length)) end--;
   if (end < first) throw formatError("Penanda akhir ZIP tidak ditemukan.");
-  const count = u16(end + 10);
-  if (u16(end + 4) || u16(end + 6) || u16(end + 8) !== count || count === 65535)
-    throw formatError("ZIP multi-volume atau ZIP64 belum didukung.");
-  let pos = u32(end + 16), expanded = 0;
-  const directoryStart = pos;
-  if (pos + u32(end + 12) !== end) throw formatError("Lokasi direktori tidak sesuai.");
+  const { start: directoryStart, end: directoryEnd, count } = directoryInfo(view, end);
+  if (count > maxMembers) throw formatError("Jumlah anggota melebihi batas " + maxMembers + ".");
+  let pos = directoryStart, expanded = 0;
   const files = new Map(), names = new Set();
   for (let i = 0; i < count; i++) {
-    if (pos + 46 > end || u32(pos) !== directorySignature) throw formatError("Direktori berkas rusak.");
+    if (pos + 46 > directoryEnd || u32(pos) !== directorySignature) throw formatError("Direktori berkas rusak.");
     const flags = u16(pos + 8), method = u16(pos + 10), crc = u32(pos + 16);
-    const size = u32(pos + 24), packed = u32(pos + 20);
-    const nameLength = u16(pos + 28), local = u32(pos + 42), nameAt = pos + 46;
-    pos = nameAt + nameLength + u16(pos + 30) + u16(pos + 32);
-    if (pos > end || local + 30 > directoryStart || u32(local) !== localSignature) throw formatError("Header anggota rusak.");
+    const nameLength = u16(pos + 28), nameAt = pos + 46, extra = nameAt + nameLength;
+    const extraEnd = extra + u16(pos + 30), next = extraEnd + u16(pos + 32);
+    if (next > directoryEnd) throw formatError("Direktori berkas rusak.");
+    const { size, packed, local } = memberLocation(view, pos, extra, extraEnd);
+    pos = next;
+    if (local + 30 > directoryStart || u32(local) !== localSignature) throw formatError("Header anggota rusak.");
     const name = decodeText(bytes.subarray(nameAt, nameAt + nameLength));
     const isDir = name.endsWith("/");
     if (!safePath(isDir ? name.slice(0, -1) : name) || names.has(name)) throw formatError("Nama berkas tidak sah atau berulang.");
@@ -151,6 +238,6 @@ export async function readZip(source) {
     const data = method === 0 ? packedData : await inflate(packedData, size);
     files.set(name, { data, crcOk: crc32(data) === crc });
   }
-  if (pos !== end) throw formatError("Jumlah anggota tidak sesuai.");
+  if (pos !== directoryEnd) throw formatError("Jumlah anggota tidak sesuai.");
   return files;
 }

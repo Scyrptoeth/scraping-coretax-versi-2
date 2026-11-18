@@ -1,13 +1,16 @@
 import {readPackage,sha256} from '../archive/package.js';
 import {renderCatalog} from '../catalog.js';
 import {renderDashboard,renderEntries,renderSpt} from './analysis-views.js';
-import {indexPackage,count,label,typeNames} from './model.js';
+import {indexPackage,count,label,receiptNumber,typeNames} from './model.js';
 import {indexedProfileSections} from './profile.js';
 import {openForm} from './spt-forms.js';
 import {qualityNotes,renderQuality} from './quality.js';
+import {activeRateUpdate,hasSavedRates} from './rate-updates.js';
+import {rateUpdateTools} from './rate-updates-ui.js';
 import {buildIndex} from './kkp-index.js';
 import {box,button,card,detail,el,notice,select,showDialog} from './ui.js';
 import {renderWork} from './work.js';
+import {readPref,resetAppearance,setPref} from './preferences.js';
 
 const tabs=[['muat','Muat paket'],['ringkas','Dasbor'],['probis','Probis'],['profil','Profil WP'],['spt','SPT'],['kerja','Kertas Kerja'],['peraturan','Peraturan'],['tabel','Data mentah'],['bantuan','Bantuan']];
 const needsPackage=new Set(['ringkas','profil','spt','kerja','tabel']);
@@ -16,8 +19,6 @@ const monthFormatter=new Intl.DateTimeFormat('id',{month:'long',timeZone:'UTC'})
 let openFormHash='';
 const $=id=>document.getElementById(id);
 const state={packages:new Map(),pkg:null,tab:'muat',section:'',year:'',role:'Pemeriksa',selectedEntry:'',query:'',work:new Map(),sptFilters:{type:'',latest:true,late:false,amended:false},go,repaint:render};
-const readPref=k=>{try{return localStorage.getItem('scv2-view-'+k);}catch{return null;}};
-const setPref=(k,v)=>{try{localStorage.setItem('scv2-view-'+k,v);}catch{/* Browser preferences may be disabled. */}};
 const validRole=readPref('role');if(['AR','Penelaah','Pemeriksa'].includes(validRole))state.role=validRole;
 $('role').value=state.role;$('role').onchange=()=>{state.role=$('role').value;setPref('role',state.role);render();};
 function selectPackage(key){state.pkg=state.packages.get(key)||null;state.year=state.pkg?.years[0]||'';state.selectedEntry='';state.sptFilters.type='';}
@@ -52,7 +53,13 @@ function preferences(){
     toolbar.append(select(values,readPref(key)||values[0],v=>{setPref(key,v);applyTheme();},name));
   }
   const high=el('input');high.type='checkbox';high.checked=readPref('contrast')==='1';high.onchange=()=>{setPref('contrast',high.checked?'1':'0');applyTheme();};
-  const l=el('label');l.append(high,document.createTextNode(' Kontras tinggi'));toolbar.append(l);showDialog('Tampilan',toolbar);
+  const l=el('label');l.append(high,document.createTextNode(' Kontras tinggi'));
+  const filename=select([['npwp','NPWP saja'],['npwp-nama','NPWP dan nama WP']],readPref('filename'),v=>setPref('filename',v),'Identitas WP pada nama berkas');
+  const reset=button('Kembali ke bawaan',()=>{
+    resetAppearance();applyTheme();preferences();$('reset-appearance').focus();
+  });
+  reset.id='reset-appearance';
+  toolbar.append(l,filename,reset);showDialog('Tampilan',toolbar);
 }
 function search(){
   const inp=el('input');inp.type='search';inp.placeholder='Menu, bagian profil, jenis dan masa SPT, atau berkas';inp.setAttribute('aria-label','Kata kunci pencarian cepat');const results=box('quick');let hits=[],index=0,limit=12;
@@ -77,7 +84,7 @@ function search(){
       const kind=typeNames[f.type]||f.type,version=f.version?'Pembetulan '+f.version:'Normal';
       const month=Number(f.period.slice(5)),monthName=month>=1&&month<=12?monthFormatter.format(Date.UTC(2020,month-1,1)):'Tahunan';
       routes.push({title:'SPT '+kind+' · '+f.period+' · '+version,
-        aliases:[f.type,'P'+f.version,monthName,f.meta.DocumentReceiptNumber||''].join(' '),
+        aliases:[f.type,'P'+f.version,monthName,receiptNumber(f.meta)].join(' '),
         act:()=>go('spt','form-'+pkg.formNamespace+'-'+(i+1))});
     }
     for(const e of pkg.entries.filter(e=>!e.path.startsWith('spt/')))routes.push({title:'Data mentah · '+(e.cap?.label||e.path),aliases:e.path,act:()=>{state.selectedEntry=e.path;go('tabel');}});
@@ -166,6 +173,7 @@ function importView(root){
   root.append(quality);
 }
 function help(root){
+  rateUpdateTools(root,render);
   root.append(card('Bantuan',detail('Membuka dan memeriksa paket',el('p','Seret paket ke Muat paket. Untuk paket terenkripsi masukkan kata sandi. Periksa integritas, periode, dan WP aktif sebelum mengolah data.')),detail('Membaca SPT dan data mentah',el('p','Pilih tahun dan buka satu baris pada Daftar SPT untuk melihat induk, lampiran, atau membandingkan pembetulan. Untuk tabel sumber lain, gunakan Profil WP dan Data mentah.')),detail('Kertas kerja dan berita acara',el('p','Tambah butir, catat sumber serta simpulan, lalu unduh berkas kerja sebelum menutup tab. Buka kembali berkas kerja bersama paket dan tahun yang sama.')),detail('Data lokal dan pintasan',el('p','Paket dan catatan sesi dilepas saat tab ditutup. Tema dan peran tersimpan sebagai preferensi. Gunakan Ctrl+K untuk pencarian, 1–9 untuk tab, dan ? untuk daftar pintasan.'))));
 }
 function render(){
@@ -186,6 +194,12 @@ function render(){
   }
   nav.append(button('Cari  Ctrl K',search,'tools'),button('Tampilan',preferences,''));
   const title=tabs.find(t=>t[0]===state.tab)[1];$('crumb').textContent=title+(formLink?' › Formulir':state.section?' › '+label(state.section):'');
+  const rateInfo=$('rate-info'),active=activeRateUpdate();
+  rateInfo.hidden=!(active || hasSavedRates());
+  if(!rateInfo.hidden){
+    const label=active?'Tarif bunga pilihan sesi · '+active.source+' · '+active.date:'Ada tarif bunga tersimpan. Sesi ini memakai tarif bawaan.';
+    rateInfo.replaceChildren(document.createTextNode(label+' '),button('Periksa tarif',()=>go('bantuan')));
+  }
   if(state.tab==='muat'){
     if(!state.pkg&&location.hash.startsWith('#/spt/form-'))root.append(card('Buka formulir tertaut',el('p','Pilih paket asal untuk membuka formulir ini.')));
     if(state.section==='mutu' && state.pkg)renderQuality(root,state.pkg,()=>go('muat'));else importView(root);
