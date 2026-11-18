@@ -199,7 +199,7 @@ export async function visibleTables(selected) {
     });
     return {data,cells,labels};
   }
-  function nextButton(table,first=false) {
+  function nextButton(table,first=false,includeDisabled=false) {
     const host = table.closest('.p-datatable,[data-pc-name="datatable"],p-table,[role=region]');
     const controls = table.id ? [...document.querySelectorAll('button[aria-controls]')].filter(b => b.getAttribute('aria-controls')===table.id) : [];
     if (host && [...host.querySelectorAll('table,[role=table],[role=grid]')].filter(visible).length===1) {
@@ -220,7 +220,7 @@ export async function visibleTables(selected) {
       const destructive=[b,...b.querySelectorAll('[class],[aria-label],[title]')].some(el=>
         /\b(?:hapus|delete|trash|kirim|send|simpan|save|edit|pencil|submit)\b/i.test(
           [el.getAttribute('class'),el.getAttribute('title'),el.getAttribute('aria-label')].join(' ')));
-      return ownsPager && visible(b) && !b.matches(':disabled,.p-disabled,[aria-disabled="true"],[data-p-disabled="true"]') &&
+      return ownsPager && visible(b) && (includeDisabled || !b.matches(':disabled,.p-disabled,[aria-disabled="true"],[data-p-disabled="true"]')) &&
         (!b.hasAttribute('aria-controls') || b.getAttribute('aria-controls')===table.id) &&
         !destructive && !b.hasAttribute('formaction') && (!b.form || b.type==='button') && !b.matches('[type=submit],[type=reset]') &&
         (icon || names.some(n=>label.test(n))) && names.every(n=>label.test(n) || arrow.test(n));
@@ -258,6 +258,27 @@ export async function visibleTables(selected) {
     /^\/returnsheets\/id-ID\/submitted-returnsheets\/[a-f\d]{8}(?:-[a-f\d]{4}){3}-[a-f\d]{12}\/?$/i.test(location.pathname);
   const indexColumns=['jenis pajak','jenis surat pemberitahuan pajak','masa pajak','model spt','status spt'];
   const isIndex=labels=>submitted && indexColumns.every(k=>labels.some(s=>s.toLowerCase()===k));
+  function indexPosition(table,count){
+    const host=table.closest('.p-datatable,[data-pc-name="datatable"],p-table,[role=region]');
+    const local=host && [...host.querySelectorAll('table,[role=table],[role=grid]')].filter(visible).length===1?host:table;
+    const labels=[...local.querySelectorAll('.p-paginator-current,[role=status],[aria-live]')].filter(visible);
+    const number='(\\d{1,3}(?:[.,]\\d{3})+|\\d+)';
+    const caption=new RegExp('^(?:(?:menampilkan|showing)\\s+)?'+number+'\\s*(?:-|–|s\\.d\\.|sampai|to)\\s*'+number+'\\s*(?:dari|of)\\s*'+number+'(?:\\s+(?:baris|data|entri|entries|records))?\\.?$','i');
+    const ranges=labels.map(el=>caption.exec(el.innerText.trim())).filter(Boolean);
+    const parse=s=>/^\d+$|^\d{1,3}(?:[.,]\d{3})+$/.test(s)?Number(s.replace(/[.,]/g,'')):NaN;
+    const [first,last,total]=ranges[0]?.slice(1).map(parse)||[];
+    const range=ranges.length && ranges.every(r=>r.slice(1).map(parse).join('/')===[first,last,total].join('/')) && Number.isSafeInteger(total) &&
+      (count===0?first===0 && last===0 && total===0:first>=1 && last-first+1===count && last<=total)?{first,last,total}:null;
+    const firstControl=nextButton(table,true,true),nextControl=nextButton(table,false,true);
+    const disabled=b=>Boolean(b && b.matches(':disabled,.p-disabled,[aria-disabled="true"],[data-p-disabled="true"]'));
+    const activeColumns=[...local.querySelectorAll('.p-column-filter-menu-button-active,.p-datatable-column-filter-button-active,.p-column-filter-active')].map(el=>el.closest('td,th')?.cellIndex??-1);
+    const fields=[...local.querySelectorAll('thead input,thead select,input[type=search],[role=search] input,input[placeholder*="cari" i],input[aria-label*="filter" i],input[aria-label*="cari" i]')];
+    const filterInputs=fields.map(el=>el.type==='checkbox'||el.type==='radio'?el.checked:el.value?.trim());
+    const filtered=activeColumns.length>0 || filterInputs.some(Boolean);
+    const conflict=Boolean(ranges.length && !range || range && (firstControl && disabled(firstControl)!==(first<=1) || nextControl && disabled(nextControl)!==(last===total)));
+    return {range,atStart:!conflict && (range?first<=1:disabled(firstControl)),atEnd:!conflict && (range?last===total:disabled(nextControl)),
+      filtered,filterState:JSON.stringify([activeColumns,filterInputs]),conflict};
+  }
   function panelOwner() {
     const links=[...document.querySelectorAll('a[href]')].filter(a=>visible(a) && a.origin===location.origin);
     const pick=links.filter(a=>a.pathname==='/returnsheets/id-ID/taxpayer-search' && a.innerText.trim()==='Pilih Wajib Pajak Lain');
@@ -288,6 +309,11 @@ export async function visibleTables(selected) {
     }
     return '';
   }
+  if(selected?.discoverSubmitted){
+    if(!submitted || location.href!==selected.url || panelOwner()!==selected.wp)return {match:false};
+    const indexes=tables.map((table,index)=>({table,index,shape:shape(table)})).filter(t=>isIndex(t.shape.labels));
+    return {match:indexes.length===1,ambiguous:indexes.length>1};
+  }
   if (selected == null) return tables.map((table,index) => {
     const {data,labels} = shape(table);
     return {index,rows:data.length,labels,tableId:table.id,canAdvance:!!nextButton(table),title:tableTitle(table,index),
@@ -299,7 +325,7 @@ export async function visibleTables(selected) {
     throw new Error('Tampilan tab berubah. Pilih ulang tabel yang hendak diambil.');
   }
   const currentRows=records(current);
-  function checkScope(rows, labels) {
+  function checkScope(rows,labels,table=currentTable) {
     const key = value => value.toLowerCase().replace(/[^a-z]/g,'');
     const ownerColumns = labels.filter(label=>ownerKeys.includes(key(label)));
     const periodColumns = labels.filter(label=>['masapajak','periodepajak','taxperiod','taxperiodcode','tahunpajak','taxyear'].includes(key(label)));
@@ -314,11 +340,16 @@ export async function visibleTables(selected) {
       if(!year || Number(month)<1 || Number(month)>12) return null;
       const value=year+'-'+String(month).padStart(2,'0');return [value,value];
     }
-    if(!rows.length) return {skip:'Tabel kosong.'};
     const index=isIndex(labels);
     if(submitted && ((selected.scope.source==='sptdaftar')!==index))return {skip:'Kategori sumber berbeda dari tabel SPT Dilaporkan.'};
     if(index && (panelOwner()!==selected.scope.wp || listTables().filter(t=>isIndex(shape(t).labels)).length!==1))
       return {skip:'Panel WP pada daftar SPT berbeda atau tidak dapat dipastikan.'};
+    if(selected.previewIndex && index){
+      const host=table.closest('.p-datatable,[data-pc-name="datatable"],p-table,[role=region]')||table;
+      if(table.closest('[aria-busy=true]') || [...host.querySelectorAll('.p-datatable-loading-overlay,.p-datatable-loading,[data-pc-section=loadingoverlay],[role=progressbar]')].some(visible))
+        return {loading:true,skip:'Daftar SPT masih dimuat.'};
+    }
+    if(!rows.length && !(selected.previewIndex && index && indexPosition(table,0).range?.total===0))return {skip:'Tabel kosong atau belum selesai dimuat.'};
     if((!ownerColumns.length && !index && !selected.scope.manual) || !rows.every(row=>ownerColumns.every(col=>{
       const id=row[col].replace(/[.\s-]/g,'');
       return /^\d{15,16}$/.test(id) && id.padStart(16,'0')===selected.scope.wp;
@@ -369,6 +400,7 @@ export async function visibleTables(selected) {
       return {opened:true,target};
     }
     if(checked.skip || !selected.advance) return {...checked,canAdvance:!!nextButton(currentTable),
+      ...(selected.previewIndex && checked.indexScope?{position:indexPosition(currentTable,currentRows.length)}:{}),
       ...(checked.indexScope?{canFirst:!!nextButton(currentTable,true)}:{})};
   }
   if (!selected.advance) return currentRows;
@@ -393,7 +425,11 @@ export async function visibleTables(selected) {
       throw new Error('Kolom tabel sumber berubah. Halaman berikut tidak ditambahkan.');
     const rows=records(changed);
     if(!rows.length || JSON.stringify(rows)===selected.expected) continue;
-    if(selected.scope) return {...checkScope(rows,changed.labels),canAdvance:!!nextButton(table)};
+    if(selected.scope){
+      const checked=checkScope(rows,changed.labels,table);
+      if(checked.loading)continue;
+      return {...checked,canAdvance:!!nextButton(table)};
+    }
     if(!sameOwner(rows,selected.owner)) throw new Error('NPWP tampilan berubah. Halaman berikut tidak ditambahkan.');
     return {rows,canAdvance:!!nextButton(table)};
   }

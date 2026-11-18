@@ -32,7 +32,7 @@ export function selectSptListRows(item,types) {
     else unknown++;
     if(all || selected.has(type)) included.push(row);
   }
-  if(!included.length) return null;
+  if(!included.length && !(item.proof?.daftarPratinjau && item.proof.nolPadaSumber && item.page?.Payload?.TotalRecords===0)) return null;
   const omitted=rows.length-included.length;
   const sptSelection={perJenisPadaSumber:byType,jenisBelumDikenali:unknown,barisSumber:rows.length,
     totalDilaporkanSumber:item.total ?? null,barisDilewati:omitted};

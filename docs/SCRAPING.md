@@ -4,6 +4,12 @@ Buka ekstensi melalui ikon Chrome. Pada bagian **Penugasan**, isi nama penarik d
 
 ## Mengambil sumber
 
+Jika tab **SPT Dilaporkan** untuk WP penugasan sudah terbuka, pilih sumber **Daftar SPT dilaporkan**, cocokkan WP dan masa, centang pernyataan kerahasiaan, lalu klik **Pratinjau WP**. Saat daftar belum ada dalam antrean, penarik mencari tab yang sesuai dan membaca halaman yang dapat dijangkau. Jika dua tab cocok, pilih tab yang akan dipakai. Pratinjau menunjukkan jumlah halaman dan baris sumber yang terbaca. Versi SPT yang dapat dipilih mengikuti masa dan jenis yang diminta.
+
+Gunakan **Halaman daftar maksimal untuk pratinjau** untuk membatasi pembacaan menjadi 1–100 halaman. Penarik kembali ke halaman pertama jika tombolnya dapat dipastikan. Jika halaman pertama tidak dapat dijangkau, hasil berfilter, baris berulang, jumlah berubah, atau pembacaan dihentikan, periksa keterangan cakupan sebelum menyusun paket. Sumber yang masih memuat belum dapat dipakai untuk menyatakan daftar kosong.
+
+Setelah tampilan sumber siap, gunakan **Baca ulang daftar dari tab Coretax** pada hasil pratinjau. Jika pembacaan ulang hanya memperoleh sebagian dari daftar yang sudah tersimpan, penarik mempertahankan salinan sebelumnya dan menjelaskan alasannya. Dalam mode luring, daftar dan induk SPT tetap bisa ditambahkan dari ekspor lokal.
+
 Pada bagian **Cara menarik**, pilih kategori sumber, lalu cocokkan NPWP penugasan dan masa dengan tampilan atau berkas. Centang **Saya sudah mencocokkan WP dan keterangan masa yang tersedia pada sumber**. Jika Anda menambahkan sumber saat kotak itu masih kosong, penarik membawa Anda ke kotak tersebut. Setelah sumber pertama masuk antrean, penarik mengunci NPWP. Untuk menggantinya, selesaikan tarikan atau keluarkan semua sumber dari antrean.
 
 - **Tabel di tab Coretax.** Pilih tab, klik **Daftar tabel di halaman**, pilih tabel, kemudian **Tambahkan tabel**. Tabel dan sel yang disembunyikan oleh halaman dikecualikan. Nama kolom dan teks sel dipertahankan. Untuk komponen yang belum terbaca, gunakan ekspor JSON/CSV yang disediakan aplikasi sumber.
@@ -16,7 +22,7 @@ Centang pernyataan kerahasiaan untuk membuka **Pratinjau WP** dan **Mulai tarik*
 
 Jika antrean memuat daftar SPT, tabel **SPT dalam periode terpilih** menghitung kombinasi jenis dan masa, serta mencantumkan pembetulan sebagai versi terpisah. Buka **Rincian versi SPT dan bagian yang tersedia** untuk melihat dokumen yang sudah memiliki induk atau lampiran di antrean dan bagian yang masih perlu dicari. Angka ini bergantung pada sumber yang sudah Anda tambahkan.
 
-Untuk membaca satu bagian langsung dari Coretax, centang **Daftar SPT dilaporkan** dan **Induk dan lampiran SPT**. Tambahkan daftar, pilih tab Coretax yang menampilkan halaman daftar terkait, lalu buka **Pratinjau WP**. Di rincian versi, pilih **Cari tampilan SPT**. Penarik mencari satu baris dengan jenis, masa, pembetulan, serta ID atau nomor bukti yang cocok. Ia membuka kontrol lihat yang berlabel pada baris tersebut. Jika formulir sudah terbuka di tab yang dipilih, penarik langsung mencocokkan identitas pada formulir.
+Untuk membaca satu bagian langsung dari Coretax, centang **Daftar SPT dilaporkan** dan **Induk dan lampiran SPT**. Buka **Pratinjau WP** dari tab penarik dengan daftar WP sudah terbuka di Coretax. Jika daftar sudah ditambahkan dari tabel atau berkas, pratinjau menggunakan antrean itu. Di rincian versi, pilih **Cari tampilan SPT**. Penarik mencari satu baris dengan jenis, masa, pembetulan, serta ID atau nomor bukti yang cocok. Ia membuka kontrol lihat yang berlabel pada baris tersebut. Jika formulir sudah terbuka di tab yang dipilih, penarik langsung mencocokkan identitas pada formulir.
 
 Untuk mengambil beberapa bagian dalam satu kali jalan, pilih **Ambil induk dan lampiran** pada baris versi yang dikehendaki. Penarik membaca induk lebih dahulu, lalu lampiran yang dapat dicocokkan dengan panel berlabel pada formulir. Pada setiap tabel, pembacaan dimulai dari halaman yang sedang tampil. Jika ada tombol halaman berikutnya yang terhubung ke tabel itu, penarik mengikutinya sampai akhir atau sampai batas yang Anda tentukan. Batas awal adalah 100 halaman per bagian dan dapat diubah menjadi 1–100. Gunakan **Jeda pembacaan SPT** dan **Lanjutkan pembacaan SPT** untuk menunggu di antara langkah, atau **Hentikan pembacaan SPT** untuk menyimpan hasil sementara di antrean.
 
@@ -50,7 +56,7 @@ Pada rute resmi **SPT Dilaporkan**, kategori, susunan kolom, tautan navigasi WP,
 
 ## Hasil, integritas dan retensi
 
-Jika tarikan SPT terhenti, buka kembali **Pratinjau WP** untuk melihat bagian yang masih perlu dibaca. Dalam antrean yang sama, penarik dapat memakai kembali ekspor dengan jumlah baris terverifikasi atau cuplikan yang terbukti mencakup awal hingga akhir tampilan. Untuk meminta salinan baru dari semua bagian versi yang dipilih, centang **Ambil ulang semua bagian versi yang dipilih**. Jika ada pembetulan baru, tambahkan kembali daftar SPT sebelum membuka pratinjau. Setiap versi memiliki bukti sendiri.
+Jika tarikan SPT terhenti, buka kembali **Pratinjau WP** untuk melihat bagian yang masih perlu dibaca. Dalam antrean yang sama, penarik dapat memakai kembali ekspor dengan jumlah baris terverifikasi atau cuplikan yang terbukti mencakup awal hingga akhir tampilan. Untuk meminta salinan baru dari semua bagian versi yang dipilih, centang **Ambil ulang semua bagian versi yang dipilih**. Jika ada pembetulan baru pada daftar yang dibaca melalui pratinjau, klik **Baca ulang daftar dari tab Coretax**. Untuk daftar yang ditambahkan sendiri, tambahkan daftar terbaru sebelum membuka kembali pratinjau. Setiap versi memiliki bukti sendiri.
 
 Setiap tarikan menghasilkan satu paket untuk satu NPWP. Bila proses berhenti sesudah antrean tersimpan, klik **Lanjutkan NPWP** pada nomor yang dimaksud. Sumber untuk nomor itu dirakit kembali. Pada antrean dari versi lama yang berisi beberapa WP, setiap NPWP yang belum selesai memiliki tombol lanjut tersendiri. Hasil yang sudah selesai tetap tersedia pada kartu masing-masing WP. Buka **Tarikan sebelumnya** untuk mengakses periode yang pernah disimpan. Gunakan **Unduh paket** untuk menyimpan ZIP atau mengunci paket dengan kata sandi minimal 10 karakter menjadi `.sedotax`. Setiap paket memiliki manifest, sidik jari dan berita acara. Selisih jumlah baris yang dinyatakan sumber dan yang diterima ditampilkan pada kartu hasil.
 
@@ -60,13 +66,13 @@ Enkripsi simpanan lokal mengubah hasil, antrean, dan rincian jejak audit yang su
 
 ## Matriks pembanding halaman penarik
 
-Acuan lokal adalah VERITAX 1.32.0, khususnya bagian 1–5 pada `ekstensi-veritax/app.html`, katalog label sumber dan `PANDUAN.txt` baris 212–325. Uji peramban mencakup tabel fiktif dan satu ekspor asli dari Daftar Kasus Aktif. Pada uji asli, satu baris dan keempat belas kolom data cocok dari Coretax hingga ke pemutar. Ekstensi belum diuji menarik tabel itu secara langsung di profil Chrome pengguna.
+Acuan lokal adalah VERITAX 1.32.0, khususnya bagian 1–5 pada `ekstensi-veritax/app.html`, katalog label sumber dan `PANDUAN.txt` baris 212–325. Uji peramban menggunakan tabel fiktif. Uji terpisah dengan ekspor resmi Daftar Kasus Aktif mencocokkan isian dari CSV hingga pemutar. Pembacaan langsung dari tab Coretax operasional masih perlu diuji.
 
 | Kemampuan | Status | Bukti atau selisih |
 |---|---|---|
 | Identitas penugasan, normalisasi NPWP, daftar teks, jenis SPT dan sumber | Terverifikasi sebagian | Lima bagian utama memuat enam jenis SPT dan 21 pilihan sumber, termasuk kategori tabel umum. Normalisasi, duplikat, format salah, dan nol awal diuji. Pengguna mengisi nama petugas. |
 | Koneksi Coretax dan otorisasi penugasan | Berbeda | Indikator melaporkan keberadaan tab resmi. Nama akun dan status login tidak dibaca. Pratinjau dan perakitan mensyaratkan pernyataan kerahasiaan. |
-| Penemuan WP, estimasi tarikan dan cakupan sumber | Berbeda | Satu tarikan menerima satu NPWP. Pratinjau menghitung sumber, baris, masa dan versi yang dapat dikenali dari daftar. Penelusuran seluruh sumber mulai dari NPWP serta estimasi permintaan ke Coretax masih terbuka. |
+| Penemuan WP, estimasi tarikan dan cakupan sumber | Berbeda | Untuk satu NPWP, pratinjau dapat menemukan tab daftar yang sudah terbuka, mencocokkan panel WP dan menghitung baris sumber, masa, serta versi SPT terpilih. Penelusuran seluruh sumber mulai dari NPWP serta estimasi permintaan ke Coretax masih terbuka. |
 | Pengambilan, paginasi dan batas WP | Berbeda | Ada pembacaan tabel terpilih dan paginasi melalui tombol halaman berikut, pembatas halaman, jeda, penghentian dan pencocokan NPWP. Uji fixture mencakup batas pengguna, akhir tabel, tombol di luar paginator dan perpindahan WP. Navigasi produksi masih belum teruji. |
 | Pembacaan otomatis profil, registrasi, dokumen, daftar/isi SPT per versi dan seluruh lampiran, buku besar serta bukti potong | Berbeda | Versi ini membaca tabel yang dipilih pada tab Coretax atau berkas ekspor. Penelusuran otomatis seluruh modul, rincian transaksi batal dan pemilihan lampiran per masa masih terbuka. |
 | Kecepatan jaringan adaptif, pemulihan sesi, cache SPT per versi | Berbeda | Paginasi berjalan berurutan dan deduplikasi berlaku pada isi dalam satu tarikan. Sumber untuk satu NPWP disimpan sebelum perakitan. Perilaku khusus sesi dan penjadwalan permintaan API referensi masih terbuka. |
@@ -80,5 +86,7 @@ Uji unit dapat diulang dengan `node --test tests/scraper.test.mjs tests/spt-plan
 Jalankan `node tests/spt-auto-browser.mjs` untuk mengulang alur satu versi dari pratinjau sampai ke ZIP dan Analisis. Uji Chrome menggunakan halaman fiktif lokal dengan dua halaman lampiran, total nol, jeda, batas halaman, halaman berulang dan perubahan WP. Pengujian tampilan formulir serta paginasi pada intranet Coretax masih diperlukan.
 
 Uji `node tests/spt-multi-browser.mjs` menjalankan antrean beberapa versi dengan daftar dan formulir fiktif di Chrome. Uji `node --test tests/spt-multi.test.mjs` memeriksa bagaimana versi yang belum lengkap didahulukan dan apa yang tersimpan bila identitas berubah.
+
+Uji `node tests/spt-preview-browser.mjs` menjalankan **Pratinjau WP** tanpa menambahkan tabel terlebih dahulu. Pada contoh dua halaman dengan empat baris fiktif, pratinjau menemukan tiga versi dalam dua masa terpilih. Pemutar membuka keempat baris daftar sumber, termasuk satu dari luar periode. Uji juga mencakup perubahan identitas, filter, jumlah, penghentian pembacaan, dan pemilihan antara dua tab yang cocok.
 
 Uji `node tests/spt-snapshot-overlap-browser.mjs` menambahkan tiga ekspor fiktif yang saling bertumpang tindih, membuka cuplikan pembanding di pemutar, lalu memeriksa dua halaman dari satu proses paginasi. Jika `VERITAX_STUDIO` menunjuk salinan lokal HTML referensi, uji juga memeriksa pembukaan ZIP di Studio.

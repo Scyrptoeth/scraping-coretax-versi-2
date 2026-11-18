@@ -1,5 +1,13 @@
 # Riwayat Scraping Coretax Versi 2
 
+## 19 November 2026 WIB · Prarilis 0.10.0
+
+**Penarik.** Pratinjau WP dapat menemukan daftar SPT dilaporkan pada tab Coretax yang sudah terbuka untuk satu NPWP. Jumlah halaman dan baris sumber ditampilkan bersama cakupannya. Pilihan versi SPT mengikuti jenis dan periode. Alur ini sudah diuji di Chrome dengan tabel fiktif hingga ZIP dibuka di pemutar. Pembacaan langsung pada tab operasional masih perlu dicocokkan. [Penggunaan pratinjau](SCRAPING.md#mengambil-sumber)
+
+**Pemutar.** Filter tahun, jenis dan versi memudahkan pencarian SPT. Pada contoh Badan fiktif, menu SPT menghitung 76 baris daftar dan filter **Versi terakhir** menampilkan 73 formulir. Daftar indeks KKP menyediakan seluruh 20 kode indeks pajak yang diperiksa pada lima kelompok. Kelompok **Keluaran** di Studio masih berbeda. [Hasil dan batas pembandingan](KESETARAAN.md#hasil-prarilis-0100)
+
+**Kertas kerja.** Baris pemotongan pada C, G dan K dapat diuji lewat induk atau lewat C.2.2, G.2.2 dan K.2.2. Hasilnya masuk satu kali ke temuan. Petugas juga dapat mengembalikan satu baris ke **Belum diuji** dengan jejak audit. Pada contoh Badan 2026 tanpa SPT Tahunan dalam daftar terverifikasi, induk B menampilkan subtotal penyerahan PPN yang dapat ditelusuri per masa dan pembanding enam kelompok. Koreksi baru tercatat setelah petugas menyimpan pengujiannya. [Panduan KKP](ANALISIS.md#kertas-kerja)
+
 ## 19 November 2026 · Prarilis 0.9.0
 
 Pratinjau WP dapat memakai kembali bagian SPT yang sudah terbukti tersedia dalam antrean. Pengguna dapat melanjutkan pembacaan bagian lain atau memilih **Ambil ulang semua bagian versi yang dipilih**. [Cara melanjutkan](SCRAPING.md)
@@ -65,7 +73,7 @@ Penarik dapat mengambil beberapa tabel dari tab yang terbuka dan membaca CSV asl
 - **Simulasi SKPKB.** Pengguna dapat mengisi pokok hasil pengujian dan penggunaan kompensasi per masa. Simulator membandingkan bunga dengan kenaikan jika kedua sanksi berlaku pada satu ketetapan PPN/PPnBM. Tarif bunga Pasal 13 ayat (2) tersedia untuk Januari 2023–November 2026. Hasil uji sintetis cocok di layar dan Excel. [Dasar dan batas simulasi](ANALISIS.md)
 - **Katalog KLU.** Pencarian mencakup 60 kode kategori Z. Kalkulator omzet berjenjang menghasilkan 28221 dan 47420 untuk dua contoh DJP. Catatan sumber menjelaskan selisih angka cetak di lampiran. [Katalog kegiatan](KATALOG.md)
 
-**Uji intranet.** Satu baris untuk satu WP dipilih melalui daftar kasus aktif sesuai jabatan. Tabel mempunyai 16 kolom termasuk prioritas dan kontrol aksi. CSV resmi menyertakan 14 bidang data. Semua isinya dipertahankan hingga ZIP dibuka di pemutar. Dua tanggal di layar hanya menampilkan hari, dan indikator ditangguhkan ditampilkan sebagai kotak centang. Isi kasus dan paket uji tetap berada di perangkat pengguna.
+**Uji intranet.** Ekspor resmi Daftar Kasus Aktif yang sesuai penugasan dicocokkan dari CSV hingga ZIP dibuka di pemutar. Tanggal diperiksa sampai tingkat hari yang ditampilkan dan indikator ditangguhkan dicocokkan dengan keadaan kotak centang. Isi kasus dan rincian hasil uji tersimpan secara privat di perangkat pengguna.
 
 **Pelajaran.** Coretax menyertakan dua token presentasi pada header CSV, sementara setiap baris data dimulai dengan nomor kasus. Penarik memeriksa kontrak tersebut sebelum membaca nilai. Pada HTML, satu baris pesan dapat mengisi seluruh lebar tabel kosong. Jumlah elemen baris saja tidak menunjukkan jumlah data.
 

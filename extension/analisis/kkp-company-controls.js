@@ -1,6 +1,7 @@
 import {signedSumCell} from '../archive/table.js';
 import {worksheet} from './model.js';
 import {sourceAmount} from './withholding-forms.js';
+import {companyProvisionalSupport} from './kkp-company-without-return.js';
 
 const accounts=[
   ['4020','Penjualan bersih'],['5020','Harga pokok penjualan'],['4199','Pendapatan lainnya'],
@@ -105,7 +106,12 @@ export function companyReconciliation(body,tree,path,form) {
   return support;
 }
 
-export function companySupportWorksheet(group,firstDataRow){
+export function companySupportWorksheet(group,firstDataRow,reviewed){
+  if(group.provisionalCompany){
+    const inputs=companyProvisionalSupport(group,reviewed,true),out=worksheet(inputs);
+    for(const [i,input] of inputs.entries())out[i+1][1]=input.Nilai;
+    return out;
+  }
   const rows=worksheet(group.support);
   if(!group.companyReconciliation)return rows;
   const index=new Map(group.support.map((r,i)=>[r.Kode,i]));

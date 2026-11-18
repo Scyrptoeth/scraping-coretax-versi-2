@@ -1,19 +1,22 @@
 # Scraping Coretax Versi 2
 
-**Prarilis 0.9.0.** Setiap tarikan memakai satu NPWP. Pilih satu atau beberapa tabel untuk WP itu di tab Coretax yang sudah terbuka, atau tambahkan ekspor JSON/CSV. Pemutar lokal membantu mencocokkan baris, membandingkan SPT dan memilih temuan untuk kertas kerja. Beberapa paket yang sudah disimpan dapat dibuka untuk perbandingan.
+**Prarilis 0.10.0.** Setiap tarikan memakai satu NPWP. Pilih satu atau beberapa tabel untuk WP itu di tab Coretax yang sudah terbuka, atau tambahkan ekspor JSON/CSV. Pemutar lokal membantu mencocokkan baris, membandingkan SPT dan memilih temuan untuk kertas kerja. Beberapa paket yang sudah disimpan dapat dibuka untuk perbandingan.
 
-[Unduh dan pasang melalui GitHub Pages](https://scyrptoeth.github.io/scraping-coretax-versi-2/) · [Situs Vercel](https://scraping-coretax-versi-2.vercel.app/) · [Paket prarilis GitHub](https://github.com/Scyrptoeth/scraping-coretax-versi-2/releases/tag/v0.9.0)
+[Unduh dan pasang melalui GitHub Pages](https://scyrptoeth.github.io/scraping-coretax-versi-2/) · [Situs Vercel](https://scraping-coretax-versi-2.vercel.app/) · [Paket prarilis GitHub](https://github.com/Scyrptoeth/scraping-coretax-versi-2/releases/tag/v0.10.0)
 
 ## Mencoba ekstensi
 
 1. Unduh dan ekstrak ZIP. Buka `chrome://extensions`, aktifkan Mode developer, klik **Muat yang belum dipaketkan**, lalu pilih folder yang memuat `manifest.json`.
-2. Buka ekstensi. Isi penugasan dan satu NPWP, pilih periode serta sumber, lalu cocokkan identitas dan masa pada sumber. Tambahkan tabel yang terlihat atau berkas ekspor. Di **Pratinjau WP**, pilih **Ambil induk dan lampiran** untuk satu versi SPT. Untuk beberapa versi, centang versi yang diperlukan lalu pilih **Ambil versi SPT terpilih**. Pilih **Mulai tarik** untuk menyusun paket.
-3. Pilih **Unduh paket** untuk menyimpan hasil atau **Buka di Analisis** untuk memeriksanya. Untuk paket yang sudah tersedia, buka **Buka Analisis**, lalu pilih berkas.
-4. Periksa integritas, identitas dan cakupan sebelum membaca angka. Simpan isian kerja yang diperlukan sebelum menutup pemutar.
+2. Isi penugasan dan satu NPWP, pilih periode dan jenis SPT, lalu centang pernyataan kerahasiaan. Bila tab **SPT Dilaporkan** untuk WP itu sudah terbuka, pilih sumber **Daftar SPT dilaporkan** dan klik **Pratinjau WP**. Penarik mencocokkan WP pada tab dan memperlihatkan versi SPT untuk periode pilihan. Anda juga dapat menambahkan tabel atau berkas ekspor sendiri.
+3. Untuk membaca isi SPT, pilih juga sumber **Induk dan lampiran SPT**. Di pratinjau, pilih **Ambil induk dan lampiran** untuk satu versi atau **Ambil versi SPT terpilih** untuk beberapa versi. Setelah sumber masuk antrean, pilih **Mulai tarik** untuk menyusun paket.
+4. Pilih **Unduh paket** untuk menyimpan hasil atau **Buka di Analisis** untuk memeriksanya. Untuk paket yang sudah tersedia, buka **Buka Analisis**, lalu pilih berkas.
+5. Periksa integritas, identitas dan cakupan sebelum membaca angka. Simpan isian kerja yang diperlukan sebelum menutup pemutar.
 
 ## Cakupan dan bukti
 
 Prarilis ini dikembangkan secara mandiri dengan acuan VERITAX v1.32.0. Penarikan seluruh modul Coretax dalam satu perintah, kesetaraan seluruh UI, perhitungan fiskal, dan kelengkapan kertas kerja masih memerlukan pengembangan dan pembandingan.
+
+Di pemutar, filter tahun, jenis dan versi membantu memilih SPT. **Daftar indeks KKP** mengelompokkan indeks menurut pajak. Pada contoh Badan fiktif, kelima kelompok memuat seluruh 20 kode indeks pajak yang diperiksa di Studio. Kelompok **Keluaran** dan alur dokumennya masih berbeda. [Hasil uji prarilis 0.10.0](docs/KESETARAAN.md#hasil-prarilis-0100)
 
 - [Matriks kesetaraan dan sumber bukti](docs/KESETARAAN.md)
 - [Penggunaan penarik, paginasi dan simpanan lokal](docs/SCRAPING.md)

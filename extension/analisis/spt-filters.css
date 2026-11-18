@@ -1,0 +1,27 @@
+.spt-filter-row {
+  display: grid;
+  grid-template-columns: minmax(8rem, 12rem) minmax(0, 1fr);
+  align-items: end;
+  gap: .5rem 1rem;
+  margin-bottom: .75rem;
+}
+.spt-filter-row .label select { width: 100%; }
+.spt-filter-buttons { flex-wrap: wrap; margin: 0; }
+.spt-filter-buttons button { display: inline-flex; align-items: center; }
+.spt-count {
+  display: inline-block;
+  margin-inline-start: .4em;
+  padding: 0 .4em;
+  border: 1px solid currentColor;
+  border-radius: 1em;
+  font-size: .85em;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.4;
+}
+@media (max-width: 680px) {
+  .spt-filter-row { grid-template-columns: minmax(0, 1fr); }
+  .spt-filter-buttons button { min-height: 2.75rem; }
+}
+@media print {
+  .spt-filter-row { display: none; }
+}

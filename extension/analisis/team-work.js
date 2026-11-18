@@ -6,10 +6,30 @@ const keyOf=(group,id)=>JSON.stringify([group,id]);
 export const rowIdentity=row=>row.kkpLine?'indeks/'+row.kkpLine:row.teamId;
 export function markEdit(work,group,id,before,after){
   if(arguments.length===5&&equal(before,after))return;
+  if(group==='rows'&&after?.kkpLine&&work.clearedRows)work.clearedRows=work.clearedRows.filter(line=>line!==after.kkpLine);
   const key=keyOf(group,id),time=new Date().toISOString();
   work.auditLog??=readAudit(undefined,work.editTimes);
   (work.editTimes??={})[key]=time;
-  work.auditLog.push({event:crypto.randomUUID(),key,time});
+  work.auditLog.push({event:crypto.randomUUID(),key,time,...(group==='rows'&&before?.kkpLine&&after===null?{action:'reset'}:{})});
+}
+
+export function clearIndexReview(work,line){
+  const i=work.rows.findIndex(r=>r.kkpLine===line.id);
+  if(i<0)return;
+  const row=work.rows[i];
+  if(Object.hasOwn(line,'refundCode'))throw Error('Riwayat telaah kode pilihan dikelola pada lembar kode.');
+  work.rows.splice(i,1);
+  (work.clearedRows??=[]).push(line.id);
+  markEdit(work,'rows',rowIdentity(row),row,null);
+}
+
+export function readClearedRows(ids,rows,index){
+  if(ids===undefined)return [];
+  const occupied=new Set(rows.map(r=>r.kkpLine));
+  if(!Array.isArray(ids)||ids.some(id=>typeof id!=='string'||!index.byId.has(id)||occupied.has(id)||
+    Object.hasOwn(index.byId.get(id),'refundCode'))||new Set(ids).size!==ids.length)
+    throw Error('Daftar baris yang dikembalikan ke belum diuji tidak cocok dengan indeks pada paket.');
+  return ids.slice();
 }
 
 export function identifyRows(rows){
@@ -50,7 +70,9 @@ export function readAudit(log,times={}){
     if(!Array.isArray(pair)||pair.length!==2||!Object.hasOwn(labels,pair[0])||typeof pair[1]!=='string'||
         !validTime(r.time)||typeof r.event!=='string'||seen.has(r.event)||
         !(r.event==='lama/'+r.key+'/'+r.time||/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(r.event)))throw Error('Periksa waktu, identitas butir, dan penanda riwayat perubahan.');
-    seen.add(r.event);return {event:r.event,key:r.key,time:r.time};
+    if(r.action!==undefined&&(r.action!=='reset'||pair[0]!=='rows'||!pair[1].startsWith('indeks/')))
+      throw Error('Jenis perubahan pada jejak audit tidak dikenali.');
+    seen.add(r.event);return {event:r.event,key:r.key,time:r.time,...(r.action?{action:r.action}:{})};
   });
 }
 function joinAudit(a,b){
@@ -58,7 +80,7 @@ function joinAudit(a,b){
   for(const r of [...readAudit(a.auditLog,a.editTimes),...readAudit(b.auditLog,b.editTimes)]){
     const previous=events.get(r.event);
     if(previous&&(previous.key!==r.key||previous.time!==r.time))throw Error('Dua riwayat memuat penanda perubahan yang sama dengan isi berbeda.');
-    events.set(r.event,r);
+    if(!previous||r.action)events.set(r.event,r);
   }
   return [...events.values()].sort((x,y)=>x.time.localeCompare(y.time));
 }
@@ -67,7 +89,7 @@ export function workAuditRows(work){
   return readAudit(work.auditLog,work.editTimes).map(r=>{
     const [group,id]=JSON.parse(r.key);
     return {'Waktu (UTC)':r.time,Bagian:labels[group],Butir:known.get(r.key)?.title||id,
-      Catatan:r.event.startsWith('lama/')?'Sunting terakhir yang tercatat pada berkas lama':'Isian disunting'};
+      Catatan:r.action==='reset'?'Baris dikembalikan ke belum diuji':r.event.startsWith('lama/')?'Sunting terakhir yang tercatat pada berkas lama':'Isian disunting'};
   });
 }
 function records(work){
@@ -78,6 +100,7 @@ function records(work){
     map.set(key,{group,id,title,value,time:work.editTimes?.[key]||''});
   }
   for(const r of identifyRows(work.rows||[]))add('rows',rowIdentity(r),r.topik,r);
+  for(const id of work.clearedRows||[])add('rows','indeks/'+id,'Belum diuji · '+id,null);
   for(const d of work.drafts||[])add('drafts',d.id,d.type+' · '+(d.number||d.year),d);
   for(const d of work.indexDocuments||[])add('indexDocuments',String(d.number),'DOK.'+d.number+' · '+d.name,d);
   for(const group of ['analysis','dispositions','indexNotes','scopes','business']){
@@ -107,7 +130,7 @@ export function planMerge(current,incoming){
   function byLegacyName(map){
     const groups=new Map();
     for(const [k,r] of map){
-      if(r.group!=='rows'||r.value.kkpLine)continue;
+      if(r.group!=='rows'||!r.value||r.value.kkpLine)continue;
       const name=JSON.stringify([r.value.topik,r.value.sumber]);
       if(!groups.has(name))groups.set(name,[]);
       groups.get(name).push(k);
@@ -129,7 +152,7 @@ export function planMerge(current,incoming){
     let rule='tambah';
     if(here){
       if(equal(here.value,other.value))rule='sama';
-      else if(['drafts','simulation','indexDocuments','business','benchmark'].includes(other.group)||!here.time||!other.time||here.time===other.time)rule='pilih';
+      else if(here.value===null||other.value===null||['drafts','simulation','indexDocuments','business','benchmark'].includes(other.group)||!here.time||!other.time||here.time===other.time)rule='pilih';
       else rule=here.time<other.time?'terbaru':'lokal';
     }
     decisions.push({key,local:here,incoming:other,rule});
@@ -143,10 +166,11 @@ export function mergeWork(plan,choices={}){
     if(d.rule==='pilih'&&!['lokal','berkas'].includes(choice))throw Error('Pilih versi untuk tiap isian yang bertentangan.');
     if(d.rule==='tambah'||d.rule==='terbaru'||d.rule==='sama'&&d.incoming.time>d.local.time||d.rule==='pilih'&&choice==='berkas')selected.set(d.key,d.incoming);
   }
-  const result={rows:[],drafts:[],indexDocuments:[],analysis:{},scopes:{...scopeDefaults},dispositions:{},indexNotes:{},business:{},benchmark:[],editTimes:{},simulation:{end:'',cases:[]}};
+  const result={rows:[],clearedRows:[],drafts:[],indexDocuments:[],analysis:{},scopes:{...scopeDefaults},dispositions:{},indexNotes:{},business:{},benchmark:[],editTimes:{},simulation:{end:'',cases:[]}};
   for(const [key,record] of selected){
     const {group,id,value,time}=record, cloned=structuredClone(value);
-    if(group==='simulation'||group==='benchmark')result[group]=cloned;
+    if(group==='rows'&&value===null)result.clearedRows.push(id.slice('indeks/'.length));
+    else if(group==='simulation'||group==='benchmark')result[group]=cloned;
     else if(Array.isArray(result[group]))result[group].push(cloned);
     else result[group][id]=cloned;
     if(time)result.editTimes[key]=time;
@@ -187,8 +211,8 @@ export function showMergePreview(plan,dialog){
     const panel=el('details');panel.open=true;panel.append(el('summary',title),
       el('p',['drafts','simulation','indexDocuments'].includes(d.incoming.group)?'Isian terkait berbeda. Periksa kedua versi sebelum memilih.':
         d.local.time&&d.incoming.time?'Waktu perubahan sama.':'Salah satu atau kedua versi belum memiliki waktu perubahan.'),
-      detail('Lokal · '+(d.local.time||'tanpa waktu perubahan'),el('pre',JSON.stringify(d.local.value,null,2))),
-      detail('Berkas · '+(d.incoming.time||'tanpa waktu perubahan'),el('pre',JSON.stringify(d.incoming.value,null,2))),
+      detail('Lokal · '+(d.local.time||'tanpa waktu perubahan'),el('pre',d.local.value===null?'Dikembalikan ke belum diuji':JSON.stringify(d.local.value,null,2))),
+      detail('Berkas · '+(d.incoming.time||'tanpa waktu perubahan'),el('pre',d.incoming.value===null?'Dikembalikan ke belum diuji':JSON.stringify(d.incoming.value,null,2))),
       select([['','Pilih versi'],['lokal','Pertahankan lokal'],['berkas','Pakai versi berkas']],'',v=>{choices[d.key]=v;merge.disabled=plan.decisions.some(r=>r.rule==='pilih'&&!choices[r.key]);},'Versi untuk '+title));
     picker.append(panel);
   }

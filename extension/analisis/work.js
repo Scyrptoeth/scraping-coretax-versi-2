@@ -10,7 +10,7 @@ import {editIndexLine,renderIndex} from './kkp-index-ui.js';
 import {validateBusiness} from './business-work.js';
 import {validateBenchmark} from './benchmark-work.js';
 import {benchmarkPanel} from './benchmark-work-ui.js';
-import {identifyRows,markEdit,planMerge,progressReport,readAudit,rowIdentity,showMergePreview,validateTimes,workAuditRows} from './team-work.js';
+import {identifyRows,markEdit,planMerge,progressReport,readAudit,readClearedRows,rowIdentity,showMergePreview,validateTimes,workAuditRows} from './team-work.js';
 import {analysisFields,findingKey,potentialSummary,reviewOptions,scopeDefaults,scopeOptions,workpaper} from './findings.js';
 import {box,button,card,dataTable,download,el,exportSheets,field,notice,select,showDialog,toggleSet} from './ui.js';
 
@@ -121,7 +121,7 @@ export function renderWork(target,state) {
   const setYear=select(pkg.years,state.year,v=>{state.year=v;state.repaint();},'Tahun pajak');
   const save=()=>download(new Blob([JSON.stringify({format:'SCV2-KERJA',versi:1,paket:pkg.report.manifestHash,tahun:state.year,rows:work.rows,drafts:work.drafts,
     scopes:work.scopes,analysis:work.analysis,dispositions:work.dispositions,simulation:work.simulation,indexNotes:work.indexNotes,indexDocuments:work.indexDocuments,
-    business:work.business||{},benchmark:work.benchmark||[],editTimes:work.editTimes,auditLog:readAudit(work.auditLog,work.editTimes)},null,2)],{type:'application/json'}),outputFilename('Berkas-kerja-'+state.year,'json',wp));
+    business:work.business||{},benchmark:work.benchmark||[],clearedRows:work.clearedRows||[],editTimes:work.editTimes,auditLog:readAudit(work.auditLog,work.editTimes)},null,2)],{type:'application/json'}),outputFilename('Berkas-kerja-'+state.year,'json',wp));
   const picker=el('input');picker.type='file';picker.accept='.json';picker.className='hidden-file';
   picker.onchange=async()=>{
     const file=picker.files?.[0],expectedYear=state.year;if(!file)return;
@@ -142,7 +142,7 @@ export function renderWork(target,state) {
       validateDrafts(v.drafts);
       const simulation=validateSimulation(v.simulation,state.year);
       if(v.drafts.some(d=>d.npwp!==pkg.manifest.wp?.npwp||d.year!==state.year))throw Error('Berita acara menggunakan WP atau tahun lain.');
-      const data={rows:incoming,drafts:v.drafts,scopes,analysis,dispositions,simulation,indexNotes,indexDocuments,business:validateBusiness(v.business),benchmark:validateBenchmark(v.benchmark)};
+      const data={rows:incoming,clearedRows:readClearedRows(v.clearedRows,incoming,index()),drafts:v.drafts,scopes,analysis,dispositions,simulation,indexNotes,indexDocuments,business:validateBusiness(v.business),benchmark:validateBenchmark(v.benchmark)};
       data.editTimes=validateTimes(v.editTimes,data);
       data.auditLog=readAudit(v.auditLog,data.editTimes);
       const apply=(result,merged=false)=>{
@@ -152,7 +152,7 @@ export function renderWork(target,state) {
         }
         Object.assign(work,result);state.repaint();notice(merged?'Isian berkas kerja telah digabungkan.':'Berkas kerja berhasil dimuat.');
       };
-      if(work.rows.length||work.drafts.length||work.indexDocuments.length||Object.keys(work.analysis).length||Object.keys(work.dispositions).length ||Object.keys(work.indexNotes).length||
+      if(work.rows.length||work.clearedRows?.length||work.drafts.length||work.indexDocuments.length||Object.keys(work.analysis).length||Object.keys(work.dispositions).length ||Object.keys(work.indexNotes).length||
            Object.keys(work.business||{}).length||work.benchmark?.length||work.editTimes?.[JSON.stringify(['benchmark','acuan'])]||work.simulation.end||work.simulation.cases.length||Object.keys(scopeDefaults).some(k=>scopeDefaults[k]!==work.scopes[k])){
         const plan=planMerge(work,data),close=()=>document.getElementById('dialog').close();
         showDialog('Pratinjau berkas kerja',showMergePreview(plan,{merge:result=>{close();apply(result,true);},replace:()=>{close();apply(data);}}));

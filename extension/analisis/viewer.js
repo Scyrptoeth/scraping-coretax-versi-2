@@ -1,7 +1,7 @@
 import {readPackage,sha256} from '../archive/package.js';
 import {renderCatalog} from '../catalog.js';
 import {renderDashboard,renderEntries,renderSpt} from './analysis-views.js';
-import {indexPackage,count,label,receiptFields,typeNames} from './model.js';
+import {indexPackage,count,label,receiptFields,rowsOf,typeNames} from './model.js';
 import {indexedProfileSections} from './profile.js';
 import {openForm} from './spt-forms.js';
 import {qualityNotes,renderQuality} from './quality.js';
@@ -28,7 +28,7 @@ const $=id=>document.getElementById(id);
 const state={packages:new Map(),pkg:null,tab:'muat',section:'',year:'',role:'Pemeriksa',selectedEntry:'',query:'',work:new Map(),sptFilters:{type:'',latest:true,late:false,amended:false},go,repaint:render};
 const validRole=readPref('role');if(['AR','Penelaah','Pemeriksa'].includes(validRole))state.role=validRole;
 $('role').value=state.role;$('role').onchange=()=>{state.role=$('role').value;setPref('role',state.role);render();};
-function selectPackage(key){state.pkg=state.packages.get(key)||null;state.year=state.pkg?.years[0]||'';state.selectedEntry='';state.sptFilters.type='';}
+function selectPackage(key){state.pkg=state.packages.get(key)||null;state.year=state.pkg?.years[0]||'';state.selectedEntry='';state.sptFilters.type='';state.sptFilters.allYears=false;}
 $('taxpayer').onchange=()=>{selectPackage($('taxpayer').value);if(formSection.test(state.section)&&state.tab==='spt')go('spt');else render();};
 $('close-dialog').onclick=()=>$('dialog').close();
 $('dialog').addEventListener('close',()=>{
@@ -140,6 +140,8 @@ async function addPackages(files){
           result=await readPackage(file,{password:secret});
         }
         const pkg=indexPackage(result);pkg.fileKey=pkg.report.manifestHash||crypto.randomUUID();
+        pkg.submittedRows=pkg.entries.filter(e=>e.path==='spt/daftar.json'||e.cap?.sumber==='sptdaftar')
+          .reduce((n,e)=>n+rowsOf(e).length,0);
         pkg.formNamespace=(await sha256('spt-view/'+pkg.fileKey)).slice(0,32);
         pkg.fileName=file.name||'Paket lokal';state.packages.set(pkg.fileKey,pkg);selectPackage(pkg.fileKey);opened++;
       }catch(e){problems.push((file.name||'Paket')+' — '+e.message);}
@@ -198,7 +200,7 @@ function render(){
   if(formLink){
     const pkg=[...state.packages.values()].find(p=>p.formNamespace===formLink[1]);
     form=pkg?.forms[Number(formLink[2])-1];
-    if(form){if(pkg!==state.pkg)selectPackage(pkg.fileKey);state.year=form.year;}
+    if(form){if(pkg!==state.pkg)selectPackage(pkg.fileKey);state.year=form.year;state.sptFilters.allYears=false;}
   }
   const options=[...state.packages.values()].map(p=>{const o=el('option',[p.manifest.wp?.nama,p.manifest.wp?.npwp].filter(Boolean).join(' · ')||p.fileName);o.value=p.fileKey;return o;});
   $('taxpayer').replaceChildren(...(options.length?options:[el('option','Muat paket dahulu')]));if(state.pkg)$('taxpayer').value=state.pkg.fileKey;
@@ -206,6 +208,12 @@ function render(){
   for(const [key,title] of tabs){
     if(['ringkas','kerja','peraturan'].includes(key))nav.append(el('span',null,'divider'));
     const tab=button(title,()=>{state.query='';go(key);},'');if(state.tab===key)tab.setAttribute('aria-current','page');
+    if(key==='spt'&&state.pkg?.submittedRows){
+      const n=count(state.pkg.submittedRows),badge=el('span',n,'spt-count');
+      badge.setAttribute('aria-hidden','true');tab.append(badge);
+      tab.title=n+' baris pada daftar SPT dilaporkan, termasuk pembetulan dan semua tahun.';
+      tab.setAttribute('aria-description',tab.title);
+    }
     if(!state.pkg&&needsPackage.has(key)){tab.disabled=true;tab.title='Muat paket WP untuk membuka tab ini.';}nav.append(tab);
   }
   nav.append(button('Cari  Ctrl K',search,'tools'),button('Tampilan',preferences,''));

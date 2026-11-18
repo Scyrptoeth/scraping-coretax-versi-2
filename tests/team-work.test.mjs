@@ -1,8 +1,25 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
-import {identifyRows,markEdit,mergeWork,planMerge,progressReport,readAudit,rowIdentity,validateTimes,workAuditRows} from '../extension/analisis/team-work.js';
+import {clearIndexReview,identifyRows,markEdit,mergeWork,planMerge,progressReport,readAudit,readClearedRows,rowIdentity,validateTimes,workAuditRows} from '../extension/analisis/team-work.js';
 const id='manual/00000000-0000-4000-8000-000000000001',row=(fact,idValue=id)=>({teamId:idValue,topik:'Penjualan',sumber:'Buku penjualan',fakta:fact,status:'Selesai'});
 const key=JSON.stringify(['rows',id]);
+test('resetting an indexed review survives reopening, requires a merge choice and permits a fresh review',()=>{
+  const line={id:'spt/PPN/2025-01/p00_demo/induk.json#A'},r={...row('hasil'),kkpLine:line.id};
+  const index={byId:new Map([[line.id,line],['kode',{id:'kode',refundCode:'1'}]])};
+  const original={rows:[r]},work=structuredClone(original);
+  clearIndexReview(work,line);clearIndexReview(work,line);
+  assert.deepEqual(readClearedRows(work.clearedRows,work.rows,index),[line.id]);
+  for(const invalid of [[line.id,line.id],['bukan-baris'],['kode']])assert.throws(()=>readClearedRows(invalid,[],index));
+  assert.throws(()=>readClearedRows([line.id],[r],index));
+  assert.equal(work.rows.length,0);assert.equal(workAuditRows(work).at(-1).Catatan,'Baris dikembalikan ke belum diuji');
+  const plan=planMerge(work,original),choice=plan.decisions[0];
+  assert.equal(choice.rule,'pilih');assert.throws(()=>mergeWork(plan));
+  const reset=mergeWork(plan,{[choice.key]:'lokal'}),restore=mergeWork(plan,{[choice.key]:'berkas'});
+  assert.deepEqual(reset.clearedRows,[line.id]);assert.equal(reset.rows.length,0);
+  assert.equal(restore.rows.length,1);assert.deepEqual(restore.clearedRows,[]);
+  reset.rows.push(r);markEdit(reset,'rows',rowIdentity(r),null,r);
+  assert.equal(reset.clearedRows.length,0);assert.equal(readAudit(reset.auditLog).length,2);
+});
 const then='2026-10-02T11:12:13.000Z',later='2026-10-03T11:12:13.000Z';
 test('edit history retains both sessions and labels legacy last-edit timestamps separately',()=>{
   const local={rows:[row('sama')],editTimes:{[key]:then}};

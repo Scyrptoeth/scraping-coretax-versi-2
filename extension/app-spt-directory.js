@@ -4,8 +4,9 @@ const wait=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 const scopeError=()=>Object.assign(Error('Daftar SPT awal atau WP pada daftar sudah berubah. Periksa kembali tab sumber.'),{code:'SCOPE'});
 
 // Keep only an index that was verified through the same table adapter used by manual capture.
-export async function sptDirectory(ext,tabId,wp) {
+export async function sptDirectory(ext,tabId,wp,{previewIndex=false,expectedUrl}={}) {
   const url=(await ext.tabs.get(tabId)).url;
+  if(expectedUrl && url!==expectedUrl)throw scopeError();
   const execute=async options=>(await ext.scripting.executeScript({target:{tabId},func:visibleTables,args:[options]}))[0]?.result;
   async function read(){
     if((await ext.tabs.get(tabId)).url!==url)throw scopeError();
@@ -13,9 +14,9 @@ export async function sptDirectory(ext,tabId,wp) {
     if(!Array.isArray(tables))throw scopeError();
     const indexes=tables.filter(t=>t.indexSource==='sptdaftar');
     if(indexes.length!==1)throw scopeError();
-    const options={...indexes[0],url,scope:{wp,source:'sptdaftar',manual:true}};
+    const options={...indexes[0],url,previewIndex,scope:{wp,source:'sptdaftar',manual:true}};
     const data=await execute(options);
-    if(!data?.indexScope)throw scopeError();
+    if(!data?.indexScope){if(previewIndex && data?.skip)throw Error(data.skip);throw scopeError();}
     return {options,data};
   }
   await read();
@@ -75,7 +76,17 @@ export async function sptDirectory(ext,tabId,wp) {
     // An unreadable form in the original tab must not be redirected automatically.
     return read();
   }
-  return {find,restore};
+  async function turn(index,advance){
+    const expected=JSON.stringify(rowsInColumnOrder(index.data.rows,index.options.labels));
+    const next=await execute({...index.options,advance,expected});
+    if(!next?.indexScope)throw Error('Halaman daftar belum berubah atau sumber tidak lagi cocok.');
+    const fresh=await read();
+    if(JSON.stringify(fresh.options.labels)!==JSON.stringify(index.options.labels) ||
+        fresh.options.tableId!==index.options.tableId || fresh.options.title!==index.options.title ||
+        JSON.stringify(rowsInColumnOrder(next.rows,index.options.labels))!==JSON.stringify(rowsInColumnOrder(fresh.data.rows,fresh.options.labels)))throw scopeError();
+    return fresh;
+  }
+  return {find,restore,read,turn};
 }
 
 export async function collectSptQueue({directory,candidates,tabId,limit,indexLimit,checkpoint,createSink,onOpen}){

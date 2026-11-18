@@ -3,6 +3,20 @@ import {test} from 'node:test';
 import {indexPackage} from '../extension/analisis/model.js';
 import {assessLine,buildIndex,completeIndexBook,indexSheets,indexStatus,restoreIndexedRows,restoreNotes,reviewRefundCode} from '../extension/analisis/kkp-index.js';
 import {workpaper} from '../extension/analisis/findings.js';
+
+test('a reviewer can retain the exact VAT periods behind a selected partial subtotal',()=>{
+  const line={id:'tanpa-spt-badan/contoh/2026/sales',period:'2026',ref:'B',topic:'Peredaran',tax:'PPh Badan',
+    withoutReturn:true,amount:0,prefill:null,source:'spt/PPN/2026-02/induk.json',explanation:'Pembanding KKP.',
+    observedPrefill:{amount:42,periods:['2026-01','2026-02']}};
+  const args={value:42,document:'Rekap fiktif',officer:'Penguji',note:'Cakupan Januari dan Februari diperiksa.',prefillBasis:'observed'};
+  const row=assessLine(line,args);
+  assert.equal(row.kkpPrefill,'observed');assert.match(row.sumber,/2026-01, 2026-02/);
+  const index={byId:new Map([[line.id,line]])};
+  assert.deepEqual(restoreIndexedRows([row],[row],index),[row]);
+  assert.throws(()=>assessLine(line,{...args,value:41}),/Subtotal/);
+  assert.throws(()=>assessLine({...line,observedPrefill:null},args),/Subtotal/);
+  assert.equal(assessLine(line,{...args,prefillBasis:undefined}).kkpPrefill,undefined);
+});
 import {newDraft} from '../extension/analisis/draft-model.js';
 import {progressReport} from '../extension/analisis/team-work.js';
 import {findFields} from '../extension/analisis/spt-forms.js';

@@ -38,6 +38,15 @@ try{
     await page.getByRole('navigation').getByRole('button',{name:'Kertas Kerja',exact:true}).click();
     await page.getByRole('button',{name:'KKP',exact:true}).click();
     await page.getByLabel('Tahun pajak',{exact:true}).selectOption(year);
+    const directory=page.getByRole('region',{name:'Daftar indeks KKP'});
+    await directory.waitFor();
+    assert.equal(await directory.getByRole('button').count(),index.groups.length);
+    const indexButton=directory.getByRole('button').filter({has:page.getByText(group.title,{exact:true})});
+    await indexButton.focus();
+    await indexButton.press('Enter');
+    assert.equal(await indexButton.getAttribute('aria-pressed'),'true');
+    await page.getByRole('button',{name:'Kembali ke daftar indeks',exact:true}).click();
+    assert.ok(await indexButton.evaluate(b=>b===document.activeElement));
     await page.getByLabel('Pilih indeks KKP').selectOption(group.key);
     const table=page.getByRole('table',{name:'Pengujian per indeks'});
     await table.getByText(group.lines[0].topic,{exact:true}).first().waitFor();
@@ -184,6 +193,22 @@ try{
     }
   }
   assert.deepEqual(errors,[]);
+  const selected=page.getByRole('table',{name:'Pengujian per indeks'}),dialog=page.getByRole('dialog');
+  await selected.getByRole('button',{name:'Buka',exact:true}).click();
+  await dialog.getByLabel('Dokumen atau rujukan bukti').fill('Uji Pasal 22');
+  await dialog.getByLabel('Nama penguji').fill('Penguji fiktif');
+  await dialog.getByRole('button',{name:'Konfirmasi sesuai SPT (sudah diuji)',exact:true}).click();
+  await selected.getByText('Sesuai dengan SPT.',{exact:true}).waitFor();
+  await selected.getByRole('button',{name:'Buka',exact:true}).click();
+  await dialog.getByRole('button',{name:'Kembalikan ke belum diuji'}).click();
+  await dialog.getByRole('button',{name:'Pertahankan hasil uji'}).click();
+  assert.equal(await dialog.getByLabel('Nama penguji').inputValue(),'Penguji fiktif');
+  await dialog.getByRole('button',{name:'Kembalikan ke belum diuji'}).click();
+  await dialog.getByRole('button',{name:'Kembalikan baris'}).click();
+  await selected.getByText('Belum diuji',{exact:true}).waitFor();
+  const cleared=JSON.parse(await download('Unduh berkas kerja'));
+  assert.equal(cleared.rows.length,0);assert.equal(cleared.clearedRows.length,1);
+  assert.equal(cleared.auditLog.at(-1).action,'reset');assert.deepEqual(errors,[]);
   const families=[...checks].filter(k=>k.includes('/')).length;
   console.log('PASS: four reference packages, '+families+' index families, B-8 and B-17 without an annual return, documented correction, revision, Excel, workfile, KKA, SP2DK and a separate Pasal 22 package with a cancelled slip.');
 }finally{

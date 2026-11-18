@@ -2,6 +2,7 @@ import {normalizeId} from '../app-data.js';
 import {rowsOf} from './model.js';
 import {sourceAmount} from './withholding-forms.js';
 import {companyReconciliation} from './kkp-company-controls.js';
+import {companyWithoutReturn} from './kkp-company-without-return.js';
 
 const fiscalField='PositiveFiscalCorrection';
 const namedCosts=[['5314','Penyusutan dan amortisasi'],['5321','Biaya jamuan'],['5409','Sumbangan']];
@@ -206,7 +207,7 @@ function equalization(pkg,form,tree,baseLines){
 
 export function companyAnnexIndices(pkg,year,index={}){
   const forms=pkg.forms.filter(f=>f.type==='BADAN'&&f.period===String(year));
-  if(!forms.length)return {groups:[],warnings:[]};
+  if(!forms.length)return companyWithoutReturn(pkg,String(year),checkedCompanyEntry);
   const f=latest(forms);
   if(!f)return {groups:[],warnings:['Indeks B.1.4 dan B.7 menunggu identifikasi satu SPT Badan versi terakhir untuk '+year+'.']};
   const body=parent(pkg,f),tree=accountsOf(body),groups=index.groups instanceof Map?[...index.groups.values()]:index.groups||[];
