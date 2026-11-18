@@ -4,6 +4,8 @@ Buka ekstensi melalui ikon Chrome. Pada bagian **Penugasan**, isi nama penarik d
 
 ## Mengambil sumber
 
+Jika sesi penarikan induk dan lampiran SPT terputus, buka **Pratinjau WP** untuk penugasan, periode, dan daftar yang sama. Pilih hasil tersimpan atau impor paket keluaran Versi 2 yang sudah diunduh. Penarik memeriksa identitas WP, versi SPT dan keutuhan bagian. Bagian terkonfirmasi dapat dipakai kembali. Daftar baru dan lampiran yang masih kurang dapat dibaca ketika tab Coretax tersedia. Hasil pemulihan disimpan sebagai tarikan baru.
+
 Untuk profil, registrasi, daftar dokumen atau buku besar yang sudah terbuka, pilih kategori yang dibutuhkan dan klik **Pratinjau WP**. Penarik mencocokkan identitas, judul dan kolom tabel. Pada buku besar, penarik juga memeriksa masa. Baca status per sumber sebelum menyusun ZIP. Tabel yang berbeda untuk sumber dan masa yang sama perlu dicocokkan oleh petugas. Tabel berfilter membawa keterangan cakupannya sampai ke paket.
 
 Jika tab **SPT Dilaporkan** untuk WP penugasan sudah terbuka, pilih sumber **Daftar SPT dilaporkan**, cocokkan WP dan masa, centang pernyataan kerahasiaan, lalu klik **Pratinjau WP**. Saat daftar belum ada dalam antrean, penarik mencari tab yang sesuai dan membaca halaman yang dapat dijangkau. Jika dua tab cocok, pilih tab yang akan dipakai. Pratinjau menunjukkan jumlah halaman dan baris sumber yang terbaca. Versi SPT yang dapat dipilih mengikuti masa dan jenis yang diminta.

@@ -6,6 +6,9 @@ import {renderSanksi,validateSimulation} from './sanksi.js';
 import {validateSchedule} from './inspection-schedule.js';
 import {renderInspectionSchedule} from './inspection-schedule-ui.js';
 import {renderTemporaryFindings} from './temporary-findings-ui.js';
+import {appendIndicationControls,renderFindingReport} from './finding-report-ui.js';
+import {indicativeFindings} from './indicative-findings.js';
+import {validateIndicationReviews,validateLoanRate} from './indication-review.js';
 import {validateDocumentScope} from './document-requests-output-model.js';
 import {renderDocumentRequestsOutput} from './document-requests-output.js';
 import {renderAssessmentSimulation} from './assessment-simulation-ui.js';
@@ -74,6 +77,16 @@ function yearWork(state,pkg,year){
   return state.work.get(key);
 }
 
+export function dashboardIndicationReview(state){
+  const {pkg,year}=state,work=yearWork(state,pkg,year);
+  const index=work.indexData??=buildIndex(pkg,year);
+  const report=indicativeFindings(pkg,year,work,index);
+  const panel=card('Indikasi untuk ditelaah',button('Buka laporan temuan indikatif',()=>state.go('kerja','ti')));
+  if(report.candidates.length)appendIndicationControls(panel,report,work,state);
+  else panel.append(el('p','Belum ada indikasi yang dapat disusun dari sumber untuk tahun ini.','hint'));
+  return panel;
+}
+
 export function probisRequests(state){
   const pkg=state.pkg, year=String(state.year),work=yearWork(state,pkg,year);
   const index=work.indexData??=buildIndex(pkg,year);
@@ -129,6 +142,7 @@ export function renderWork(target,state) {
   const save=()=>download(new Blob([JSON.stringify({format:'SCV2-KERJA',versi:1,paket:pkg.report.manifestHash,tahun:state.year,rows:work.rows,drafts:work.drafts,
     scopes:work.scopes,analysis:work.analysis,dispositions:work.dispositions,simulation:work.simulation,indexNotes:work.indexNotes,indexDocuments:work.indexDocuments,
     business:work.business||{},benchmark:work.benchmark||[],schedule:work.schedule,documentScope:work.documentScope,removedDocuments:work.removedDocuments||[],
+    indicationReviews:work.indicationReviews||{},indicationLoanRate:work.indicationLoanRate??null,
     clearedRows:work.clearedRows||[],editTimes:work.editTimes,auditLog:readAudit(work.auditLog,work.editTimes)},null,2)],{type:'application/json'}),outputFilename('Berkas-kerja-'+state.year,'json',wp));
   const picker=el('input');picker.type='file';picker.accept='.json';picker.className='hidden-file';
   picker.onchange=async()=>{
@@ -152,6 +166,7 @@ export function renderWork(target,state) {
       if(v.drafts.some(d=>d.npwp!==pkg.manifest.wp?.npwp||d.year!==state.year))throw Error('Berita acara menggunakan WP atau tahun lain.');
       const data={rows:incoming,clearedRows:readClearedRows(v.clearedRows,incoming,index()),drafts:v.drafts,scopes,analysis,dispositions,simulation,indexNotes,indexDocuments,
         documentScope:v.documentScope===undefined?undefined:validateDocumentScope(v.documentScope),removedDocuments:readRemovedDocuments(v.removedDocuments,indexDocuments),
+        indicationReviews:validateIndicationReviews(v.indicationReviews),indicationLoanRate:validateLoanRate(v.indicationLoanRate),
         schedule:v.schedule===undefined?undefined:validateSchedule(v.schedule),business:validateBusiness(v.business),benchmark:validateBenchmark(v.benchmark)};
       data.editTimes=validateTimes(v.editTimes,data);
       data.auditLog=readAudit(v.auditLog,data.editTimes);
@@ -163,7 +178,8 @@ export function renderWork(target,state) {
         Object.assign(work,result);state.repaint();notice(merged?'Isian berkas kerja telah digabungkan.':'Berkas kerja berhasil dimuat.');
       };
       if(work.rows.length||work.clearedRows?.length||work.drafts.length||work.indexDocuments.length||work.documentScope||work.removedDocuments?.length||Object.keys(work.analysis).length||Object.keys(work.dispositions).length ||Object.keys(work.indexNotes).length||
-           work.schedule||Object.keys(work.business||{}).length||work.benchmark?.length||work.editTimes?.[JSON.stringify(['benchmark','acuan'])]||work.simulation.end||work.simulation.cases.length||Object.keys(scopeDefaults).some(k=>scopeDefaults[k]!==work.scopes[k])){
+           work.schedule||Object.keys(work.indicationReviews||{}).length||work.indicationLoanRate||work.editTimes?.[JSON.stringify(['indicationLoanRate','rate'])]||
+           Object.keys(work.business||{}).length||work.benchmark?.length||work.editTimes?.[JSON.stringify(['benchmark','acuan'])]||work.simulation.end||work.simulation.cases.length||Object.keys(scopeDefaults).some(k=>scopeDefaults[k]!==work.scopes[k])){
         const plan=planMerge(work,data),close=()=>document.getElementById('dialog').close();
         showDialog('Pratinjau berkas kerja',showMergePreview(plan,{merge:result=>{close();apply(result,true);},replace:()=>{close();apply(data);}}));
       }else apply(data);
@@ -181,8 +197,8 @@ export function renderWork(target,state) {
   if(mode==='sim'){renderSanksi(target,state,work);return;}
   if(isOutput){
     target.append(button('Kembali ke daftar indeks',()=>state.go('kerja','kkp')));
-    const renderOutput={jadwal:renderInspectionSchedule,dok:renderDocumentRequestsOutput,ts:renderTemporaryFindings,'simulasi-kkp':renderAssessmentSimulation};
-    renderOutput[mode](target,state,work,index());return;
+    const renderOutput={jadwal:renderInspectionSchedule,dok:renderDocumentRequestsOutput,ts:renderTemporaryFindings,'simulasi-kkp':renderAssessmentSimulation,tl:renderFindingReport,ti:renderFindingReport};
+    renderOutput[mode](target,state,work,index(),mode);return;
   }
   if(mode==='kkp'){
     renderIndex(target,state,work,index());

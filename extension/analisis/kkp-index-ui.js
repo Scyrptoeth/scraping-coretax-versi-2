@@ -7,6 +7,8 @@ import {companyProvisionalSupport} from './kkp-company-without-return.js';
 
 export const outputMenus={
   ts:['TS · Daftar temuan sementara','temporary-findings-title'],
+  tl:['TL · Temuan berbukti langsung dan sanksi','direct-findings-title'],
+  ti:['TI · Temuan indikatif','indicative-findings-title'],
   'simulasi-kkp':['SIM · Simulasi ketetapan','assessment-simulation-title'],
   jadwal:['JD · Jadwal pemeriksaan','inspection-schedule-title'],
   dok:['DOK · Permintaan dokumen dan cakupan SP2','document-requests-title']

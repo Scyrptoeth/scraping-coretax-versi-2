@@ -44,7 +44,15 @@ try{
   const indicator=p.getByRole('heading',{name:'Temuan indikatif',exact:true}),scope=p.getByLabel('Temuan yang dimasukkan',{exact:true});
   assert.equal(await indicator.count(),0);await scope.selectOption('all');await indicator.waitFor();await scope.selectOption('verified');
   const first=p.getByRole('table',{name:'Perbandingan angka dan hasil uji indeks',exact:true});
-  if(nativeDemo)assert.equal(await first.getByRole('row').count(),5);
+  if(nativeDemo){
+    assert.equal(await first.locator('tbody tr').count(),6);
+    const projected=first.getByRole('row').filter({hasText:'Proyeksi PPh terutang melalui B.7'});
+    await projected.getByRole('cell',{name:'2.072.988.500',exact:true}).waitFor();
+    const credit=first.getByRole('row').filter({hasText:'Skenario kredit pada induk'});
+    await credit.getByRole('cell',{name:'5.818.606',exact:true}).waitFor();
+    assert.equal(await p.getByRole('table',{name:'Temuan berbukti langsung',exact:true}).locator('tbody tr').count(),17);
+    await p.getByRole('table',{name:'Tanggal dan saldo sumber yang perlu dicocokkan'}).waitFor();
+  }
   if(process.env.TS_QA_OUTPUT)await download('Excel daftar temuan sementara','v2-awal.xlsx');
   const back=btn('Kembali ke daftar indeks');
   await back.click();await p.getByLabel('Pilih indeks KKP').selectOption('PPN/N.3.1');

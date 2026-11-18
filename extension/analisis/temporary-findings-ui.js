@@ -2,17 +2,18 @@ import {printOutput} from './drafts.js';
 import {scopeDefaults,scopeOptions} from './findings.js';
 import {markEdit} from './team-work.js';
 import {temporaryFindings,temporaryFindingsSheet} from './temporary-findings.js';
+import {packageFindingReports} from './finding-report.js';
 import {box,button,card,dataTable,el,exportSheets,select} from './ui.js';
 
 export function renderTemporaryFindings(target,state,work,index) {
   const {pkg,year}=state,wp=pkg.manifest.wp||{};
-  const report=temporaryFindings(pkg,year,work,index);
+  const evidence=packageFindingReports(pkg,year,work,index),report=temporaryFindings(pkg,year,work,index,evidence);
   const scope=select(scopeOptions,report.scope,value=>{
     work.scopes??={...scopeDefaults};work.scopes.kkp=value;
     markEdit(work,'scopes','kkp');state.repaint();
   },'Temuan yang dimasukkan');
   const excel=button('Excel daftar temuan sementara',()=>exportSheets(
-    [temporaryFindingsSheet(pkg,year,work,index)],'Daftar-Temuan-Sementara-'+year,wp));
+    [temporaryFindingsSheet(pkg,year,work,index,evidence)],'Daftar-Temuan-Sementara-'+year,wp));
   const print=button('Cetak / PDF',()=>printOutput({title:'Daftar temuan sementara',
     paragraphs:[[wp.nama,wp.npwp,report.year].filter(Boolean).join(' · '),...report.summary],
     tables:report.tables.map(t=>({title:t.title,rows:[t.columns,...(t.rows.length?t.rows:[['Belum ada butir.']])]}))}));

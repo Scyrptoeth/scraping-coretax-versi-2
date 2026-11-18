@@ -81,8 +81,9 @@ function equal(a,b){
   return keys.length===Object.keys(b).length&&keys.every(k=>Object.hasOwn(b,k)&&equal(a[k],b[k]));
 }
 const labels={rows:'Butir pengujian',drafts:'Konsep dokumen',analysis:'Isian KKA',dispositions:'Status temuan',
-  scopes:'Lingkup temuan',indexNotes:'Telaah indeks',indexDocuments:'Permintaan dokumen',documentScope:'Cakupan SP2',simulation:'Simulasi ketetapan',schedule:'Jadwal pemeriksaan',business:'Probis dan uji KLU',benchmark:'Acuan benchmark'};
-const reviewTogether=new Set(['drafts','simulation','schedule','documentScope','indexDocuments','business','benchmark']);
+  scopes:'Lingkup temuan',indexNotes:'Telaah indeks',indexDocuments:'Permintaan dokumen',documentScope:'Cakupan SP2',simulation:'Simulasi ketetapan',schedule:'Jadwal pemeriksaan',business:'Probis dan uji KLU',benchmark:'Acuan benchmark',
+  indicationReviews:'Telaah indikasi',indicationLoanRate:'Bunga skenario piutang afiliasi'};
+const reviewTogether=new Set(['drafts','simulation','schedule','documentScope','indexDocuments','business','benchmark','indicationReviews','indicationLoanRate']);
 function validTime(time){
   return typeof time==='string'&&/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(time)&&
     Number.isFinite(Date.parse(time))&&new Date(time).toISOString()===time;
@@ -132,7 +133,7 @@ function records(work){
   for(const d of work.indexDocuments||[])add('indexDocuments',String(d.number),'DOK.'+d.number+' · '+d.name,d);
   for(const n of work.removedDocuments||[])add('indexDocuments',String(n),'DOK.'+n+' · Dihapus',null);
   if(work.documentScope)add('documentScope','sp2','Jenis pemeriksaan dan jenis pajak',work.documentScope);
-  for(const group of ['analysis','dispositions','indexNotes','scopes','business']){
+  for(const group of ['analysis','dispositions','indexNotes','scopes','business','indicationReviews']){
     for(const [id,value] of Object.entries(work[group]||{})){
       if(group==='scopes'&&value===scopeDefaults[id]&&!work.editTimes?.[keyOf(group,id)])continue;
       add(group,id,id,value);
@@ -141,6 +142,8 @@ function records(work){
   const sim=work.simulation;
   if(sim&&(sim.end||sim.cases?.length||work.editTimes?.[keyOf('simulation','sim')]))add('simulation','sim','Tanggal dan seluruh masa simulasi',sim);
   if(work.schedule)add('schedule','jadwal','Jenis pemeriksaan, tanggal dan hari libur',work.schedule);
+  if(work.indicationLoanRate||work.editTimes?.[keyOf('indicationLoanRate','rate')])
+    add('indicationLoanRate','rate','Acuan bunga piutang afiliasi',work.indicationLoanRate??null);
   if(work.benchmark?.length||work.editTimes?.[keyOf('benchmark','acuan')])add('benchmark','acuan','Acuan benchmark dan tarif simulasi',work.benchmark||[]);
   return map;
 }
@@ -196,12 +199,12 @@ export function mergeWork(plan,choices={}){
     if(d.rule==='pilih'&&!['lokal','berkas'].includes(choice))throw Error('Pilih versi untuk tiap isian yang bertentangan.');
     if(d.rule==='tambah'||d.rule==='terbaru'||d.rule==='sama'&&d.incoming.time>d.local.time||d.rule==='pilih'&&choice==='berkas')selected.set(d.key,d.incoming);
   }
-  const result={rows:[],clearedRows:[],drafts:[],indexDocuments:[],removedDocuments:[],documentScope:undefined,analysis:{},scopes:{...scopeDefaults},dispositions:{},indexNotes:{},business:{},benchmark:[],editTimes:{},simulation:{end:'',cases:[]},schedule:undefined};
+  const result={rows:[],clearedRows:[],drafts:[],indexDocuments:[],removedDocuments:[],documentScope:undefined,analysis:{},scopes:{...scopeDefaults},dispositions:{},indicationReviews:{},indicationLoanRate:null,indexNotes:{},business:{},benchmark:[],editTimes:{},simulation:{end:'',cases:[]},schedule:undefined};
   for(const [key,record] of selected){
     const {group,id,value,time}=record, cloned=structuredClone(value);
     if(group==='rows'&&value===null)result.clearedRows.push(id.slice('indeks/'.length));
     else if(group==='indexDocuments'&&value===null)result.removedDocuments.push(Number(id));
-    else if(group==='simulation'||group==='schedule'||group==='documentScope'||group==='benchmark')result[group]=cloned;
+    else if(group==='simulation'||group==='schedule'||group==='documentScope'||group==='benchmark'||group==='indicationLoanRate')result[group]=cloned;
     else if(Array.isArray(result[group]))result[group].push(cloned);
     else result[group][id]=cloned;
     if(time)result.editTimes[key]=time;

@@ -8,6 +8,7 @@ import {companyAnnexIndices} from './kkp-company-annexes.js';
 import {simulationTables} from './sanksi.js';
 import {assessmentOutput,assessmentSheets} from './assessment-simulation.js';
 import {temporaryFindingsSheet} from './temporary-findings.js';
+import {findingReportSheet,packageFindingReports} from './finding-report.js';
 import {rateSourceLabel} from './rate-updates.js';
 import {withoutReturnIndices} from './kkp-without-return.js';
 import {workAuditRows} from './team-work.js';
@@ -590,6 +591,7 @@ export function completeIndexBook(pkg,year,index,reviewed,notes,documents=[],sim
   }
   const sim=simulationTables(simulation);
   const selectedWork={...work,simulation,rows:work.rows??[...reviewed.values()]};
+  const reports=packageFindingReports(pkg,year,selectedWork,index);
   if(index.warnings.length)source.push([],['Keterangan cakupan sumber'],...index.warnings.map(s=>[s]));
   if(sim.summary.length)main.push([],['Simulasi ketetapan per jenis pajak'],...worksheet(sim.summary));
   const formal=filingAndPaymentRows(pkg,year);
@@ -603,7 +605,8 @@ export function completeIndexBook(pkg,year,index,reviewed,notes,documents=[],sim
     {name:'Daftar Indeks',rows:list},{name:'Temuan Sementara',rows:findings},{name:'INDUK',rows:main},
     {name:'Permintaan Dokumen',rows:documentRows(documents)},sourceSheet,{name:'Kepatuhan Formal',rows:formal},
     {name:'Review Sheet',rows:review},{name:'Jejak Audit',rows:audit.length?worksheet(audit):[['Belum ada perubahan tercatat.']]},
-    {name:'Temuan Langsung',rows:findingRows(direct)},temporaryFindingsSheet(pkg,year,selectedWork,index),
+    {name:'Temuan Langsung',rows:[...findingRows(direct),[],...findingReportSheet('tl',reports.tl,pkg,year,selectedWork).rows]},
+    temporaryFindingsSheet(pkg,year,selectedWork,index,reports),findingReportSheet('ti',reports.ti,pkg,year,selectedWork),
     ...assessmentSheets(assessmentOutput(pkg,year,selectedWork,index)),...(benchmark?[benchmark]:[]),...businessSheets(pkg,year,work),
     ...groupSheets];
 }

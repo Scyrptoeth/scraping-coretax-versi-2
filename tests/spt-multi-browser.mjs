@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import {mkdtemp, readFile, rm} from 'node:fs/promises';
+import {mkdtemp, readFile, rm, writeFile} from 'node:fs/promises';
 import {createRequire} from 'node:module';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
@@ -27,13 +27,16 @@ const model = doc => doc.revision ? 'Pembetulan '+doc.revision : 'Normal';
 const receipt = doc => 'BPE-UJI-'+doc.id;
 const headings = ['','Jenis Pajak','Jenis Surat Pemberitahuan Pajak','Masa Pajak','Model SPT','Status SPT','ID SPT','Nomor Bukti Penerimaan'];
 
-function listRow(doc) {
+function listRow(doc,dualNumbers=false) {
   const action = doc===unavailable ? '<button type="button" onclick="location.href=\'/__synthetic__/unsafe\'">Hapus SPT</button>' :
     '<a href="'+detailBase+doc.id+'"'+(doc===newTab?' target="_blank"':'')+'>Lihat SPT</a>';
   const cells=['PPN','SPT Masa PPN',doc.month+' 2025',model(doc),'Dilaporkan',doc.id,receipt(doc)];
+  if(dualNumbers)cells.push('00012-'+doc.id,receipt(doc));
   return '<tr><td>'+action+'</td>'+cells.map(v=>'<td>'+v+'</td>').join('')+'</tr>';
 }
 function indexPage(mode,afterVisit) {
+  const dualNumbers=mode==='paket';
+  if(dualNumbers)mode='tindaklanjut';
   let pages = [[normal,revision]];
   if(mode==='seratus')pages=[Array.from({length:103},(_,revision)=>({id:'versi-'+revision,month:'Januari',revision}))];
   else if(mode==='tindaklanjut')pages=afterVisit?[[normal,revision]]:[[normal]];
@@ -48,7 +51,7 @@ function indexPage(mode,afterVisit) {
     pages = [[otherPage],[lastPage]];
   }
   const repeat = mode==='berulang' && afterVisit;
-  const tables = pages.map(page=>page.map(listRow).join(''));
+  const tables = pages.map(page=>page.map(doc=>listRow(doc,dualNumbers)).join(''));
   const startPage = mode==='pertama' && afterVisit ? 1 : 0;
   const firstButton=mode==='pertama' ?
     '<button type="button" id="first" aria-label="Halaman pertama" aria-controls="index"'+(startPage?'':' disabled')+'>Halaman pertama</button>' : '';
@@ -58,7 +61,7 @@ function indexPage(mode,afterVisit) {
     '<li><a href="'+listing+'">SPT Dilaporkan</a></li>'+
     '<li><a href="/registration/id-ID/general-information/'+scopeId+'">Informasi Umum Wajib Pajak</a></li>'+
     '<li><a href="/returnsheets/id-ID/taxpayer-search">Pilih Wajib Pajak Lain</a></li></ul></aside>'+
-    '<div class="p-datatable"><table id="index"><thead><tr>'+headings.map(s=>'<th>'+s+'</th>').join('')+'</tr></thead><tbody>'+tables[startPage]+'</tbody></table>'+
+    '<div class="p-datatable"><table id="index"><thead><tr>'+(dualNumbers?[...headings,'DocumentReceiptNumber','BpsNo']:headings).map(s=>'<th>'+s+'</th>').join('')+'</tr></thead><tbody>'+tables[startPage]+'</tbody></table>'+
     '<div class="p-paginator">'+firstButton+'<button id="next" type="button" aria-label="Halaman berikutnya" aria-controls="index"'+
     (startPage===tables.length-1?' disabled':'')+'>Berikutnya</button>'+destructive+'</div></div>'+
     '<script>const pages='+JSON.stringify(tables)+';let page='+startPage+';const next=document.getElementById("next"),first=document.getElementById("first");'+
@@ -108,14 +111,110 @@ async function prepare(ui) {
   await ui.locator('#preview').click();
   await ui.getByText('Rincian versi SPT dan bagian yang tersedia',{exact:true}).click();
 }
-async function downloadPackage(ui) {
+async function downloadPackage(ui,receive) {
   await ui.locator('#start').click();
   await ui.getByRole('button',{name:'Unduh paket'}).first().click();
   const [download] = await Promise.all([
     ui.waitForEvent('download'),
     ui.locator('#package-dialog button[value=ok]').click()
   ]);
-  return readPackage(await readFile(await download.path()));
+  const bytes=await readFile(await download.path());if(receive)await receive(bytes);
+  return readPackage(bytes);
+}
+async function exerciseSavedFollowup(ctx,ui,opened,activations,fromFile){
+  const plan=()=>ui.getByRole('table',{name:'Versi SPT yang ditemukan'});
+  const action=ui.getByRole('button',{name:'Gunakan bagian SPT dari hasil tersimpan',exact:true});
+  async function preview(){
+    await ui.locator('#preview').click();await ui.getByText('Rincian versi SPT dan bagian yang tersedia',{exact:true}).click();await plan().waitFor();
+  }
+  async function read(){
+    await ui.getByRole('button',{name:'Ambil versi SPT terpilih',exact:true}).click();
+    const status=ui.getByRole('status',{name:'Proses versi SPT terpilih'});
+    await status.filter({hasText:/versi diproses/}).waitFor();return status.innerText();
+  }
+  await ui.getByLabel('Halaman maksimal per bagian SPT').fill('1');
+  await read();assert.deepEqual(activations,[normal.id]);
+  let bytes;const original=await downloadPackage(ui,b=>{bytes=b;});assert.ok(original.report.valid);
+  if(process.env.SPT_EXPECT_0120 && process.env.SPT_WRITE_DEMO_ZIP)await writeFile(process.env.SPT_WRITE_DEMO_ZIP,bytes,{mode:0o600,flag:'wx'});
+  if(fromFile && process.env.SPT_PREVIOUS_DEMO_ZIP)bytes=await readFile(process.env.SPT_PREVIOUS_DEMO_ZIP);
+  const input=await readPackage(bytes);
+  const firstA=original.entries.find(e=>e.path.endsWith('/a1.json'));assert.equal(firstA.pages.length,1);
+  assert.ok(!original.entries.some(e=>e.path.endsWith('/b2.json')));
+  const secret='sandi-fiktif-013';
+  if(!process.env.SPT_EXPECT_0120){
+    await ui.locator('#new-pass').fill(secret);await ui.locator('#repeat-pass').fill(secret);await ui.locator('#encrypt').click();await ui.locator('#lock').waitFor();
+  }
+  await ui.reload();
+  if(!process.env.SPT_EXPECT_0120){
+    await ui.locator('#unlock-panel').waitFor();assert.equal(await ui.locator('#workspace').isVisible(),false);assert.equal(await action.count(),0);
+    await ui.locator('#unlock-pass').fill(secret);await ui.locator('#unlock-form button').click();await ui.locator('#workspace').waitFor();
+  }
+  await prepare(ui);await plan().waitFor();
+  const rows=plan().locator('tbody tr');
+  assert.equal(await rows.count(),2);assert.equal(await rows.first().locator('th,td').nth(3).innerText(),'—');
+  if(process.env.SPT_EXPECT_0120){
+    assert.equal(await action.count(),0);assert.deepEqual(opened,[normal.id]);assert.equal(await ui.getByRole('button',{name:'Unduh paket'}).count(),1);
+    console.log('REPRO: 0.12.0 stores the partial result, then an empty queue has zero ready sections after rereading the same directory.');return;
+  }
+  await action.waitFor();
+  await ui.locator('#officer').fill('Petugas berbeda');await preview();assert.equal(await action.count(),0);
+  async function useFile(){
+    await ui.getByText('Gunakan paket SPT dari berkas',{exact:true}).click();
+    await ui.getByLabel('Paket Versi 2 untuk penugasan ini').setInputFiles({name:'simulasi.zip',mimeType:'application/zip',buffer:bytes});
+    await ui.getByRole('button',{name:'Gunakan bagian SPT dari berkas'}).click();
+  }
+  if(fromFile){await useFile();await ui.locator('#notice').filter({hasText:/penugasan yang sama/}).waitFor();assert.equal(await ui.locator('#queue .item').count(),1);}
+  await ui.locator('#officer').fill('Penguji fiktif');await preview();
+  if(!fromFile){
+    const card=ctx.pages().find(p=>p.url()===listing).locator('aside b');
+    await card.evaluate(el=>el.textContent='0000000000000028');await action.click();
+    await ui.locator('#notice').filter({hasText:/daftar.*belum cocok/i}).waitFor();assert.equal(await ui.locator('#queue .item').count(),1);
+    await card.evaluate((el,id)=>el.textContent=id,owner);
+    await ui.evaluate(()=>{
+      const box=document.getElementById('preview-read-actions');
+      const observer=new MutationObserver(()=>{
+        const stop=[...box.querySelectorAll('button')].find(b=>b.textContent==='Hentikan pembacaan SPT');
+        if(stop){observer.disconnect();stop.click();}
+      });observer.observe(box,{childList:true});
+    });
+    await action.click();await ui.locator('#preview-read-status').filter({hasText:/dihentikan/i}).waitFor();
+    assert.equal(await ui.locator('#queue .item').count(),1);
+  }
+  if(fromFile)await useFile();else await action.click();
+  await ui.getByText(/Bagian dari hasil tersimpan sudah dicocokkan/).waitFor();
+  if(!fromFile){
+    await ui.locator('#officer').fill('Petugas lain');await ui.locator('#start').click();
+    await ui.locator('#notice').filter({hasText:/Penugasan untuk bagian SPT di antrean berbeda/}).waitFor();
+    assert.equal(await ui.getByRole('button',{name:'Unduh paket'}).count(),1);
+    await ui.locator('#officer').fill('Penguji fiktif');await preview();
+  }else{
+    await ui.getByText('Rincian versi SPT dan bagian yang tersedia',{exact:true}).click();await plan().waitFor();
+  }
+  assert.match(await rows.first().locator('th,td').nth(3).innerText(),/induk.*b1/);
+  if(fromFile && !input.entries.some(e=>e.cap.bagianSptTeramati?.length))await ui.getByText(/catatan lama tanpa identitas bagian/).waitFor();
+  else assert.match(await rows.first().locator('th,td').nth(5).innerText(),/b2/);
+  assert.equal(await rows.nth(1).locator('th,td').nth(3).innerText(),'—');
+  const check=ui.getByRole('checkbox',{name:/^Pilih .*pembetulan 1$/});await check.uncheck();
+  assert.match(await read(),/2 bagian dari antrean dipakai kembali/);assert.deepEqual(opened,[normal.id,normal.id]);
+  assert.deepEqual(activations,[normal.id]);
+  const final=await downloadPackage(ui);assert.ok(final.report.valid);
+  const unresolved=final.manifest.cek.filter(c=>c.kode==='SPT-BAGIAN-BELUM-PULIH');
+  assert.equal(unresolved.length,1);assert.match(unresolved[0].pesan,/c1, c2/);assert.doesNotMatch(unresolved[0].pesan,/b2/);
+  const a1=final.entries.find(e=>e.path.startsWith('spt/') && e.path.endsWith('/a1.json'));
+  assert.deepEqual(a1.pages.flatMap(p=>p.Payload.Data.map(r=>r.Uraian)),[normal.id+'-satu',normal.id+'-dua']);
+  assert.equal(final.entries.find(e=>e.path.startsWith('spt/') && e.path.endsWith('/b2.json')).pages.length,1);
+  const origin=final.entries.find(e=>e.path.startsWith('spt/') && e.path.endsWith('/b1.json')).cap.halamanSumber[0].pencocokan.hasilSebelumnya;
+  assert.equal(origin.waktu,fromFile?input.manifest.dibuat:original.manifest.dibuat);
+  if(fromFile)assert.equal(origin.shaManifest,input.report.manifestHash);
+  const originalButton=ui.getByText('Tarikan sebelumnya',{exact:false}).first();await originalButton.click();
+  await ui.getByRole('table',{name:/Riwayat untuk NPWP/}).getByRole('button',{name:'Unduh paket'}).click();
+  const [copy]=await Promise.all([ui.waitForEvent('download'),ui.locator('#package-dialog button[value=ok]').click()]);
+  const retained=await readPackage(await readFile(await copy.path()));assert.deepEqual(retained.manifest,original.manifest);
+  const handoff=ctx.waitForEvent('page');await ui.getByRole('button',{name:'Buka di Analisis'}).first().click();const viewer=await handoff;
+  await viewer.getByRole('button',{name:'SPT',exact:true}).first().click();
+  await viewer.getByRole('table',{name:'Daftar SPT',exact:true}).getByRole('button',{name:'Buka',exact:true}).first().click();
+  const dialog=viewer.getByRole('dialog');await dialog.getByRole('combobox',{name:'Induk / lampiran'}).selectOption('a1');
+  await dialog.getByText(normal.id+'-dua',{exact:true}).first().waitFor();
 }
 async function exerciseFollowup(ctx,ui,opened,activations){
   const choices=ui.getByRole('checkbox',{name:/^Pilih .*pembetulan \d+$/i});
@@ -190,12 +289,12 @@ async function run(mode) {
       const request=route.request(),url=request.url();
       if(request.method()==='GET' && url===listing){
         listVisits.push(opened.length);
-        return route.fulfill({contentType:'text/html; charset=utf-8',body:indexPage(mode,opened.length>0)});
+        return route.fulfill({contentType:'text/html; charset=utf-8',body:indexPage(mode==='tersimpan'?'tindaklanjut':mode,opened.length>0)});
       }
       const doc=docs.find(d=>url===detailBase+d.id);
       if(request.method()==='GET' && doc){
         opened.push(doc.id);
-        return route.fulfill({contentType:'text/html; charset=utf-8',body:detailPage(doc,mode,opened.filter(id=>id===doc.id).length)});
+        return route.fulfill({contentType:'text/html; charset=utf-8',body:detailPage(doc,['tersimpan','paket'].includes(mode)?'tindaklanjut':mode,opened.filter(id=>id===doc.id).length)});
       }
       if(url!==site+'/favicon.ico')blocked.push([request.method(),url]);
       return route.abort();
@@ -204,6 +303,9 @@ async function run(mode) {
     const source=await ctx.newPage();await source.goto(listing);
     const ui=await ctx.newPage();await ui.goto(new URL('app.html',worker.url()).href);
     await prepare(ui);
+    if(['tersimpan','paket'].includes(mode)){
+      await exerciseSavedFollowup(ctx,ui,opened,activations,mode==='paket');assert.deepEqual(blocked,[]);assert.deepEqual(pageErrors,[]);return;
+    }
     if(mode==='tindaklanjut'){
       await exerciseFollowup(ctx,ui,opened,activations);assert.deepEqual(blocked,[]);assert.deepEqual(pageErrors,[]);return;
     }
@@ -261,5 +363,5 @@ async function run(mode) {
     await rm(profile,{recursive:true,force:true});
   }
 }
-for(const mode of ['tindaklanjut','seratus','lanjut','berulang','ganti','henti','pertama','isian'])await run(mode);
-console.log('PASS: queued sections, new amendments, selection beyond 100, full reread, navigation guards, separate ZIP versions and viewer.');
+for(const mode of process.env.SPT_TEST_MODE?[process.env.SPT_TEST_MODE]:['tersimpan','paket','tindaklanjut','seratus','lanjut','berulang','ganti','henti','pertama','isian'])await run(mode);
+if(!process.env.SPT_EXPECT_0120)console.log('PASS: SPT capture, versions and viewer ('+(process.env.SPT_TEST_MODE||'10 scenarios')+').');

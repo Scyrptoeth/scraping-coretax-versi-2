@@ -3,6 +3,17 @@ import {test} from 'node:test';
 import {clearIndexDocument,clearIndexReview,identifyRows,markEdit,mergeWork,nextIndexDocumentNumber,planMerge,progressReport,readAudit,readClearedRows,readRemovedDocuments,rowIdentity,validateTimes,workAuditRows} from '../extension/analisis/team-work.js';
 const id='manual/00000000-0000-4000-8000-000000000001',row=(fact,idValue=id)=>({teamId:idValue,topik:'Penjualan',sumber:'Buku penjualan',fakta:fact,status:'Selesai'});
 const key=JSON.stringify(['rows',id]);
+test('a team retains reviews per rule and can arbitrate between clearing or keeping a loan rate',()=>{
+  const local={indicationReviews:{'vat-facility':'explained'},indicationLoanRate:null};
+  const file={indicationReviews:{'payroll-gap':'retained'},indicationLoanRate:{percent:0,source:'Fictitious agreement'}};
+  markEdit(local,'indicationReviews','vat-facility');markEdit(local,'indicationLoanRate','rate');
+  assert.deepEqual(validateTimes(local.editTimes,local),local.editTimes);
+  const plan=planMerge(local,file),choice=plan.decisions.find(d=>d.rule==='pilih');
+  assert.ok(choice);assert.throws(()=>mergeWork(plan));
+  const saved=mergeWork(plan,{[choice.key]:'lokal'});assert.equal(saved.indicationLoanRate,null);
+  assert.deepEqual(saved.indicationReviews,{...file.indicationReviews,...local.indicationReviews});
+  assert.deepEqual(mergeWork(plan,{[choice.key]:'berkas'}).indicationLoanRate,file.indicationLoanRate);
+});
 test('deleted request numbers survive save and merge without reusing a number or resurrecting a document',()=>{
   const initial={indexDocuments:[{number:1,name:'Buku'},{number:3,name:'Faktur'}]},local=structuredClone(initial);
   clearIndexDocument(local,3);clearIndexDocument(local,3);

@@ -3,14 +3,19 @@ import {findingFromWorkRow,findingKey} from './findings.js';
 import {checkedCompanyEntry,checkedCompanyTable} from './kkp-company-annexes.js';
 import {rowsOf,sptDay} from './model.js';
 import {listedReturns,revisionProblem,usesOtherCurrency} from './return-source.js';
-import {fiscalComparisons} from './temporary-findings.js';
+import {fiscalComparisons} from './fiscal-comparisons.js';
 import {installmentComparison} from './temporary-findings-installments.js';
 import {sourceAmount} from './withholding-forms.js';
 
 const validMoney=Number.isSafeInteger;
 const active=r=>!['Terjelaskan','Tidak relevan'].includes(r);
 
-function lastReturn(pkg,year) {
+export function creditArticle(value){
+  const article=/^(?:pasal|article)\s*(4|15|19|21|22|23|24|25|26|29)(?:\s*(?:ayat\s*)?\(\d+\))?$/i.exec(String(value??'').trim());
+  return article?Number(article[1]):null;
+}
+
+export function lastCompanyReturn(pkg,year) {
   const forms=pkg.forms.filter(f=>f.type==='BADAN'&&f.period===year);
   const latest=Math.max(...forms.map(f=>f.version)),matches=forms.filter(f=>f.version===latest);
   if(matches.length!==1)return null;
@@ -25,14 +30,14 @@ function lastReturn(pkg,year) {
   return {f,main,source,env,body:body[0]};
 }
 
-function endPeriod(f,main,year) {
+export function companyEndPeriod(f,main,year) {
   const end=sptDay(main.AccountingPeriodEnd);
   if(end)return end.slice(0,7);
   const codes=[f.parts.get('induk').cap.konteks?.spt?.masa,f.meta?.TaxPeriodCode].filter(Boolean).map(String);
   return codes.length&&codes.every(v=>v==='0112'+year)&&Number(main.AccountingPeriodStart)===1&&Number(main.AccountingPeriodEnd)===12?year+'-12':null;
 }
 
-function receivedWithholding(pkg,year) {
+export function receivedWithholding(pkg,year) {
   const path='bukti-potong-lawan/'+year+'/BPPU.json',files=pkg.entries.filter(e=>e.path===path);
   if(files.length!==1)return null;
   const entry=files[0],cap=entry.cap||{},q=cap.payload||{},owner=normalizeId(pkg.manifest.wp?.npwp);
@@ -47,7 +52,9 @@ function receivedWithholding(pkg,year) {
   if(!totals.length||totals.some(n=>n!==rows.length)||cap.baris!=null&&cap.baris!==rows.length||cap.halaman!=null&&cap.halaman!==entry.pages.length)return null;
   let amount=0,count=0;const seen=new Set();
   for(const r of rows) {
-    if(!/^(?:pasal|article)\s*(?:22|23)$/i.test(String(r.TaxArticle||'').trim()))continue;
+    const article=creditArticle(r.TaxArticle);
+    if(article===null)return null;
+    if(article!==22&&article!==23)continue;
     const status=String(r.WithholdingSlipsStatus||'').toUpperCase(),code=String(r.TaxPeriodCode||'');
     const party=normalizeId(r.WitholderTin||r.WithholderTin),id=r.WithholdingSlipsNumber&&party&&JSON.stringify([party,r.WithholdingSlipsNumber]);
     if(!id||seen.has(id)||normalizeId(r.EmployeeTin||r.IncomeRecipientTin)!==owner||
@@ -93,14 +100,14 @@ function fiscalProjection(pkg,year,work,index,annual,main) {
 
 export function companyAssessment(pkg,year,work,index) {
   year=String(year);
-  const data=lastReturn(pkg,year);
+  const data=lastCompanyReturn(pkg,year);
   if(!data)return null;
   const {f,source,body,env,main}=data,annual=index.groups.find(g=>g.key==='BADAN/B');
   if(!annual)return null;
   // The assessment's existing reviewed-balance path owns this outcome, including validation.
   const balance=annual.lines.find(l=>l.source===source.path+' · MainFormData.UnderpaymentIncomeTax');
   if(balance&&(work.rows??[]).some(r=>r.kkpLine===balance.id))return null;
-  const period=endPeriod(f,main,year);
+  const period=companyEndPeriod(f,main,year);
   const currencies=[f.meta?.CurrencyCode,env.CurrencyCode,body.CurrencyCode,main.CurrencyCode,
     annual.support?.find(r=>r.Kode==='P25')?.Satuan].filter(v=>v&&v!=='Belum dinyatakan');
   if(usesOtherCurrency(f.meta,env,body,main)||currencies.includes('Bertentangan atau tidak dikenali'))return {mode:'indikasi',principal:null,period,notes:['Mata uang sumber belum dapat disamakan dengan rupiah. Periksa induk dan bukti pembayaran.']};
@@ -115,7 +122,7 @@ export function companyAssessment(pkg,year,work,index) {
   const slips=receivedWithholding(pkg,year);
   if(slips){components.observedWithholding=slips.amount;notes.push(slips.count+' bukti PPh 22/23 aktif pada '+slips.path+' memuat potongan '+slips.amount.toLocaleString('id-ID')+'. Periksa sifat pajak dan hak pengkreditan.');}
   const overseas=sourceAmount(main.TotalIncomeTaxOverseas);
-  if(validMoney(overseas)){components.overseasField=overseas;notes.push('Isian TotalIncomeTaxOverseas pada '+source.path+' sebesar '+overseas.toLocaleString('id-ID')+'. Potongan dalam negeri dan kredit luar negeri perlu dicocokkan dengan jenis serta lampiran masing-masing.');}
+  if(validMoney(overseas)){components.overseasField=overseas;notes.push('Isian TotalIncomeTaxOverseas pada '+source.path+' sebesar '+overseas.toLocaleString('id-ID')+'. Pengurang pada induk dapat mencakup pajak luar negeri dan potongan atau pungutan pihak lain. Periksa bagiannya di Lampiran 3 sebelum membandingkannya dengan bukti potong dalam negeri.');}
   const l3=checkedCompanyTable(pkg,f,'l3');
   if(l3)notes.push('Lampiran 3 yang terbaca memuat '+l3.length+' baris.');
   if(!currencies.length)notes.push('Satuan mata uang pada induk belum dinyatakan. Angka pembanding mengikuti satuan yang tercantum pada masing-masing sumber.');

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {companyAssessment} from '../extension/analisis/assessment-company.js';
+import {directCreditFindings} from '../extension/analisis/direct-finding-credits.js';
 
 const year='2025',owner='0000000000000010';
 function fixture(){
@@ -30,7 +31,7 @@ function fixture(){
   return {pkg,index,main,form,slip,entry,support,group,balance,run:(work={})=>companyAssessment(pkg,year,work,index)};
 }
 
-test('positive fiscal projections and observed domestic withholding stay separate from foreign-credit amounts and assessed principal',()=>{
+test('positive fiscal projections and observed domestic withholding stay separate from the aggregate credit on the return and assessed principal',()=>{
   const f=fixture(),r=f.run();
   assert.equal(r.mode,'indikasi');assert.equal(r.principal,null);assert.equal(r.period,'2025-12');
   assert.deepEqual(r.components,{baseCorrection:500,projectedCorrection:3000,declaredTax:220000,projectedTax:220660,
@@ -39,6 +40,38 @@ test('positive fiscal projections and observed domestic withholding stay separat
   const changed=f.run({rows:[{kkpLine:f.group.lines[1].id,menurutWp:500,menurutPetugas:500,evidence:'none',review:'Dalam pengujian'}]});
   assert.equal(changed.components.projectedTax,220440);assert.equal(changed.principal,null);
   assert.equal(f.run({rows:[{kkpLine:f.balance.id}]}),null);
+});
+
+test('credit comparison requires a domestic annex total and twelve ledger months for the same year and taxpayer',()=>{
+  const f=fixture();
+  f.main.InstallmentOfIncome=60;
+  for(let m=1;m<=12;m++){
+    const month=String(m).padStart(2,'0');
+    f.pkg.entries.push({path:'bukubesar/'+year+'-'+month+'.json',cap:{lengkap:true,konteks:{npwp:owner}},
+      pages:[{Payload:{Data:[],TotalRecords:0}}]});
+  }
+  const run=()=>directCreditFindings(f.pkg,year);
+  const empty=run();
+  assert.equal(empty.assessment.ready,false);assert.equal(empty.assessment.creditDifference,null);
+  assert.equal(empty.scenario.creditChange,-190);assert.equal(empty.scenario.creditComparable,false);
+  assert.deepEqual(empty.facts.map(x=>x.ruleId),['company-installments']);
+  function attach(part,rows){
+    f.form.parts.set(part,{path:'spt/BADAN/2025/p00_contoh/'+part+'.json',cap:{lengkap:true,total:rows.length,konteks:{npwp:owner}},
+      pages:[{Payload:{Data:rows,TotalRecords:rows.length}}]});
+  }
+  const rows=[{RecordId:'A',TaxArticle:'Pasal 22',IncomeTax:25},{RecordId:'B',TaxArticle:'Pasal 24',IncomeTax:175}];
+  attach('l3',rows);attach('l3-total',[{IncomeTax:200}]);
+  assert.equal(run().assessment.creditDifference,-15);assert.equal(run().assessment.ready,true);
+  assert.deepEqual(run().facts.map(x=>x.ruleId),['domestic-credits','company-installments']);
+  rows[1].TaxArticle='Tidak terbaca';assert.equal(run().assessment.ready,false);rows[1].TaxArticle='Pasal 24';
+  rows[1].RecordId='A';assert.equal(run().assessment.ready,false);rows[1].RecordId='B';
+  attach('l3-total',[{IncomeTax:190}]);assert.equal(run().assessment.ready,false);attach('l3-total',[{IncomeTax:200}]);
+  const july=f.pkg.entries.find(e=>e.path==='bukubesar/2025-07.json');
+  july.pages[0].Payload={TotalRecords:1,Data:[{PeriodCode:'07072025',AccountingTypeCode:'Payment',RevenueCode:'411123',
+    PaymentCode:'100',Amount:80,IsCancelled:false,RecordId:'impor-fiktif'}]};
+  assert.equal(run().assessment.ready,false);assert.equal(run().scenario,null);
+  july.pages[0].Payload.Data[0].PaymentCode='300';assert.equal(run().assessment.ready,true);
+  july.cap.lengkap=false;assert.equal(run().scenario,null);assert.equal(run().assessment.ready,false);
 });
 
 test('eligibility and monthly anchors are limited to the declared reporting period, currency and evidenced ordinary rate',()=>{

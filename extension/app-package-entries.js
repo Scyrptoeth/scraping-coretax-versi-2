@@ -151,4 +151,5 @@ export function appendPackageEntry(groups,item,wp) {
     ...(item.sptSelection?{klasifikasiSpt:item.sptSelection}:{}),...(item.proof?{pencocokan:item.proof}:{})});
   if(entry.pages.length===1 && type) entry.cap.konteks.jenisSpt=type;
   else if(entry.cap.konteks.jenisSpt!==type) delete entry.cap.konteks.jenisSpt;
+  return entry;
 }

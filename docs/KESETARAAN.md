@@ -1,6 +1,17 @@
 # Matriks kesetaraan terhadap VERITAX v1.32.0
 
-Prarilis 0.12.0, 19 November 2026 WIB. Penarik dan pemutar masih memiliki perbedaan dengan VERITAX. **Terverifikasi** berlaku untuk perilaku dan masukan yang disebutkan. **Berbeda** berarti ada selisih yang telah diketahui. **Belum teruji** berarti bukti pembandingan belum tersedia.
+Prarilis 0.13.0, 19 November 2026 WIB. Penarik dan pemutar masih memiliki perbedaan dengan VERITAX. **Terverifikasi** berlaku untuk perilaku dan masukan yang disebutkan. **Berbeda** berarti ada selisih yang telah diketahui. **Belum teruji** berarti bukti pembandingan belum tersedia.
+
+## Hasil prarilis 0.13.0
+
+| Alur | Bukti pada contoh fiktif | Batas |
+| --- | --- | --- |
+| Penarik satu NPWP | Setelah menutup sesi, penarik dapat memulihkan dua bagian lengkap dari hasil lama dan melanjutkan sebuah lampiran dua halaman. Versi pembetulan, penugasan dan identitas sumber diperiksa sebelum penggabungan. [Uji penarik](../tests/spt-multi-browser.mjs) | Pembacaan ulang langsung di intranet masih perlu diuji. Catatan lama tanpa identitas bagian perlu dicocokkan pada hasil asal. |
+| TL · Temuan berbukti langsung dan sanksi | Pada contoh Badan, 16 peristiwa pelaporan, setoran atau STP cocok menurut jenis, masa dan kategori. Dari 13 perhitungan bunga setoran, 12 cocok sampai rupiah. [Uji bukti dan alokasi](../tests/direct-findings.test.mjs) | Satu nilai bunga berbeda karena alokasi setoran. Dua saldo dan satu pembanding kredit perlu bukti tambahan sebelum dipakai untuk menetapkan tagihan. |
+| TI · Temuan indikatif | Enam dasar dan enam pokok skenario cocok. Empat nilai bunga yang memiliki bukti masa cocok sampai rupiah pada dua tanggal rencana. Dua nilai awal B.7 dan pembanding ketetapan ditampilkan terpisah. [Uji indikasi](../tests/indicative-findings.test.mjs) | Selisih tahunan pada biaya pegawai dan sewa belum menunjukkan masa bunga. Acuan bunga piutang afiliasi perlu dipilih dan dicatat petugas. |
+| TS · Temuan sementara | Keenam pasangan angka SPT dan pembanding beserta selisih aritmetis cocok di Excel untuk contoh Badan. Jika selisih rekap B sudah tercantum pada rincian B.7, rekap memakai kolom terpisah. [Uji layar dan Excel TS](../tests/temporary-findings-browser.mjs) | Dari 18 butir langsung Studio, Versi 2 menyajikan 17 sebagai temuan langsung. Satu pembanding kredit gabungan memerlukan rincian Lampiran 3. Tanggal dan saldo yang masih perlu dicocokkan terlihat dalam bagian tersendiri. |
+
+Pada contoh Badan 2025, dengan tanggal rencana 18 November 2026, pembanding menghasilkan pokok Rp554.009.240, bunga Rp107.865.599 dan jumlah Rp661.874.839 di kedua pemutar. Hasil itu berlaku jika seluruh kredit pada induk dapat dibandingkan dengan bukti yang teramati dan jika proyeksi fiskalnya berlaku. Nilai ini berada di luar subtotal indikasi. [Uji alur telaah dan ekspor](../tests/finding-outputs-browser.mjs)
 
 ## Hasil prarilis 0.12.0
 
@@ -13,7 +24,7 @@ Prarilis 0.12.0, 19 November 2026 WIB. Penarik dan pemutar masih memiliki perbed
 
 Pada contoh Badan yang sama, perubahan dua isian KKP memengaruhi bagian hasil uji di TS. Di Studio, kedua perubahan itu tidak mengubah daftar temuan langsung (TL) atau indikatif (TI). Menggeser tanggal rencana mengubah sejumlah angka pada TL dan TI. Kesetaraan kedua laporan tersebut masih memerlukan perhitungan dan pembandingan tersendiri.
 
-Untuk PPh Badan, pada contoh tersebut angsuran di buku besar, bukti potong dalam negeri dan isian kredit luar negeri di induk dapat ditelusuri. Angka awal simulasi Studio dapat direproduksi secara aritmetis dengan memperlakukan kredit pada dua sumber yang berbeda itu sebagai pembanding. Paket belum membuktikan bahwa keduanya merujuk pada hak kredit yang sama. Versi 2 menampilkan komponen, asumsi dan rujukannya. Pokok tambahan tetap kosong sampai ada hasil uji saldo yang mendukungnya. [Uji komponen PPh Badan](../tests/assessment-company.test.mjs)
+Pada 0.12.0, label kredit di induk PPh Badan terlalu sempit. Panduan DJP menunjukkan bahwa isian induk dapat mencakup kredit luar negeri dan pemotongan atau pemungutan oleh pihak lain. Sejak 0.13.0, pemutar mencari rincian Lampiran 3 untuk memasangkan kredit sejenis. Jika rincian belum mendukungnya, perhitungan berbasis angka gabungan ditandai sebagai skenario. [Panduan DJP untuk SPT Badan](https://pajak.go.id/sites/default/files/2025-09/Pelaporan%20SPT%20Tahunan%20PPh%20Badan%20%28Jasa%29_0.pdf) · [Uji komponen PPh Badan](../tests/assessment-company.test.mjs)
 
 ## Hasil prarilis 0.11.0
 

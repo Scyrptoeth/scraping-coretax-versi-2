@@ -1,4 +1,5 @@
 import {rateForMonth} from './rate-updates.js';
+import {markEdit} from './team-work.js';
 import {worksheet} from './model.js';
 import {findingsFor,findingKey,reviewOptions} from './findings.js';
 import {box,button,card,dataTable,el,exportSheets,field,select,showDialog} from './ui.js';
@@ -188,10 +189,19 @@ function editCase(state,work,index){
   };
   draw();showDialog(old?'Ubah masa simulasi':'Tambah masa simulasi',form);
 }
+export function assessmentDateField(work,year,repaint){
+  const date=textInput('date',work.simulation?.end||'');
+  date.onchange=()=>{
+    if(!date.validity.valid)return;
+    const previous=validateSimulation(work.simulation,year);
+    const next=validateSimulation({...previous,end:date.value},year);
+    work.simulation=next;markEdit(work,'simulation','sim',previous,next);repaint();
+  };
+  return field('Tanggal rencana ketetapan',date);
+}
 export function renderSanksi(target,state,work){
   const wp=state.pkg.manifest.wp;
-  const sim=work.simulation,date=textInput('date',sim.end);
-  date.onchange=()=>{sim.end=date.value;state.repaint();};
+  const sim=work.simulation;
   const tables=simulationTables(sim);
   const formatNumber=new Intl.NumberFormat('id-ID',{maximumFractionDigits:4}).format;
   const download=button('Excel simulasi',()=>{
@@ -201,7 +211,7 @@ export function renderSanksi(target,state,work){
   download.disabled=!sim.cases.length;
   target.append(card('Simulasi SKPKB',
     el('p','Gunakan pokok yang sudah diuji untuk satu ketetapan per jenis pajak dan masa. Model ini mencakup bunga yang mulai setelah masa atau tahun pajak berakhir.'),
-    box('toolbar',field('Tanggal rencana ketetapan',date),button('Tambah masa simulasi',()=>editCase(state,work,-1)),download),
+    box('toolbar',assessmentDateField(work,state.year,state.repaint),button('Tambah masa simulasi',()=>editCase(state,work,-1)),download),
     el('p','Hasil adalah perkiraan sebelum pembulatan rupiah. Dasar bunga dan dasar kenaikan diisi terpisah. Jika kedua sanksi berlaku untuk satu ketetapan PPN atau PPnBM, simulasi memilih nilai tertinggi.','hint')),
     card('Ringkasan per jenis pajak',dataTable(tables.summary,{wp,name:'Ringkasan simulasi',formatNumber,empty:'Tambahkan masa untuk mulai menghitung.'})),
     card('Penghitungan per masa',dataTable(tables.detail,{wp,name:'Penghitungan sanksi',formatNumber,openRow:r=>editCase(state,work,tables.detail.indexOf(r))})));

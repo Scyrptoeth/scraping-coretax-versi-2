@@ -1,55 +1,17 @@
-import {checkedCompanyEntry,checkedCompanyTable} from './kkp-company-annexes.js';
+import {fiscalComparisons} from './fiscal-comparisons.js';
+export {fiscalComparisons} from './fiscal-comparisons.js';
 import {findingFromWorkRow,findingKey,findingsFor,reviewOptions,scopeDefaults,scopeOptions} from './findings.js';
-import {sourceAmount} from './withholding-forms.js';
 import {installmentComparison} from './temporary-findings-installments.js';
+import {companyAssessment} from './assessment-company.js';
+import {directCreditFindings} from './direct-finding-credits.js';
 
 const columns = ['Indeks','Jenis pajak','Masa/Tahun','Pos atau objek','Menurut SPT/WP','Pembanding KKP tanpa SPT',
   'Pembanding otomatis','Menurut petugas','Koreksi berbukti','Selisih indikatif','Status','Sumber dan bukti','Keterangan'];
 const factsColumns = ['Jenis pajak','Masa/Tahun','Uraian','Potensi pokok (Rp)','Sumber dan bukti'];
-const fiscalParts = ['l9-1-1','l9-1-2','l9-1-3','l9-1-4','l9-1-5','l9-2-1','l9-2-2','l9-3-1','l9-3-2','l9-3-3','l9-3-4','l9-3-5'];
 const finite = Number.isFinite;
 const active = (work, finding) => !work.dispositions?.[findingKey(finding)] || work.dispositions[findingKey(finding)] === reviewOptions[0];
 const money = n => new Intl.NumberFormat('id-ID',{maximumFractionDigits:8}).format(n);
 
-export function fiscalComparisons(pkg,year,index) {
-  const output=new Map();
-  const group=index.groups.find(g=>g.key==='BADAN/B.7');
-  const parents=pkg.forms.filter(f=>f.type==='BADAN'&&f.period===year);
-  if(!group||!parents.length)return output;
-  const last=Math.max(...parents.map(f=>f.version)),forms=parents.filter(f=>f.version===last);
-  if(forms.length!==1||!checkedCompanyEntry(pkg,forms[0],'induk'))return output;
-  const form=forms[0];
-  const control=index.groups.find(g=>g.key==='BADAN/B')?.support?.find(r=>r.Kode==='A4020');
-  if(!control||control.Satuan==='Bertentangan atau tidak dikenali')return output;
-  function account(code) {
-    const line=group.lines.find(l=>l.id.endsWith('/account-'+code));
-    const cost=group.support.find(s=>s.Uraian==='Biaya komersial · '+code);
-    return line && !line.partial && finite(line.amount) && finite(cost?.Nilai) && cost.Nilai>=0 ? {line,cost} : null;
-  }
-  // Only compare like-for-like annual inputs. Missing, filtered or ambiguous schedules cannot establish a zero.
-  const depreciation=account('5314');
-  if(depreciation&&!Array.from(form.parts.keys()).some(k=>/^l9-\d/.test(k)&&!fiscalParts.includes(k))) {
-    const tables=fiscalParts.map(part=>checkedCompanyTable(pkg,form,part));
-    if(tables.every(Array.isArray)) {
-      const values=tables.flat().map(r=>sourceAmount(r?.FiscalYearValue));
-      if(values.every(v=>finite(v)&&v>=0)) {
-        const {line,cost}=depreciation;
-        const value=Math.max(0,cost.Nilai-values.reduce((sum,n)=>sum+n,0));
-        if(finite(value)&&value!==line.amount)output.set(line.id,{value,
-          source:[cost.Sumber,...fiscalParts.map(k=>form.parts.get(k).path)].join(' · '),
-          note:'Biaya penyusutan dan amortisasi pada L1 dikurangi jumlah nilai fiskal tahun berjalan pada rincian L9, dibatasi paling rendah nol. Cocokkan aset, masa manfaat, dan metode dengan bukti.'});
-      }
-    }
-  }
-  const entertainment=account('5321'),list=checkedCompanyTable(pkg,form,'l11a-2');
-  if(entertainment&&list?.length===0) {
-    const {line,cost}=entertainment;
-    if(cost.Nilai!==line.amount)output.set(line.id,{value:cost.Nilai,
-      source:cost.Sumber+' · '+form.parts.get('l11a-2').path,
-      note:'Daftar nominatif L11A tabel 2 yang lengkap pada paket berisi nol baris. Biaya jamuan menjadi pembanding awal. Periksa rincian biaya, tujuan usaha, dan bukti pendukung.'});
-  }
-  return output;
-}
 
 // The Studio annual VAT comparison carries untested months at their declared value.
 // Show this projection once alongside the tested month, never as a second correction.
@@ -79,10 +41,10 @@ function fiscalSummary(index,lines,year) {
   if(!finite(projection)||projection===base.Nilai)return null;
   return {id:'ringkasan-B.7',values:['B','PPh Badan',year,'Jumlah koreksi fiskal positif dengan rincian B.7',
     base.Nilai,null,projection,null,null,null,'Rekap perbandingan B.7',base.Sumber,
-    'Jumlah menurut SPT disesuaikan dengan selisih pada baris B.7 yang ditampilkan. Pos lainnya memakai nilai SPT. Selisih dicatat satu kali pada rincian.']};
+    'Jumlah menurut SPT disesuaikan dengan selisih pada baris B.7 yang ditampilkan. Pos lainnya memakai nilai SPT. Selisih rekap sudah tercakup pada rincian.',projection-base.Nilai]};
 }
 
-export function temporaryFindings(pkg,year,work,index) {
+export function temporaryFindings(pkg,year,work,index,reports) {
   year=String(year);
   const workRows=work.rows??[],byLine=new Map(workRows.filter(r=>r.kkpLine).map(r=>[r.kkpLine,r]));
   const scope=work.scopes?.kkp??scopeDefaults.kkp;
@@ -124,12 +86,39 @@ export function temporaryFindings(pkg,year,work,index) {
   if(vat)vat.values[12]=[vat.values[12],vatAnnualContext(index,validReviews,year)].filter(Boolean).join(' ');
   const fiscal=fiscalSummary(index,lines,year);
   if(fiscal)lines.unshift(fiscal);
-  const facts=findingsFor(pkg,year,workRows.filter(r=>!r.kkpLine)).filter(f=>active(work,f));
-  const section=(title,findings)=>({title,columns:factsColumns,rows:findings.map(f=>[f.kind,f.period,f.detail,finite(f.amount)?f.amount:null,f.source])});
+  if(index.groups.some(g=>g.key==='BADAN/B'&&g.lines.some(l=>l.id?.endsWith('#MainFormData.UnderpaymentIncomeTax')))){
+    const projection=companyAssessment(pkg,year,work,index),c=projection?.components;
+    if(c&&finite(c.projectedTax)&&c.declaredTax!==c.projectedTax)lines.push({values:['B','PPh Badan',year,
+      'Proyeksi PPh terutang melalui B.7',c.declaredTax,null,c.projectedTax,null,null,c.projectedTax-c.declaredTax,'Rekap skenario B.7',
+      'Induk SPT · IncomeTaxInAYear dan rincian koreksi fiskal positif',projection.notes[0]]});
+    const {scenario}=directCreditFindings(pkg,year);
+    if(scenario&&scenario.creditReported!==scenario.creditObserved)lines.push({values:['B','PPh Badan',year,'Kredit pajak dan bukti PPh 22/23 yang teramati',
+      scenario.creditReported,null,scenario.creditObserved,null,null,scenario.creditObserved-scenario.creditReported,
+      scenario.creditComparable?'Pembanding Lampiran 3':'Skenario kredit pada induk',scenario.source,scenario.assumption]});
+  }
+  const legacy=findingsFor(pkg,year,workRows.filter(r=>!r.kkpLine));
+  const anchor=f=>f.formKey?'form/'+f.formKey:f.ledgerId?'ledger/'+f.ledgerId:null;
+  const detailed=[...(reports?.tl.facts||[]),...(reports?.ti.facts||[])];
+  const linked=new Set(detailed.map(anchor).filter(Boolean));
+  const closed=new Set(legacy.filter(f=>!active(work,f)).map(anchor).filter(Boolean));
+  const unmatched=legacy.filter(f=>!linked.has(anchor(f))&&active(work,f));
+  // The older filing list uses the original due date even when a holiday or relief applies.
+  const needsSourceReview=f=>Boolean(reports?.tl&&f.status==='berbukti'&&anchor(f));
+  const observations=unmatched.filter(needsSourceReview);
+  const facts=[...detailed.filter(f=>!closed.has(anchor(f))&&active(work,f)),...unmatched.filter(f=>!needsSourceReview(f))];
+  function section(title,findings){
+    const columns=[...factsColumns],extended=findings.some(f=>f.sanctionAmount!=null||f.interest!=null);
+    if(extended)columns.push('Sanksi atau bunga skenario (Rp)');
+    return {title,columns,rows:findings.map(f=>[f.kind,f.period,f.detail,finite(f.amount)?f.amount:null,f.source,
+      ...(extended?[f.sanctionAmount??f.interest??null]:[])])};
+  }
   const direct=section('Temuan berbukti langsung',facts.filter(f=>f.status==='berbukti'));
   const indicative=section('Temuan indikatif',facts.filter(f=>f.status==='indikatif'));
-  const tables=[{title:'Perbandingan angka dan hasil uji indeks',columns,rows:lines.map(r=>r.values)},direct];
+  const comparisonColumns=fiscal?[...columns,'Selisih rekap yang sudah tercakup pada rincian']:columns;
+  const tables=[{title:'Perbandingan angka dan hasil uji indeks',columns:comparisonColumns,rows:lines.map(r=>r.values)},direct];
   if(scope==='all')tables.push(indicative);
+  if(observations.length)tables.push({title:'Tanggal dan saldo sumber yang perlu dicocokkan',
+    columns:['Jenis pajak','Masa/Tahun','Catatan pada sumber','Rujukan'],rows:observations.map(f=>[f.kind,f.period,f.detail,f.source])});
   const summary=[scopeOptions.find(([id])=>id===scope)[1],
     counts.tested+' butir angka diuji, '+counts.untested+' belum diuji. '+counts.unavailable+' butir memiliki sumber sebagian atau angka pembanding yang belum tersedia.',
     'Kolom koreksi berbukti berisi selisih yang didukung hasil uji dan rujukan dokumen. Nilai kosong menandakan angka belum tersedia atau belum ditetapkan.'];
@@ -137,8 +126,8 @@ export function temporaryFindings(pkg,year,work,index) {
   return {year,scope,counts,tables,summary};
 }
 
-export function temporaryFindingsSheet(pkg,year,work,index) {
-  const report=temporaryFindings(pkg,year,work,index),wp=pkg.manifest?.wp||{};
+export function temporaryFindingsSheet(pkg,year,work,index,reports) {
+  const report=temporaryFindings(pkg,year,work,index,reports),wp=pkg.manifest?.wp||{};
   const rows=[['Daftar temuan sementara'],['Wajib Pajak',wp.nama,wp.npwp],['Tahun pajak',report.year],...report.summary.map(s=>[s])];
   for(const table of report.tables)rows.push([],[table.title],table.columns,...(table.rows.length?table.rows:[['Belum ada butir.']]));
   return {name:'Daftar TS',rows};

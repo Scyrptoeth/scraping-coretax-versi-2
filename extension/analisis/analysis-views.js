@@ -5,6 +5,7 @@ import {renderComparison,renderFinancialRatios} from './comparison.js';
 import {renderAdvanced} from './advanced-dashboard.js';
 import {combinedLedger} from './ledger-table.js';
 import {dashboardMetrics} from './dashboard-metrics.js';
+import {dashboardIndicationReview} from './work.js';
 import {exportControls,financialPosition,indicativeDates,openForm,summaryPanels} from './spt-forms.js';
 
 function yearPicker(state,show) {
@@ -74,7 +75,7 @@ export function renderDashboard(target,state) {
     }
     target.append(card('Butir yang dapat ditelusuri',el('p','Pemeriksaan ini mencakup pembetulan, tanggal pelaporan pada paket, dan kelengkapan berkas.','hint'),dataTable(issuesFound,{wp,name:'Butir',filename:'Butir-'+state.year})));
   } else if(mode==='butir'){
-    target.append(card('Butir dari data sumber',dataTable(issuesFound,{wp,name:'Butir',filename:'Butir-'+state.year})));
+    target.append(card('Butir dari data sumber',dataTable(issuesFound,{wp,name:'Butir',filename:'Butir-'+state.year})),dashboardIndicationReview(state));
   } else if(mode==='ppn'){
     target.append(card('Induk PPN per masa',dataTable(facts.filter(r=>r.Jenis==='PPN'),{wp,name:'PPN'})),card('Lawan transaksi · lampiran A2 dan B2',dataTable(counterparties(pkg,state.year),{wp,name:'Lawan transaksi'})));
   } else if(mode==='potput'){

@@ -20,7 +20,7 @@ function sourceFindings(pkg, year) {
       const fromForm = form.reportSource && !form.reportSource.startsWith('spt/daftar');
       const reported = form.reportDate ?? submittedDay(form.meta);
       const due = form.dueDate ?? sptDay(form.meta?.ExpectedReturnDate);
-      output.push({...emptyFinding(),status:'berbukti',kind,period:form.period,
+      output.push({...emptyFinding(),status:'berbukti',kind,period:form.period,formKey:form.key,
         detail:'Tanggal lapor '+reported+' melewati tanggal batas '+due+(fromForm?' pada metadata formulir SPT.':' pada daftar SPT.')+' Periksa relaksasi dan keadaan WP sebelum mengusulkan tindak lanjut.',
         source:fromForm ? form.reportSource : 'Daftar SPT · '+form.key});
     }
@@ -59,7 +59,7 @@ function sourceFindings(pkg, year) {
       if(ledgerRefs.has(row.RecordId))continue;
       ledgerRefs.add(row.RecordId);
       output.push({...emptyFinding(),kind:String(row.RevenueCode || 'Buku besar'),period,
-        status:'berbukti',source:entry.path+' · '+row.RecordId,
+        status:'berbukti',source:entry.path+' · '+row.RecordId,ledgerId:row.RecordId,
         detail:'Buku besar mencatat sisa kewajiban Rp'+new Intl.NumberFormat('id-ID').format(-row.AmountLeft)+
           ' pada referensi '+(row.ReferenceNumber||row.RecordId)+'. Sisa yang telah dibukukan ditampilkan terpisah dari potensi pokok baru.'});
     }

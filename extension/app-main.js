@@ -11,6 +11,7 @@ import {collectSptQueue,sptDirectory} from './app-spt-directory.js';
 import {findSubmittedTab,readSubmittedPreview} from './app-spt-preview.js';
 import {previewKind,sameScope,wholePreview,coversRows,savedPages,removePreview,previewWriter} from './app-spt-progress.js';
 import {openSourcePreview} from './app-open-sources.js';
+import {resultAssignment,sameSptAssignment,verifiedIndexItems,recoverSptResult,remainingSptChecks,readPreviousSptPackage} from './app-spt-results.js';
 
 const $ = id => document.getElementById(id);
 const coretax = 'https://coretax.intranet.pajak.go.id';
@@ -157,7 +158,7 @@ function addEntry(info,page,name,origin) {
     ['masapajak','periodepajak','taxperiod','taxperiodcode','tahunpajak','taxyear'].includes(key.toLowerCase().replace(/[^a-z]/g,'')) && value!=null && String(value).trim()!==''))) {
     throw Error('Sumber ini memuat masa atau tahun pajak. Lepaskan pilihan tanpa masa dan cocokkan periode.');
   }
-  queue.push({...info,page,name,origin,...reportSource(page),id:crypto.randomUUID()});
+  queue.push({...info,...(info.detailProof?{sptAssignment:info.sptAssignment||previewScope()}:{}),page,name,origin,...reportSource(page),id:crypto.randomUUID()});
 }
 function renderQueue() {
   $('ids').readOnly = queue.length>0 || busy;
@@ -296,6 +297,8 @@ function prepare({preview=false,allowEmpty=false}={}) {
   const inPeriod=matching.filter(e=>e.period===range || (e.source==='tabelumum' && e.period===null));
   if(inPeriod.some(e=>e.previewBinding && !sameScope(e.previewBinding.scope,previewScope())))
     throw Error('Penugasan atau pilihan SPT berbeda dari pratinjau tersimpan yang ada di antrean. Pulihkan pilihan semula atau keluarkan daftar itu.');
+  if(inPeriod.some(e=>e.sptAssignment && !sameSptAssignment(e.sptAssignment,previewScope())))
+    throw Error('Penugasan untuk bagian SPT di antrean berbeda. Pulihkan penugasan semula atau keluarkan sumber terkait.');
   const relevant=inPeriod.map(e=>selectSptListRows(e,types)).filter(Boolean);
   if (!allowEmpty && !relevant.length && !(preview && inPeriod.some(item=>isSptList(item.source)))) {
     if(inPeriod.length) throw Error('Tidak ada baris untuk jenis SPT terpilih. Pilih semua jenis untuk menyertakan baris yang belum dikenali.');
@@ -322,6 +325,7 @@ function showPreview() {
   box.append(details);
   if(inPeriod.some(item=>isSptList(item.source))) {
     const planned=planSptDetails({wp:plan.wp,period:meta.opsi.periode,types:meta.opsi.jenisSpt,items:inPeriod});
+    if(planned.documents.length)showPreviousSpt(box,inPeriod);
     showSptPlan(box,planned);
   }
   const auto=inPeriod.find(e=>e.proof?.daftarPratinjau)?.proof.daftarPratinjau;
@@ -340,6 +344,77 @@ function describeSubmitted(report){
 function previewScope(){
   return {wp:captureOwner(),period:period(),types:checked('forms').join('|'),role:val('role'),basis:val('basis'),letter:val('letter'),date:val('date'),
     officer:val('officer'),nip:val('nip')};
+}
+function showPreviousSpt(box,items){
+  if(!ext || !checked('sources').includes('sptisi') || !verifiedIndexItems(items).length)return;
+  const scope=previewScope();
+  const records=stored.filter(r=>r.kind==='result' && sameSptAssignment(resultAssignment(r.meta),scope) &&
+    r.entries?.some(e=>e.cap?.sumber==='sptisi' || e.cap?.bagianSptTeramati?.length)).sort((a,b)=>b.when-a.when);
+  if(items.some(e=>e.sptResultId)){
+    const note=document.createElement('p');note.textContent='Bagian dari hasil tersimpan sudah dicocokkan dengan daftar untuk penugasan ini.'+
+      (items.some(e=>e.sptLegacyNotes)?' Ada catatan lama tanpa identitas bagian. Periksa catatan pada hasil sebelumnya dan pilih versi yang perlu dibaca kembali.':'');
+    box.append(note);return;
+  }
+  const note=document.createElement('p');note.textContent='Gunakan hasil penugasan ini untuk melanjutkan pembacaan. Penarik mencocokkan versi dengan daftar Coretax yang terbuka, lalu memeriksa cakupan setiap bagian.';
+  async function loadPrevious(restore,pick,load){
+    const selected=pick(),status=$('preview-read-status'),actions=$('preview-read-actions');
+    restore.disabled=true;autoSpt=true;jobButtons();
+    function check(){
+      if(!restore.isConnected || !sameScope(scope,previewScope()) || !$('consent').checked || !checked('sources').includes('sptisi') ||
+          pick()!==selected || busy || paging || batch.active || otherSources.active)throw Error('Pilihan atau penugasan berubah. Buka kembali Pratinjau WP.');
+    }
+    const checkpoint=sptPlayback(actions,status,check);
+    try{
+      await checkpoint();const record=await load(selected);await checkpoint();
+      if(!record || !sameSptAssignment(resultAssignment(record.meta),scope))throw Error('Hasil yang dipilih sudah tidak tersedia untuk penugasan ini.');
+      const tab=await findSubmittedTab(ext,scope.wp,chosenPreviewTab,checkpoint);
+      if(!tab)throw Error('Buka daftar SPT Dilaporkan untuk WP yang dipilih.');
+      const limit=Number(val('preview-index-limit'));if(!Number.isInteger(limit) || limit<1 || limit>100)throw Error('Pilih batas 1–100 halaman untuk pratinjau daftar.');
+      const live=[];
+      const report=await readSubmittedPreview(ext,tab,scope.wp,{checkpoint,limit,onPage(data){
+        live.push({source:'sptdaftar',wp:scope.wp,page:{Payload:{Data:data.rows}}});
+        status.textContent=live.length+' halaman daftar diperiksa untuk mencocokkan bagian SPT sebelumnya.';
+      }});
+      await checkpoint();await sptDirectory(ext,tab.id,scope.wp,{previewIndex:true,expectedUrl:tab.url});await checkpoint();
+      const {inPeriod,meta}=prepare({preview:true});
+      if(inPeriod.some(e=>e.sptResultId))throw Error('Bagian hasil sebelumnya sudah ditambahkan pada antrean.');
+      const index=verifiedIndexItems(inPeriod)[0];
+      if(!index)throw Error('Tambahkan kembali daftar SPT Dilaporkan yang telah dicocokkan dengan WP.');
+      const {pages,observed,legacyNotes,skippedFiles}=recoverSptResult(record,scope,meta.opsi,inPeriod,live);
+      if(!pages.length && !observed.length)throw Error('Belum ada bagian dari hasil tersebut yang dapat dicocokkan dengan versi pada daftar yang terbaca.');
+      index.sptResultId=record.id;index.sptAssignment=scope;index.sptLegacyNotes=legacyNotes;
+      (index.sptObservedParts ||= []).push(...observed);
+      for(const page of pages)queue.push(page);
+      renderQueue();showPreview();
+      status.textContent=pages.length+' halaman dari hasil sebelumnya masuk antrean. '+report.pages+' halaman daftar diperiksa.'+
+        (skippedFiles?' '+skippedFiles+' berkas rincian dari hasil lama tidak digunakan.':'')+
+        (report.note?' '+report.note:'')+' Buka rincian versi untuk mengambil bagian yang masih diperlukan.';
+    }catch(e){status.textContent=e.message;throw e;}
+    finally{restore.disabled=false;actions.replaceChildren();autoSpt=false;jobButtons();}
+  }
+  function control(text,pick,load){
+    const restore=button(text,()=>withPreviewLock(()=>loadPrevious(restore,pick,load)));
+    return restore;
+  }
+  if(records.length){
+    const select=document.createElement('select'),label=document.createElement('label');label.append('Hasil tarikan sebelumnya',select);
+    choices(select,records.map(r=>[r.id,formatDate(r.when)+' · '+r.entries.length+' berkas']));
+    box.append(note,label,control('Gunakan bagian SPT dari hasil tersimpan',()=>select.value,async id=>(await vault.items()).find(r=>r.id===id && r.kind==='result')));
+  }
+  const panel=disclosure('Gunakan paket SPT dari berkas');
+  const choose=document.createElement('input');choose.type='file';choose.accept='.zip,.sedotax';
+  const fileLabel=document.createElement('label');fileLabel.append('Paket Versi 2 untuk penugasan ini',choose);
+  const secret=document.createElement('input');secret.type='password';secret.autocomplete='off';
+  const secretLabel=document.createElement('label');secretLabel.append('Kata sandi paket',secret);secretLabel.hidden=true;
+  choose.onchange=()=>{secret.value='';secretLabel.hidden=!choose.files[0]?.name.toLowerCase().endsWith('.sedotax');};
+  const use=control('Gunakan bagian SPT dari berkas',()=>choose.files[0],async file=>{
+    if(!file)throw Error('Pilih berkas paket terlebih dahulu.');
+    try{return await readPreviousSptPackage(file,secret.value,scope);}
+    catch(e){if(e.code==='PASSWORD_REQUIRED' || e.code==='DECRYPT_FAILED'){secretLabel.hidden=false;secret.focus();}throw e;}
+    finally{secret.value='';}
+  });
+  if(!records.length)panel.append(note);
+  panel.append(fileLabel,secretLabel,use);box.append(panel);
 }
 function renderPreviewRecovery(){
   const box=$('preview-recovery');box.replaceChildren();
@@ -387,6 +462,9 @@ function stagePreview(wp,range,fresh,report,old,binding=null){
   for(const prior of old){
     if(prior.sptObservedParts)(first.sptObservedParts ||= []).push(...prior.sptObservedParts);
     if(prior.sptAutoChecks)(first.sptAutoChecks ||= []).push(...prior.sptAutoChecks);
+    if(prior.sptResultId)first.sptResultId=prior.sptResultId;
+    if(prior.sptLegacyNotes)first.sptLegacyNotes=prior.sptLegacyNotes;
+    if(prior.sptAssignment)first.sptAssignment=prior.sptAssignment;
     queue.splice(queue.indexOf(prior),1);
   }
   return true;
@@ -586,8 +664,10 @@ function sptPageSink(doc,wp,range,status){
   let pages=0,previous=null,first=null,reused=0;
   const observed=new Set(),issues=[];
   const index=queue.find(e=>isSptList(e.source) && e.wp===wp && e.period===range);
+  const assignment=previewScope();
   function remember(part,failed){
     if(!index || !part)return;
+    index.sptAssignment=assignment;
     const notes=index.sptObservedParts ||= [];
     const existing=notes.find(n=>n.docKey===doc.key && n.cap.konteks.spt.recordId===doc.recordId && n.cap.konteks.spt.nomor===doc.receipt && n.cap.konteks.bagian===part);
     if(existing){if(failed)existing.failed=true;return;}
@@ -601,7 +681,7 @@ function sptPageSink(doc,wp,range,status){
       const proof={urutan:{id:result.pass,halaman:result.page},columns:result.columns,
         morePagesAvailable:result.paging==='next',...(result.zero?{nolPadaSumber:true}:{}),...(result.page===1 && result.atStart?{awalTampilan:true}:{}),
         ...(result.filtered?{filterTampilan:true}:{})};
-      const info={wp,source:'sptisi',spt:doc.type,period:range,detailProof:sptProof(doc,result),proof};
+      const info={wp,source:'sptisi',spt:doc.type,period:range,sptAssignment:assignment,detailProof:sptProof(doc,result),proof};
       const page={Payload:{Data:result.rows,...(result.zero?{TotalRecords:0}:{})}};
       addEntry(info,page,result.label+' · halaman pengambilan '+result.page,'Tabel tampak');
       const entry=queue.at(-1);first ||= entry;
@@ -810,7 +890,13 @@ async function run(resume) {
           const issue={tingkat:'TINGGI',pesan:sources[source.source]+' melaporkan '+reported+' baris. Yang diterima '+received+'.'};
           checks.push(issue); message(plan.wp+' · '+issue.pesan,true);
         }
-        if(!sptTracked)appendPackageEntry(grouped,source,plan.wp);
+        if(!sptTracked){
+          const entry=appendPackageEntry(grouped,source,plan.wp);
+          if(source.source==='sptdaftar' && source.sptObservedParts?.length){
+            const observations=source.sptObservedParts.filter(n=>job.meta.opsi.jenisSpt.includes(n.cap.konteks.spt.jenis));
+            if(observations.length)(entry.cap.bagianSptTeramati ||= []).push(...observations);
+          }
+        }
         await sleep(0);
       }
       if(stop) {
@@ -818,6 +904,9 @@ async function run(resume) {
         $('status').textContent='Antrean NPWP '+plan.wp+' tersimpan dan dapat dilanjutkan.'; return;
       }
       finishSptSources(sections,grouped,checks,job.meta.opsi.lewatiDuplikat);
+      checks.push(...remainingSptChecks(plan.entries,plan.wp,job.meta.opsi));
+      if(plan.entries.some(e=>e.sptLegacyNotes))checks.push({tingkat:'INFO',kode:'SPT-CATATAN-LAMA',
+        pesan:'Hasil sebelumnya memuat catatan pengambilan SPT tanpa identitas bagian terstruktur. Periksa catatan pada hasil semula.'});
       if(!grouped.size)throw Error('Antrean ini tidak memuat baris untuk jenis SPT yang dipilih. Ambil kembali daftar dengan pilihan jenis yang sesuai.');
       const entries=[...grouped.values()], name=taxpayerName(plan.entries);
       const meta={...metaForSelection(job.meta,plan.entries),wp:{npwp:plan.wp,...(name?{nama:name}:{})},dibuat:new Date().toISOString(),cek:checks};

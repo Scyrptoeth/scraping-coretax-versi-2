@@ -1,5 +1,9 @@
 # Riwayat Scraping Coretax Versi 2
 
+## 19 November 2026 WIB · Prarilis 0.13.0
+
+Penarik dapat melanjutkan induk dan lampiran SPT dari hasil sebelumnya untuk satu NPWP. Di pemutar, petugas dapat membuka laporan temuan langsung dan indikatif, menelusuri bukti, menyimpan telaah, dan mengekspor laporan ke Excel atau cetak. Simulasi membedakan kredit yang telah dipasangkan dengan perkiraan yang masih memerlukan rincian Lampiran 3. [Hasil perbandingan dengan Studio](KESETARAAN.md#hasil-prarilis-0130)
+
 ## 19 November 2026 WIB · Prarilis 0.12.0
 
 Penarik dapat mencocokkan tabel profil, registrasi, dokumen dan buku besar pada tab yang sudah terbuka untuk satu NPWP. Di **KKP → Keluaran**, tersedia permintaan dokumen dan lingkup SP2, daftar temuan sementara serta simulasi ketetapan dengan penelusuran kompensasi PPN antarmasa. [Uji pembanding dan selisih dengan Studio](KESETARAAN.md#hasil-prarilis-0120)

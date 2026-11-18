@@ -1,5 +1,6 @@
 import {monthlyAmounts} from './annual-vat.js';
 import {companyAssessment} from './assessment-company.js';
+import {companyCreditScenario} from './company-credit-scenario.js';
 import {findingFromWorkRow,findingKey} from './findings.js';
 import {rowsOf,sptDay,worksheet} from './model.js';
 import {listedReturns,revisionProblem,sourceProblem,usesOtherCurrency} from './return-source.js';
@@ -147,7 +148,7 @@ const companyFields=[
   ['projectedTax','Proyeksi PPh terutang jika asumsi pada catatan terpenuhi','B.7 dan induk SPT'],
   ['observedInstallments','Setoran angsuran yang tercatat','Buku besar PPh 25'],
   ['observedWithholding','Potongan PPh dalam negeri yang tercatat','Bukti potong diterima'],
-  ['overseasField','Kredit luar negeri yang tercantum','Induk SPT · TotalIncomeTaxOverseas']
+  ['overseasField','Kredit pajak yang tercantum pada induk','Induk SPT · TotalIncomeTaxOverseas']
 ];
 function annualBasis(pkg,line,group){
   if(line.withoutReturn)return {period:null,issue:''};
@@ -215,6 +216,11 @@ export function assessmentOutput(pkg,year,work,index){
       for(const [key,label,source] of companyFields){
         const value=derived.components?.[key];
         if(Number.isFinite(value))comparison.push({Komponen:label,'Angka dalam satuan sumber':value,Rujukan:source});
+      }
+      const scenario=companyCreditScenario(pkg,year,work,index,derived);
+      if(scenario){
+        for(const [label,value] of [['Pokok',scenario.principal],['Bunga',scenario.interest],['Jumlah',scenario.total]])
+          comparison.push({Komponen:label+' · skenario dengan asumsi kredit','Angka dalam satuan sumber':value,Rujukan:scenario.assumption});
       }
     }
   }

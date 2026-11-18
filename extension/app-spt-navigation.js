@@ -1,5 +1,5 @@
 import {visibleTables,normalizeId} from './app-data.js';
-import {planSptDetails} from './app-spt-plan.js';
+import {planSptDetails,matchSptVersions} from './app-spt-plan.js';
 
 // Chrome serializes this function into the tab's isolated world.
 export function readSptView(request = {}) {
@@ -197,10 +197,8 @@ export function readSptView(request = {}) {
 
 function matchedDocument(row,wp,period,doc) {
   const item={wp,source:'sptdaftar',page:{Payload:{Data:[row]}}};
-  const match=planSptDetails({wp,period,types:[doc.type],items:[item]}).documents[0];
-  if (!match || match.key!==doc.key || (doc.recordId && match.recordId && doc.recordId!==match.recordId) ||
-      (doc.receipt && match.receipt && doc.receipt!==match.receipt)) return null;
-  return (doc.recordId && match.recordId===doc.recordId) || (doc.receipt && match.receipt===doc.receipt) ? match : null;
+  const match=planSptDetails({wp,period,types:[doc.type],items:[item],strictReceipts:true}).documents[0];
+  return matchSptVersions(match,doc);
 }
 const wait = ms=>new Promise(resolve=>setTimeout(resolve,ms));
 export function sptNavigation({ext,wp,period,doc}) {

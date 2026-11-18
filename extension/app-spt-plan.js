@@ -55,7 +55,23 @@ function ownsRow(row, owner) {
   try { checkIdentity([row],owner); return true; }
   catch { return false; }
 }
-function readIndex(row, owner) {
+function combineReceiptFields(a,b){
+  if(Object.keys(a).some(k=>b[k] && a[k]!==b[k]))return null;
+  const fields={...a,...b};
+  if(new Set(Object.values(fields)).size>1 && (!fields.document || !fields.bps ||
+      fields.label && fields.label!==fields.document && fields.label!==fields.bps))return null;
+  return fields;
+}
+export function matchSptVersions(a,b){
+  if(!a || !b || a.key!==b.key || a.recordId && b.recordId && a.recordId!==b.recordId)return null;
+  const fieldsOf=d=>d.receiptFields || (d.receipt?{label:d.receipt}:{});
+  const fields=combineReceiptFields(fieldsOf(a),fieldsOf(b));
+  if(!fields)return null;
+  const sameRecord=Boolean(a.recordId && a.recordId===b.recordId && a.recordVerified!==false && b.recordVerified!==false);
+  if(!sameRecord && (new Set(Object.values(fields)).size>1 || !a.receipt || a.receipt!==b.receipt))return null;
+  return {...a,receiptFields:fields,recordVerified:sameRecord};
+}
+function readIndex(row, owner, strictReceipts) {
   const c = columns(row), type = listRowType(row);
   const typeKeys = ['returnsheettypecode','taxreturntypecode','jenisspt','jenissuratpemberitahuanpajak'];
   const declaredTypes = new Set(typeKeys.filter(k => c[k]).map(k => listRowType({[k]:c[k]}) || c[k]));
@@ -68,10 +84,18 @@ function readIndex(row, owner) {
     .filter(Boolean).map(revisionOf));
   const records = new Set([c.recordid,c.taxreturnrecordid,c.idrekamspt,c.idspt].map(referenceValue).filter(Boolean));
   const record = [...records][0] || '';
-  const receipt = [c.documentreceiptnumber,c.bpsno,c.nomorbuktitandaterima,c.nomorbuktipenerimaan,
-    c.nomortandaterima,c.nomorbpe,c.nomorbps].map(referenceValue).find(Boolean) || '';
-  const fingerprint = record || receipt ? keyOf(owner,form,period?.label || date,revision ?? amendment,record,receipt) : null;
-  return {type, period, revision, record, receipt, fingerprint,conflict:declaredTypes.size>1 || records.size>1 || revisions.size>1};
+  const receiptFields={};let refsConflict=false;
+  for(const [column,values] of [['document',[c.documentreceiptnumber,c.nomorpenerimaandokumen]],['bps',[c.bpsno,c.nomorbps]],
+    ['label',[c.nomorbuktitandaterima,c.nomorbuktipenerimaan,c.nomortandaterima,c.nomorbpe]]]){
+    const distinct=[...new Set(values.map(referenceValue).filter(Boolean))];
+    if(distinct.length)receiptFields[column]=distinct[0];
+    if(distinct.length>1)refsConflict=true;
+  }
+  if(!combineReceiptFields({},receiptFields) || !record && new Set(Object.values(receiptFields)).size>1)refsConflict=true;
+  const receipt=receiptFields.document || receiptFields.bps || receiptFields.label || '';
+  const fingerprint = record || receipt ? keyOf(owner,form,period?.label || date,revision ?? amendment,record,receiptFields) : null;
+  return {type, period, revision, record, receipt, receiptFields, fingerprint,
+    conflict:declaredTypes.size>1 || records.size>1 || strictReceipts && refsConflict || revisions.size>1};
 }
 function partEvidence(item, wp, failed, reusable=false) {
   if (item.source === 'sptisi') {
@@ -94,14 +118,26 @@ function partEvidence(item, wp, failed, reusable=false) {
   return {slot:keyOf(spt.jenis,period.label,revision),record:textValue(spt.recordId),receipt:referenceValue(textValue(spt.nomor)),part,
     status:error ? 'retry' : ready ? 'ready' : 'pending'};
 }
+function sameDocument(doc,part){
+  const fields=doc.receiptFields;
+  if(fields?.document && fields.bps && fields.document!==fields.bps)
+    return Boolean(doc.recordId && doc.recordId===part.record && (!part.receipt || Object.values(fields).includes(part.receipt)));
+  return !(doc.receipt && part.receipt && doc.receipt!==part.receipt) &&
+    (doc.recordId && part.record?doc.recordId===part.record:doc.receipt && doc.receipt===part.receipt);
+}
+export function matchedSptDocument(item,wp,versions){
+  if(!item?.cap?.konteks)return null;
+  const part=partEvidence(item,wp,false),doc=part && versions.get(part.slot);
+  return doc && sameDocument(doc,part)?doc:null;
+}
 
 // Plans from material already present. Every attachment requires a source naming that section.
 // Optional failures use the same cap.konteks.spt and cap.konteks.bagian as a capture.
-export function planSptDetails({wp,period,types = forms.map(([type]) => type),items = [],failures = []}) {
+export function planSptDetails({wp,period,types = forms.map(([type]) => type),items = [],failures = [],strictReceipts=false}) {
   const owner = normalizeId(wp);
   if (!owner) throw Error('Rencana detail SPT memerlukan satu NPWP.');
   if (!rangeIsValid(period)) throw Error('Periode rencana detail SPT tidak valid.');
-  const selected = new Set(types), seen = new Set(), slots = new Map(), referenceSlots = new Map(), evidence = [], staged=new Map();
+  const selected = new Set(types), seen = new Set(), slots = new Map(), referenceSlots = new Map(), evidence = [], staged=new Map(), blocked=new Set();
   const counts = {periods:0, versions:0, unknown:0, outside:0, excludedType:0, conflicts:0, duplicateRows:0,
     missing:0, readyParts:0, pendingParts:0, retryParts:0, drafts:0, failedIndexPages:0, unmatchedParts:0};
   for (const item of items) {
@@ -123,8 +159,11 @@ export function planSptDetails({wp,period,types = forms.map(([type]) => type),it
       for (const row of rowsOf(page)) {
         if (!ownsRow(row,owner)) { counts.conflicts++; continue; }
         if (source === 'sptbelum') { counts.drafts++; continue; }
-        const data = readIndex(row,owner);
-        if (data.conflict) { counts.conflicts++; continue; }
+        const data = readIndex(row,owner,strictReceipts);
+        if (data.conflict) {
+          if(strictReceipts && data.type && data.period && data.revision!==null)blocked.add(keyOf(data.type,data.period.label,data.revision));
+          counts.conflicts++;continue;
+        }
         if (data.fingerprint && seen.has(data.fingerprint)) { counts.duplicateRows++; continue; }
         if (data.fingerprint) seen.add(data.fingerprint);
         if (!data.period) { counts.missing++; continue; }
@@ -134,9 +173,11 @@ export function planSptDetails({wp,period,types = forms.map(([type]) => type),it
         if (data.revision === null || !(data.record || data.receipt)) { counts.missing++; continue; }
         const slot = keyOf(data.type,data.period.label,data.revision);
         if (!slots.has(slot)) slots.set(slot,{type:data.type,period:data.period.label,revision:data.revision,
-          records:new Set(),nativeReceipts:new Set(),receipts:new Set(),rows:0});
+          records:new Set(),nativeReceipts:new Set(),receipts:new Set(),receiptFields:{},fieldConflict:false,rows:0});
         const group = slots.get(slot);
         group.rows++;
+        const merged=combineReceiptFields(group.receiptFields,data.receiptFields);
+        if(merged)group.receiptFields=merged;else group.fieldConflict=true;
         if (data.record) {
           group.records.add(data.record);
           if (data.receipt) group.nativeReceipts.add(data.receipt);
@@ -149,7 +190,6 @@ export function planSptDetails({wp,period,types = forms.map(([type]) => type),it
       }
     }
   }
-  const blocked = new Set();
   for (const associations of referenceSlots.values()) if (associations.size > 1) {
     for (const slot of associations) blocked.add(slot);
   }
@@ -158,11 +198,12 @@ export function planSptDetails({wp,period,types = forms.map(([type]) => type),it
     const [recordId] = group.records, [receipt] = group.receipts;
     const conflict = recordId ? group.records.size > 1 || [...group.receipts].some(r => !group.nativeReceipts.has(r)) :
       group.receipts.size > 1;
-    if (conflict || blocked.has(slot)) { counts.conflicts++; continue; }
+    if (conflict || strictReceipts && group.fieldConflict || blocked.has(slot)) { counts.conflicts++; continue; }
     // A receipt-only sighting can later acquire a record ID without changing the plan's key.
     const key = keyOf(owner,group.type,group.period,group.revision);
     const doc = {key,type:group.type,period:group.period,revision:group.revision,recordId:recordId || null,
-      receipt:receipt || [...group.nativeReceipts].sort()[0] || null,parts:[]};
+      receipt:receipt || [...group.nativeReceipts].sort()[0] || null,parts:[],
+      ...(!group.fieldConflict?{receiptFields:group.receiptFields}:{})};
     const sections = new Map([['induk','pending']]);
     bySlot.set(slot,{doc,sections});
     documents.push(doc);
@@ -177,8 +218,7 @@ export function planSptDetails({wp,period,types = forms.map(([type]) => type),it
   for (const failed of failures) evidence.push(partEvidence(failed,owner,true));
   for (const part of evidence) {
     const group = part && bySlot.get(part.slot);
-    const matches = group && !(group.doc.receipt && part.receipt && group.doc.receipt!==part.receipt) && (group.doc.recordId && part.record ? group.doc.recordId===part.record :
-      group.doc.receipt && group.doc.receipt===part.receipt);
+    const matches = group && sameDocument(group.doc,part);
     if (!matches) { counts.unmatchedParts++; continue; }
     const old = group.sections.get(part.part);
     if (!old || statusRank[part.status] > statusRank[old]) group.sections.set(part.part, part.status);
