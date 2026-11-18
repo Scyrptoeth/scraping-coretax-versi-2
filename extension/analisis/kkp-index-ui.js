@@ -141,6 +141,7 @@ export function renderIndex(target,state,work,index){
   const docRows=documents.map(d=>({Nomor:'DOK.'+d.number,Dokumen:d.name,Status:d.status,'Tanggal permintaan':d.date,Tenggat:d.due,Rujukan:d.reference,...probisSourceFields(d.probis)}));
   target.append(card('Indeks KKP',selected,el('p',group.ref+(meta.revision?' (P'+meta.revision+')':'')+' · '+group.title),
     dataTable(rowList,{wp,name:'Pengujian per indeks',openRow:r=>editIndexLine(group.lines[rowList.indexOf(r)],work,state.repaint,wp)}),
+    ...(group.support?.length?[dataTable(group.support,{wp,name:'Rincian dan angka pembanding'})]:[]),
     ...group.lines.filter(l=>l.withoutReturn).flatMap(l=>[el('p',l.explanation),...l.coverage.map(s=>el('p',s,'hint')),
       dataTable(l.details,{wp,name:'Rincian bukti potong untuk '+l.ref,incremental:true})]),
     fieldset,box('toolbar',rev,button('Excel KKP ini',()=>exportSheets([indexSheets(group,reviewed,work.indexNotes,work.indexDocuments)],'KKP-'+group.ref+'-'+state.year,wp)),

@@ -56,6 +56,7 @@ export function renderFinancialRatios(target,state) {
   if(!result.form && !state.pkg.forms.some(f=>f.type==='BADAN'))return;
   const rows=measures.map(([key,label,unit,n,d])=>({Ukuran:label,Nilai:result.ratios[key],Satuan:unit,Pembilang:result.values[n].name,Penyebut:result.values[d].name}));
   target.append(card('Rasio keuangan SPT Badan',el('p',result.condition+' · '+state.year),
+    el('p','PPM memakai laba sebelum pajak. NPM mengurangi laba tersebut dengan PPh terutang yang tercantum pada induk SPT.'),
     dataTable(rows,{wp,name:'Rasio keuangan WP aktif',openRow:row=>inspectRatio(state,[result],measures.find(m=>m[1]===row.Ukuran),wp)})));
 }
 

@@ -21,6 +21,16 @@ try{
   await page.getByRole('button',{name:'Probis',exact:true}).first().click();
   await page.getByRole('button',{name:'Cari KLU/KBLI'}).click();
   const search=page.getByPlaceholder('Kode atau nama kegiatan');
+  await page.getByRole('combobox',{name:'Acuan klasifikasi'}).selectOption('2020');
+  await search.fill('01283');await page.getByRole('button',{name:'01283',exact:true}).click();
+  const mapping=page.getByRole('dialog');
+  await mapping.getByRole('heading',{name:'Padanan KBLI 2025',exact:true}).waitFor();
+  await mapping.getByText(/Lampiran 5 · halaman/).waitFor();
+  await mapping.getByRole('button',{name:/^01138 ·/}).click();
+  await mapping.getByRole('heading',{name:'Padanan KBLI 2020',exact:true}).waitFor();
+  await mapping.getByRole('button',{name:/^01283 ·/}).waitFor();
+  await mapping.getByRole('button',{name:'Tutup',exact:true}).click();
+  await page.getByRole('combobox',{name:'Acuan klasifikasi'}).selectOption('current');
   await search.fill('pegawai pemerintah perjanjian');
   await page.getByRole('button',{name:'Z2200',exact:true}).click();
   const dialog=page.getByRole('dialog');

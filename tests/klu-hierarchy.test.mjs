@@ -3,6 +3,16 @@ import assert from 'node:assert/strict';
 import {codeTitle,hierarchicalKlu,percentage} from '../extension/klu-calculator.js';
 
 const evaluate=pairs=>hierarchicalKlu(pairs.map(([code,amount])=>({code,amount:String(amount)})));
+
+test('resolves KBLI editions from all supplied activities and uses the category and retail groups from that edition',()=>{
+  const check=(a,b,edition='auto')=>hierarchicalKlu([{code:a,amount:'600'},{code:b,amount:'400'}],edition);
+  assert.equal(check('01111','28221').edition,'2020');assert.equal(check('01111','01112').edition,'2025');
+  const telecom=check('61101','01111');assert.equal(telecom.code,'61101');assert.equal(telecom.steps[0].winner,'K');
+  assert.equal(check('47401','01111','2025').steps.length,7);
+  assert.match(check('47811','01111','2025').steps[2].winner,/471–478/);
+  assert.match(check('47901','01111','2025').steps[2].winner,/intermediasi/);
+  assert.equal(check('61101','28221').code,'');assert.match(check('61101','28221').message,/edisi/i);
+});
 const examples=[
   [['25120',7000],['28160',8000],['28210',3000],['28221',21000],['28240',8000],['29300',5000],['46100',7000],['46591',28000],['71102',13000]],
   [['46511',10000],['47411',8000],['47420',15000],['47592',4000],['47611',3000],['47620',12000],['47913',35000],['77220',13000]]

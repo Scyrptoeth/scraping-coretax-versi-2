@@ -1,3 +1,4 @@
+import {lookupKbliCorrespondence} from '../kbli-correspondence.js';
 import {flatten, ledgerDocumentReference, receiptFields, rowsOf, sptDay, submittedDay, typeNames, worksheet} from './model.js';
 import {box, button, card, dataTable, detail, el, exportSheets} from './ui.js';
 
@@ -136,6 +137,14 @@ export function reconcilePayments(forms, ledger) {
 }
 const sourceNames={info:'informasi-umum',pihak:'pihak-terkait',bank:'rekening-bank',flag:'flag-wp',jenispajak:'jenis-pajak',alamat:'alamat',klu:'klu',nomorlain:'nomor-identitas-lain',sertel:'sertifikat-elektronik',pbb:'tanah-bangunan',login:'login-terakhir',dokumen:'dokumen'};
 
+export function registeredCorrespondence(code){
+  const fields={};
+  for(const edition of ['2020','2025']){
+    const result=lookupKbliCorrespondence(edition,String(code??''));
+    if(result.known)fields['Padanan KBLI '+result.toEdition+' jika kode sumber KBLI '+edition]=result.matches.map(r=>r.code).join(', ');
+  }
+  return fields;
+}
 export function annualBusinessCodes(registry, years, captured) {
   const primary=registry.filter(r=>r.IsMainEconomicCode===true && r.TradeClassificationCode && date(r.ValidFrom));
   const current=new Set(primary.filter(r=>captured && date(r.ValidFrom)<=captured && (!date(r.ValidTo)||date(r.ValidTo)>=captured)).map(r=>r.TradeClassificationCode));
@@ -179,7 +188,8 @@ export function profileSections(pkg) {
   add('waktu',reg,'Garis waktu',timeline([['KLU',input.klu,['ValidFrom','ValidTo']],['Alamat',input.alamat,['ValidFrom','ValidTo']],['Pihak terkait',input.pihak,['ValidFrom','ValidTo']],['Jenis pajak',input.jenispajak,['RegistrationDate','DeregistrationDate']],['Dokumen',input.dokumen,['DocumentDate']]]));
   add('cabang',reg,'Cabang dan tempat kegiatan usaha',input.alamat.filter(r=>r.TypeOfAddress==='TKU'||r.ActivityType==='BRNCH'),'Alamat pusat dan alamat identitas disajikan pada Histori alamat.',fpaths(['alamat']));
   add('alamat',reg,'Histori alamat',input.alamat,'',fpaths(['alamat']));
-  add('klu',reg,'Klasifikasi lapangan usaha',input.klu,'Tanggal mulai dan akhir mengikuti riwayat registrasi.',fpaths(['klu']));
+  add('klu',reg,'Klasifikasi lapangan usaha',input.klu.map(r=>({...r,...registeredCorrespondence(r.TradeClassificationCode)})),
+    'Tanggal berlaku mengikuti registrasi. Pilih kolom padanan menurut edisi kode sumber. Satu kode dapat mempunyai beberapa padanan.',fpaths(['klu']));
   add('klu-tahun',reg,'KLU utama per tahun SPT',annualBusinessCodes(input.klu,forms.map(f=>f.year),date(pkg.manifest.dibuat)),
     'Baris ditampilkan jika paket memuat SPT tahun bersangkutan dan KLU utama dengan tanggal mulai registrasi.');
   add('kewajiban',reg,'Registrasi jenis pajak',input.jenispajak,'',fpaths(['jenispajak']));

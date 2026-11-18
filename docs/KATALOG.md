@@ -2,6 +2,8 @@
 
 Kedua edisi KBLI dapat dicari saat komputer sedang offline. Kode disimpan sebagai teks supaya angka nol di depan tetap terbaca. Kode dan judul diambil dari sumber publik BPS. Seluruh isi katalog dibangun dari sumber ini secara terpisah dari ekstensi acuan.
 
+Pada rincian kelompok, pilih **Padanan KBLI 2025** atau **Padanan KBLI 2020** untuk menelusuri hubungan antaredisi. Satu kode dapat memiliki beberapa padanan, dan kode dengan nomor yang sama dapat berubah arti. Data mencakup 2.560 pasangan. Seluruh pasangan dan halaman cetaknya dicocokkan pada Lampiran 5 dan Lampiran 10 publikasi BPS untuk 1.789 kelompok tahun 2020 dan 1.559 kelompok tahun 2025. Pada profil dan Excel Uji KLU, lihat kolom yang sesuai dengan edisi kode pada registrasi. [Tabel konversi resmi BPS](https://www.bps.go.id/id/publication/2026/04/22/909d503355d2b7664e43dea8/tabel-konversi-kbli-2020---kbli-2025.html)
+
 | Edisi | Kategori | Golongan pokok | Golongan | Subgolongan | Kelompok |
 | --- | ---: | ---: | ---: | ---: | ---: |
 | KBLI 2020 | 21 | 88 | 245 | 567 | 1.789 |

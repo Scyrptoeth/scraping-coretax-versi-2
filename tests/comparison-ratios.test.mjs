@@ -39,6 +39,9 @@ test('same-KLU cohort excludes active, other sectors, and duplicate packages for
 test('latest unambiguous annual source, zero, absent amounts, denominator and per-metric count',()=>{
   const a=pkg(ids[0],'A',0),b=pkg(ids[1],'A',4,{sales:0}),c=pkg(ids[2],'A',0),d=pkg(ids[3],'A',null);
   const ratios=annualRatios(a,year);
+  assert.equal(ratios.ratios.ppm,10);assert.equal(ratios.ratios.npm,5);assert.equal(ratios.ratios.etr,50);
+  const afterTax=ratioEvidence(ratios,measures.find(m=>m[0]==='npm'));
+  assert.match(afterTax['Isian pembilang'],/TreeTotalRow.Amount.*IncomeTaxInAYear/);
   assert.equal(ratios.ratios.gpm,0);assert.equal(ratios.ratios.current,2);assert.equal(ratios.ratios.dso,18.25);assert.equal(ratios.ratios.dio,136.875);
   const proof=ratioEvidence(ratios,measures.find(m=>m[0]==='cttor'));
   assert.equal(proof.Nilai,5);assert.equal(proof['Isian pembilang'],'MainFormData.IncomeTaxInAYear');assert.match(proof['Isian penyebut'],/4020/);
@@ -57,6 +60,21 @@ test('registry history takes precedence over current profile; conflicting year c
   assert.equal(annualRatios(a,year).klu.code,'01111');
   rows.push({IsMainEconomicCode:true,TradeClassificationCode:'11119',ValidFrom:'2025-08-01'});
   assert.equal(annualRatios(a,year).klu.code,'');
+});
+
+test('ownerless historic amounts remain traceable while ratios require a validated taxpayer',()=>{
+  const a=pkg(ids[0],'A',40);
+  const ownerless={...a,manifest:{}};
+  const raw=annualRatios(ownerless,year);
+  assert.equal(raw.values.sales.value,100);assert.match(raw.values.sales.field,/4020/);
+  assert.equal(raw.values.tax.value,5);assert.equal(raw.ratios.cttor,null);assert.equal(raw.complete,false);
+  assert.equal(annualRatios({...a,manifest:{wp:{npwp:'invalid'}}},year).values.sales.value,null);
+  const corporate=a.entries.at(-1);
+  corporate.cap.konteks={npwp:ids[1]};
+  for(const p of [a,ownerless])assert.equal(annualRatios(p,year).values.sales.value,null);
+  delete corporate.cap.konteks;
+  corporate.cap.lengkap=false;
+  assert.equal(annualRatios(ownerless,year).values.sales.value,null);
 });
 
 test('two local fictitious corporate examples reproduce the gross margin from their explicit account values',async context=>{

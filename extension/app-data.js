@@ -199,7 +199,7 @@ export async function visibleTables(selected) {
     });
     return {data,cells,labels};
   }
-  function nextButton(table) {
+  function nextButton(table,first=false) {
     const host = table.closest('.p-datatable,[data-pc-name="datatable"],p-table,[role=region]');
     const controls = table.id ? [...document.querySelectorAll('button[aria-controls]')].filter(b => b.getAttribute('aria-controls')===table.id) : [];
     if (host && [...host.querySelectorAll('table,[role=table],[role=grid]')].filter(visible).length===1) {
@@ -209,11 +209,21 @@ export async function visibleTables(selected) {
       const namedNav=b.closest('nav[aria-label],[role=navigation][aria-label]');
       const ownsPager=b.matches('button[aria-controls]') && table.id && b.getAttribute('aria-controls')===table.id ||
         !!b.closest('.p-paginator,p-paginator,[data-pc-name="paginator"]') || /pagin|halaman/i.test(namedNav?.getAttribute('aria-label')||'');
-      const name=(b.getAttribute('aria-label') || b.title || b.innerText).trim();
-      const nextIcon=b.closest('.p-paginator,p-paginator,[data-pc-name="paginator"]') &&
-        b.matches('.p-paginator-next,[data-pc-section="nextpagebutton"],[data-pc-section="next"]');
+      const names=[b.getAttribute('aria-label'),b.title,b.innerText,
+        ...(b.getAttribute('aria-labelledby') || '').split(/\s+/).filter(Boolean).map(id=>document.getElementById(id)?.innerText || '')]
+        .map(s=>(s || '').trim()).filter(Boolean);
+      const iconSelector=first?'.p-paginator-first,[data-pc-section="firstpagebutton"],[data-pc-section="first"]':
+        '.p-paginator-next,[data-pc-section="nextpagebutton"],[data-pc-section="next"]';
+      const icon=b.closest('.p-paginator,p-paginator,[data-pc-name="paginator"]') && b.matches(iconSelector);
+      const label=first?/^(?:first(?: page)?|halaman pertama)$/i:/^(?:next(?: page)?|(?:halaman )?(?:berikut(?:nya)?|selanjutnya))$/i;
+      const arrow=first?/^[«⏮]$/:/^[›→]$/;
+      const destructive=[b,...b.querySelectorAll('[class],[aria-label],[title]')].some(el=>
+        /\b(?:hapus|delete|trash|kirim|send|simpan|save|edit|pencil|submit)\b/i.test(
+          [el.getAttribute('class'),el.getAttribute('title'),el.getAttribute('aria-label')].join(' ')));
       return ownsPager && visible(b) && !b.matches(':disabled,.p-disabled,[aria-disabled="true"],[data-p-disabled="true"]') &&
-        (!b.form || b.type==='button') && (nextIcon || /^(next( page)?|(halaman )?(berikut(nya)?|selanjutnya))$/i.test(name));
+        (!b.hasAttribute('aria-controls') || b.getAttribute('aria-controls')===table.id) &&
+        !destructive && !b.hasAttribute('formaction') && (!b.form || b.type==='button') && !b.matches('[type=submit],[type=reset]') &&
+        (icon || names.some(n=>label.test(n))) && names.every(n=>label.test(n) || arrow.test(n));
     });
     return candidates.length===1 ? candidates[0] : null;
   }
@@ -324,6 +334,11 @@ export async function visibleTables(selected) {
   }
   if (selected.scope) {
     const checked=checkScope(currentRows,current.labels);
+    if(selected.restartIndex){
+      if(checked.skip || !checked.indexScope || selected.scope.source!=='sptdaftar')return {skip:'Daftar dan WP belum cocok.'};
+      location.assign(location.href);
+      return {returning:true};
+    }
     if (selected.openSpt) {
       if (checked.skip || !checked.indexScope || selected.scope.source!=='sptdaftar') return {skip:'WP atau daftar SPT dilaporkan belum cocok.'};
       const matches=currentRows.map((row,i)=>current.labels.every((k,j)=>row[k]===selected.openSpt[j])?i:-1).filter(i=>i>=0);
@@ -353,12 +368,13 @@ export async function visibleTables(selected) {
       control.click();
       return {opened:true,target};
     }
-    if(checked.skip || !selected.advance) return {...checked,canAdvance:!!nextButton(currentTable)};
+    if(checked.skip || !selected.advance) return {...checked,canAdvance:!!nextButton(currentTable),
+      ...(checked.indexScope?{canFirst:!!nextButton(currentTable,true)}:{})};
   }
   if (!selected.advance) return currentRows;
   if (!selected.scope && !sameOwner(currentRows,selected.owner)) throw new Error('Paginasi membutuhkan kolom NPWP pemilik yang cocok pada setiap baris. Lanjutkan per halaman.');
   if (JSON.stringify(currentRows)!==selected.expected) throw new Error('Isi tabel berubah sejak pengambilan. Pilih ulang tabel.');
-  const next=nextButton(currentTable);
+  const next=nextButton(currentTable,selected.advance==='first' && selected.scope?.source==='sptdaftar');
   if (!next) return {end:true};
   next.click();
   const deadline=Date.now()+5000;

@@ -36,7 +36,7 @@ function equal(a,b){
   return keys.length===Object.keys(b).length&&keys.every(k=>Object.hasOwn(b,k)&&equal(a[k],b[k]));
 }
 const labels={rows:'Butir pengujian',drafts:'Konsep dokumen',analysis:'Isian KKA',dispositions:'Status temuan',
-  scopes:'Lingkup temuan',indexNotes:'Telaah indeks',indexDocuments:'Permintaan dokumen',simulation:'Simulasi ketetapan'};
+  scopes:'Lingkup temuan',indexNotes:'Telaah indeks',indexDocuments:'Permintaan dokumen',simulation:'Simulasi ketetapan',business:'Probis dan uji KLU',benchmark:'Acuan benchmark'};
 function validTime(time){
   return typeof time==='string'&&/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(time)&&
     Number.isFinite(Date.parse(time))&&new Date(time).toISOString()===time;
@@ -80,7 +80,7 @@ function records(work){
   for(const r of identifyRows(work.rows||[]))add('rows',rowIdentity(r),r.topik,r);
   for(const d of work.drafts||[])add('drafts',d.id,d.type+' · '+(d.number||d.year),d);
   for(const d of work.indexDocuments||[])add('indexDocuments',String(d.number),'DOK.'+d.number+' · '+d.name,d);
-  for(const group of ['analysis','dispositions','indexNotes','scopes']){
+  for(const group of ['analysis','dispositions','indexNotes','scopes','business']){
     for(const [id,value] of Object.entries(work[group]||{})){
       if(group==='scopes'&&value===scopeDefaults[id]&&!work.editTimes?.[keyOf(group,id)])continue;
       add(group,id,id,value);
@@ -88,6 +88,7 @@ function records(work){
   }
   const sim=work.simulation;
   if(sim&&(sim.end||sim.cases?.length))add('simulation','sim','Tanggal dan seluruh masa simulasi',sim);
+  if(work.benchmark?.length||work.editTimes?.[keyOf('benchmark','acuan')])add('benchmark','acuan','Acuan benchmark dan tarif simulasi',work.benchmark||[]);
   return map;
 }
 export function validateTimes(input,work){
@@ -128,7 +129,7 @@ export function planMerge(current,incoming){
     let rule='tambah';
     if(here){
       if(equal(here.value,other.value))rule='sama';
-      else if(['drafts','simulation','indexDocuments'].includes(other.group)||!here.time||!other.time||here.time===other.time)rule='pilih';
+      else if(['drafts','simulation','indexDocuments','business','benchmark'].includes(other.group)||!here.time||!other.time||here.time===other.time)rule='pilih';
       else rule=here.time<other.time?'terbaru':'lokal';
     }
     decisions.push({key,local:here,incoming:other,rule});
@@ -142,11 +143,11 @@ export function mergeWork(plan,choices={}){
     if(d.rule==='pilih'&&!['lokal','berkas'].includes(choice))throw Error('Pilih versi untuk tiap isian yang bertentangan.');
     if(d.rule==='tambah'||d.rule==='terbaru'||d.rule==='sama'&&d.incoming.time>d.local.time||d.rule==='pilih'&&choice==='berkas')selected.set(d.key,d.incoming);
   }
-  const result={rows:[],drafts:[],indexDocuments:[],analysis:{},scopes:{...scopeDefaults},dispositions:{},indexNotes:{},editTimes:{},simulation:{end:'',cases:[]}};
+  const result={rows:[],drafts:[],indexDocuments:[],analysis:{},scopes:{...scopeDefaults},dispositions:{},indexNotes:{},business:{},benchmark:[],editTimes:{},simulation:{end:'',cases:[]}};
   for(const [key,record] of selected){
     const {group,id,value,time}=record, cloned=structuredClone(value);
-    if(Array.isArray(result[group]))result[group].push(cloned);
-    else if(group==='simulation')result.simulation=cloned;
+    if(group==='simulation'||group==='benchmark')result[group]=cloned;
+    else if(Array.isArray(result[group]))result[group].push(cloned);
     else result[group][id]=cloned;
     if(time)result.editTimes[key]=time;
   }

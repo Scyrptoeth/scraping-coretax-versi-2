@@ -1,6 +1,6 @@
 # Matriks kesetaraan terhadap VERITAX v1.32.0
 
-Prarilis 0.7.0, 18 November 2026. Kedua aplikasi masih memiliki perbedaan dengan VERITAX. **Terverifikasi** berlaku untuk perilaku dan masukan yang disebutkan. **Berbeda** berarti ada selisih yang telah diketahui. **Belum teruji** berarti bukti pembandingan belum tersedia.
+Prarilis 0.8.0, 19 November 2026. Kedua aplikasi masih memiliki perbedaan dengan VERITAX. **Terverifikasi** berlaku untuk perilaku dan masukan yang disebutkan. **Berbeda** berarti ada selisih yang telah diketahui. **Belum teruji** berarti bukti pembandingan belum tersedia.
 
 ## Hasil sampai prarilis 0.3.0
 
@@ -81,6 +81,20 @@ Pada empat pasang Excel appportal, 43 dari 44 sel rincian yang diperiksa memberi
 Pada contoh Badan yang sama, indeks **N.3** Studio merinci DPP penyerahan per masa, sedangkan **N.3.1** memuat PPN. Untuk **G.2.1** dan **K.2.1**, DPP pada Studio dapat ditelusuri ke bukti potong D1-BPU per pasal. Ketiga rincian DPP belum tersedia sebagai indeks tersendiri di Versi 2. Nilai pajak yang dipotong pada induk G dan K dapat dibandingkan untuk 11 masa yang memiliki SPT Unifikasi.
 
 Untuk nomor bukti penerimaan, uji memasangkan dua nomor berbeda, menukar letak BPE, dan mencoba nomor biasa dengan nol di depan. Nomor BPE maupun nomor dokumen kedua dapat dicari dan diekspor; klasifikasinya menggunakan isi kolom sumber. [Uji klasifikasi](../tests/spt-receipt.test.mjs) · [Uji pencarian dan unduhan](../tests/viewer-navigation-browser.mjs)
+
+## Yang sudah dicocokkan pada 0.8.0
+
+Pada uji fiktif N.3, Studio menjumlahkan empat pos penyerahan yang dipungut sendiri saat pos tersebut berisi nilai. Ketika keempat pos bernilai nol dan ada penyerahan ke pemungut, penyerahan tidak dipungut atau penyerahan dibebaskan, Studio menampilkan dasar yang lebih luas. Versi 2 mempertahankan nol untuk empat pos tersebut. Jika induk memuat kedua angka, rincian layar dan Excel juga menunjukkan penyerahan terutang dikurangi ekspor BKP berwujud, lengkap dengan masa, pembetulan dan rujukan kolom. [Uji dasar N.3](../tests/kkp-index-source.test.mjs)
+
+Katalog lokal memuat semua 2.560 pasangan kelompok KBLI dari tabel konversi BPS. Lampiran dua arah dan nomor halaman cetak diperiksa dengan dua pembaca PDF. Pemutar menampilkan semua padanan untuk kode yang bercabang. [Uji konversi](../tests/kbli-correspondence.test.mjs) · [Tabel konversi BPS](https://www.bps.go.id/id/publication/2026/04/22/909d503355d2b7664e43dea8/tabel-konversi-kbli-2020---kbli-2025.html)
+
+| Alur | Hasil pembandingan | Batas bukti |
+| --- | --- | --- |
+| Antrean beberapa versi SPT untuk satu WP | Enam skenario Chrome memeriksa dokumen normal dan pembetulan, perubahan urutan daftar, pindah halaman, buka tab baru, nomor versi yang hilang dari tampilan, serta berhenti dengan hasil sebagian. Penarik memeriksa identitas kembali sebelum menambahkan tiap bagian. [Uji antrean](../tests/spt-multi-browser.mjs) | Uji memakai halaman fiktif. Jumlah dan isi tarikan pada intranet kantor masih perlu dicocokkan dengan sumber. |
+| Indeks KKP per masa | Pada satu paket Badan fiktif, seluruh 34 DPP yang dibandingkan di N.3, G.2.1 dan K.2.1 cocok dengan Excel Studio. Delapan nilai nol di K.2.1 didukung lampiran lengkap. Bulan tanpa SPT Unifikasi dapat dibedakan dari bulan yang lampirannya kosong. [Uji indeks dan asal nilai](../tests/kkp-index-source.test.mjs) | Pemeriksaan mencakup dua jenis pasal dan DPP yang dapat dikonfirmasi dari induk PPN. |
+| Ekualisasi dan koreksi fiskal Badan | Pada lima kombinasi WP–tahun dari dua contoh Badan, 12 pos dan lima total B.7, 20 nominal penyerahan B.1.4 serta lima nilai akun 4020 cocok. Studio menggunakan nol pada beberapa pos yang kosong di sumber. Versi 2 menyimpan asal kekosongan dan menahan hasil yang bergantung padanya. [Uji B.1.4 dan B.7](../tests/kkp-company-annexes.test.mjs) | Uji mencakup data L1, L9, serta L11A yang benar-benar terkirim pada dua paket contoh. Varian SPT dan skema usaha lain masih terbuka. |
+| Benchmark dan tax gap | Pada lima kombinasi WP–tahun tersebut, 30 posisi pada enam rasio WP cocok dengan presisi tampilan Excel Studio. Dua belas simulasi CTTOR dengan masukan acuan yang sama juga cocok sampai rupiah. [Uji rasio dan simulasi](../tests/benchmark-work.test.mjs) | Acuan sektoral disimpan atau diimpor dengan rujukannya. Korpus acuan sektoral bawaan Studio dan seluruh simulasi NPM lintas sektor masih memerlukan pembandingan. |
+| Uji KLU dan proses bisnis | Dua kegiatan fiktif yang sama menghasilkan kode 01111 di kedua pemutar. Enam baris perbandingan pada lima tingkat, nilai bruto, porsi tiap kegiatan, serta perbedaan terhadap registrasi juga cocok pada Excel. Pemulihan uji, pilihan acuan, permintaan dokumen dan pemisahan antar-WP serta tahun diuji di Chrome. [Uji kerja KLU](../tests/business-work.test.mjs) · [Uji layar dan Excel](../tests/probis-requests-browser.mjs) | Pada satu contoh Badan, Excel gabungan Versi 2 berisi 37 lembar dan Studio 33. Beberapa indeks pajak tersusun berbeda. Cakupan profil sektoral dan tata letak masih berbeda. |
 
 ## Kemampuan yang masih perlu dibandingkan
 

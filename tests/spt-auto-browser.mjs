@@ -73,7 +73,7 @@ async function run(mode) {
       await src.waitForURL(detailUrl);await src.waitForFunction(()=>window.nextClicks===1);
       await ui.getByRole('button',{name:'Hentikan pembacaan SPT'}).click();
     }
-    const status=ui.locator('#preview-box [role=status]');
+    const status=ui.getByRole('table',{name:'Versi SPT yang ditemukan'}).getByRole('status');
     await status.filter({hasText:/halaman terbaca\./}).waitFor();
     const message=await status.innerText();
     const source=ctx.pages().find(p=>p.url()===detailUrl);assert.ok(source);

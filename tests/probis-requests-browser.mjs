@@ -8,7 +8,7 @@ import {createPackage} from '../extension/archive/package.js';
 import {decodeText,readZip} from '../extension/archive/zip.js';
 
 const {chromium}=createRequire(import.meta.url)(process.env.PLAYWRIGHT_MODULE||'playwright');
-const ext=fileURLToPath(new URL('../extension/',import.meta.url)),dir=await mkdtemp(join(tmpdir(),'v2-probis-'));
+const ext=process.env.EXTENSION_DIR||fileURLToPath(new URL('../extension/',import.meta.url)),dir=await mkdtemp(join(tmpdir(),'v2-probis-'));
 const ctx=await chromium.launchPersistentContext(dir,{channel:'chromium',offline:true,executablePath:process.env.CHROMIUM_PATH||undefined,
   headless:true,args:['--disable-extensions-except='+ext,'--load-extension='+ext]});
 const wps=[{npwp:'0000000000000011',nama:'WP A Fiktif'},{npwp:'0000000000000012',nama:'WP B Fiktif'}];
@@ -43,7 +43,17 @@ try{
   const list=p.getByRole('table',{name:'Dokumen indeks terpilih',exact:true});
   const download=async name=>{const [d]=await Promise.all([p.waitForEvent('download'),b(name).click()]);return readFile(await d.path());};
   await nav('Probis');assert.equal(await b('Tambahkan ke permintaan dokumen').count(),0);
-  await load();await selectWp(wps[0]);await chooseKlu();await request();
+  await load();await selectWp(wps[0]);await chooseKlu();
+  const calc=p.locator('.card').filter({has:p.getByRole('heading',{name:'Uji KLU utama',exact:true})}).last();
+  for(const [i,code,amount] of [[0,'61101','600'],[1,'01111','400']]){
+    await calc.getByLabel('Kode kelompok',{exact:true}).nth(i).fill(code);
+    await calc.getByLabel('Peredaran bruto atau penghasilan (Rp)',{exact:true}).nth(i).fill(amount);
+  }
+  await calc.getByLabel('Rujukan bukti kegiatan').fill('Rincian kegiatan fiktif');
+  await calc.getByRole('button',{name:'Hitung',exact:true}).click();
+  await calc.getByText(/Kelompok hasil uji · 61101/).waitFor();
+  await calc.getByText('Edisi perhitungan · KBLI 2025').waitFor();
+  await request();
   await p.getByText('1 saran ditambahkan. DOK.1.',{exact:true}).waitFor();await b('Tambahkan ke permintaan dokumen').click();
   await p.getByText('Saran sudah tercatat sebagai DOK.1.',{exact:true}).waitFor();await b('Buka indeks tujuan di KKP').click();
   await list.getByRole('cell',{name:'PB-PANEN',exact:true}).waitFor();assert.equal(await list.locator('tbody tr').count(),1);
@@ -54,8 +64,15 @@ try{
   const sheet=decodeText(workbook.get('xl/worksheets/sheet1.xml').data);
   for(const expected of [doc,'PB-PANEN','01111','Tahun pajak','Edisi klasifikasi','2025','Diterima'])assert.ok(sheet.includes(expected));
   assert.equal((sheet.match(/DOK\.1</g)||[]).length,1);
-  const saved=await download('Unduh berkas kerja');assert.equal(JSON.parse(saved).indexDocuments[0].probis.klu,'01111');
+  const saved=await download('Unduh berkas kerja'),work=JSON.parse(saved);assert.equal(work.indexDocuments[0].probis.klu,'01111');
+  assert.deepEqual(work.business.reference,{code:'01111',edition:'2025'});assert.equal(work.business.activity.activities[0].code,'61101');
+  const book=await readZip(await download('Excel semua KKP')),xml=decodeText(book.get('xl/workbook.xml').data);
+  for(const [name,values] of [['Uji KLU',['61101','2024','Rincian kegiatan fiktif']],['Probis &amp; Modus',['PB-PANEN','01111','DOK.1']]]){
+    const n=xml.match(new RegExp('<sheet name="'+name+'" sheetId="(\\d+)"'))[1],part=decodeText(book.get('xl/worksheets/sheet'+n+'.xml').data);
+    values.forEach(v=>assert.ok(part.includes(v)));
+  }
   await nav('Probis');await p.getByRole('combobox',{name:'Tahun pajak untuk dokumen'}).selectOption('2024');
+  assert.equal(await calc.getByLabel('Rujukan bukti kegiatan').inputValue(),'');
   await request();await p.getByText('1 saran ditambahkan. DOK.1.',{exact:true}).waitFor();
   await selectWp(wps[1]);await chooseKlu();await request();await p.getByText('1 saran ditambahkan. DOK.1.',{exact:true}).waitFor();
   await p.reload();await load();await selectWp(wps[0]);await nav('Kertas Kerja');await b('KKP').click();

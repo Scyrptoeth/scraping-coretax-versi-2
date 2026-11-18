@@ -1,13 +1,13 @@
 # Scraping Coretax Versi 2
 
-**Prarilis 0.7.0.** Setiap tarikan memakai satu NPWP. Pilih satu atau beberapa tabel untuk WP itu di tab Coretax yang sudah terbuka, atau tambahkan ekspor JSON/CSV. Pemutar lokal membantu mencocokkan baris, membandingkan SPT dan memilih temuan untuk kertas kerja. Beberapa paket yang sudah disimpan dapat dibuka untuk perbandingan.
+**Prarilis 0.8.0.** Setiap tarikan memakai satu NPWP. Pilih satu atau beberapa tabel untuk WP itu di tab Coretax yang sudah terbuka, atau tambahkan ekspor JSON/CSV. Pemutar lokal membantu mencocokkan baris, membandingkan SPT dan memilih temuan untuk kertas kerja. Beberapa paket yang sudah disimpan dapat dibuka untuk perbandingan.
 
-[Unduh dan pasang melalui GitHub Pages](https://scyrptoeth.github.io/scraping-coretax-versi-2/) · [Situs Vercel](https://scraping-coretax-versi-2.vercel.app/) · [Paket prarilis GitHub](https://github.com/Scyrptoeth/scraping-coretax-versi-2/releases/tag/v0.7.0)
+[Unduh dan pasang melalui GitHub Pages](https://scyrptoeth.github.io/scraping-coretax-versi-2/) · [Situs Vercel](https://scraping-coretax-versi-2.vercel.app/) · [Paket prarilis GitHub](https://github.com/Scyrptoeth/scraping-coretax-versi-2/releases/tag/v0.8.0)
 
 ## Mencoba ekstensi
 
 1. Unduh dan ekstrak ZIP. Buka `chrome://extensions`, aktifkan Mode developer, klik **Muat yang belum dipaketkan**, lalu pilih folder yang memuat `manifest.json`.
-2. Buka ekstensi. Isi penugasan dan satu NPWP, pilih periode serta sumber, lalu cocokkan identitas dan masa pada sumber. Tambahkan tabel yang terlihat atau berkas ekspor. Untuk rincian satu versi SPT, buka **Pratinjau WP** dan pilih **Ambil induk dan lampiran** pada versinya. Pilih **Mulai tarik** untuk menyusun paket.
+2. Buka ekstensi. Isi penugasan dan satu NPWP, pilih periode serta sumber, lalu cocokkan identitas dan masa pada sumber. Tambahkan tabel yang terlihat atau berkas ekspor. Di **Pratinjau WP**, pilih **Ambil induk dan lampiran** untuk satu versi SPT. Untuk beberapa versi, centang versi yang diperlukan lalu pilih **Ambil versi SPT terpilih**. Pilih **Mulai tarik** untuk menyusun paket.
 3. Pilih **Unduh paket** untuk menyimpan hasil atau **Buka di Analisis** untuk memeriksanya. Untuk paket yang sudah tersedia, buka **Buka Analisis**, lalu pilih berkas.
 4. Periksa integritas, identitas dan cakupan sebelum membaca angka. Simpan isian kerja yang diperlukan sebelum menutup pemutar.
 

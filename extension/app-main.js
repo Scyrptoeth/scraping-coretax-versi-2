@@ -7,6 +7,7 @@ import {appendPackageEntry,isSptList,metaForSelection,selectSptListRows} from '.
 import {planSptDetails} from './app-spt-plan.js';
 import {stageSptSource,finishSptSources} from './app-spt-snapshots.js';
 import {sptNavigation} from './app-spt-navigation.js';
+import {collectSptQueue,sptDirectory} from './app-spt-directory.js';
 
 const $ = id => document.getElementById(id);
 const coretax = 'https://coretax.intranet.pajak.go.id';
@@ -340,8 +341,18 @@ function showSptPlan(box,{counts,documents}) {
       instructions.textContent='Untuk mencari induk atau lampiran di Coretax, centang Induk dan lampiran SPT lalu buka kembali pratinjau.';
       panel.append(instructions);
     }
-    const body=captureTable(panel,'Versi SPT yang ditemukan',['Jenis SPT','Masa atau tahun','Pembetulan','Bagian tersedia','Perlu diambil','Perlu diulang',...(navigate?['Tampilan Coretax']:[])]);
-    const labels=new Map(forms);
+    const labels=new Map(forms),selected=new Map();
+    const picked=document.createElement('span');
+    const updatePicked=()=>{picked.textContent=selected.size+' versi dipilih.';};
+    if(navigate){
+      const directoryLimit=document.createElement('input');
+      directoryLimit.type='number';directoryLimit.min='1';directoryLimit.max='100';directoryLimit.value='100';
+      const label=document.createElement('label');label.append('Halaman maksimal untuk mencari versi di daftar',directoryLimit);
+      const hint=document.createElement('p');
+      hint.textContent='Centang versi yang ingin dibaca. Versi dengan bagian belum lengkap sudah dicentang.';
+      panel.append(label,hint,picked,batchSptControls(selected,pageLimit,directoryLimit));
+    }
+    const body=captureTable(panel,'Versi SPT yang ditemukan',['Jenis SPT','Masa atau tahun','Pembetulan','Bagian tersedia','Perlu diambil','Perlu diulang',...(navigate?['Pilih','Tampilan Coretax']:[])]);
     let cursor=0;
     const more=button('Tampilkan versi berikutnya',appendRows);
     function appendRows() {
@@ -349,14 +360,114 @@ function showSptPlan(box,{counts,documents}) {
       for(;cursor<end;cursor++) {
         const doc=documents[cursor];
         const parts=status=>doc.parts.filter(part=>part.status===status).map(part=>part.name).join(', ') || '—';
+        const nav=navigate?sptViewControls(doc,pageLimit):null;
+        let choice;
+        if(nav){
+          choice=document.createElement('input');choice.type='checkbox';
+          choice.setAttribute('aria-label','Pilih '+(labels.get(doc.type)||doc.type)+' · '+doc.period+' · pembetulan '+doc.revision);
+          choice.checked=doc.parts.some(p=>p.status!=='ready');
+          if(choice.checked)selected.set(doc.key,doc);
+          choice.onchange=()=>{if(choice.checked)selected.set(doc.key,doc);else selected.delete(doc.key);updatePicked();};
+        }
         captureRow(body,[labels.get(doc.type) || doc.type,doc.period,doc.revision,parts('ready'),parts('pending'),parts('retry'),
-          ...(navigate?[sptViewControls(doc,pageLimit)]:[])]);
+          ...(navigate?[choice,nav]:[])]);
       }
+      updatePicked();
       more.hidden=cursor===documents.length;
     }
     panel.append(more);
     appendRows();
   });
+}
+function sptErrorText(error) {
+  return /chrome|tab id|https?:\/\/|frame/i.test(error.message)?
+    'Tab Coretax berubah. Pilih ulang tab dan periksa tampilan SPT.':error.message;
+}
+function sptProof(doc,result){
+  return {recordId:result.recordId,receipt:result.receipt,period:doc.period,revision:doc.revision,
+    part:result.part,label:result.label,docKey:doc.key};
+}
+function sptPlayback(actions,status,check){
+  let paused=false,stopped=false;
+  const startTab=val('tab');
+  const pause=button('Jeda pembacaan SPT',()=>{paused=!paused;pause.textContent=paused?'Lanjutkan pembacaan SPT':'Jeda pembacaan SPT';
+    status.textContent=paused?'Pembacaan dijeda pada batas langkah.':'Pembacaan dilanjutkan.';});
+  const halt=button('Hentikan pembacaan SPT',()=>{stopped=true;halt.disabled=true;});
+  actions.replaceChildren(pause,halt);
+  return async()=>{
+    do{
+      check();
+      if(val('tab')!==startTab)throw Object.assign(Error('Tab sumber yang dipilih berubah.'),{code:'SCOPE'});
+      if(stopped)throw Object.assign(Error('Pembacaan dihentikan.'),{code:'STOP'});
+      if(paused)await sleep(100);
+    }while(paused);
+  };
+}
+function sptPageSink(doc,wp,range,status){
+  let pages=0,previous=null,first=null;
+  const observed=new Set(),issues=[];
+  return {
+    onPage(result){
+      const proof={urutan:{id:result.pass,halaman:result.page},columns:result.columns,
+        morePagesAvailable:result.paging==='next',...(result.zero?{nolPadaSumber:true}:{})};
+      const info={wp,source:'sptisi',spt:doc.type,period:range,detailProof:sptProof(doc,result),proof};
+      const page={Payload:{Data:result.rows,...(result.zero?{TotalRecords:0}:{})}};
+      addEntry(info,page,result.label+' · halaman pengambilan '+result.page,'Tabel tampak');
+      const entry=queue.at(-1);first ||= entry;
+      if(previous?.proof.urutan.id===result.pass)delete previous.proof.morePagesAvailable;
+      previous=entry;pages++;observed.add(result.part);renderQueue();
+      status.textContent=result.label+' · halaman '+result.page+' tersimpan.';
+    },
+    onIssue(section,error){issues.push(section.label+' · '+sptErrorText(error));},
+    finish(error){
+      if(error)issues.push(sptErrorText(error));
+      const note=[observed.size+' bagian dan '+pages+' halaman terbaca.',...issues].join(' ');
+      if(issues.length){
+        const source=first || queue.find(e=>isSptList(e.source) && e.wp===wp && e.period===range);
+        const text=doc.period+' · pembetulan '+doc.revision+' · '+note;
+        if(source)(source.sptAutoChecks ||= []).push({type:doc.type,pesan:text});
+        message(text,true);
+      }
+      return {note,pages,issues};
+    }
+  };
+}
+function batchSptControls(selected,pageLimit,directoryLimit){
+  const block=document.createElement('div'),actions=document.createElement('div'),status=document.createElement('span');
+  status.setAttribute('role','status');status.setAttribute('aria-label','Proses versi SPT terpilih');
+  const run=button('Ambil versi SPT terpilih',async()=>{
+    const docs=[...selected.values()],wp=captureOwner(),range=period();
+    const limit=Number(pageLimit.value),indexLimit=Number(directoryLimit.value);
+    if(!docs.length)throw Error('Pilih sedikitnya satu versi SPT pada daftar.');
+    if([limit,indexLimit].some(n=>!Number.isInteger(n)||n<1||n>100))throw Error('Pilih batas 1–100 halaman untuk daftar dan bagian SPT.');
+    const bounds={from:{y:Number(val('year-start')),m:Number(val('month-start'))},to:{y:Number(val('year-end')),m:Number(val('month-end'))}};
+    function check(){
+      if(!block.isConnected || busy || paging || batch.active || wp!==captureOwner() || range!==period() ||
+          !checked('sources').includes('sptisi') || !$('consent').checked || selected.size!==docs.length ||
+          docs.some(d=>!selected.has(d.key) || !checked('forms').includes(d.type)))
+        throw Object.assign(Error('Pilihan WP, periode atau versi berubah. Buka kembali pratinjau.'),{code:'SCOPE'});
+    }
+    await navigator.locks.request('scv2-spt-navigation',{ifAvailable:true},async lock=>{
+      if(!lock || autoSpt)throw Error('Tunggu sampai pembacaan SPT yang sedang berjalan selesai.');
+      check();autoSpt=true;run.disabled=true;jobButtons();
+      const checkpoint=sptPlayback(actions,status,check);
+      try{
+        const tab=await tabNow(),directory=await sptDirectory(ext,tab.id,wp);
+        const candidates=docs.map(doc=>({doc,navigation:sptNavigation({ext,wp,period:bounds,doc})}));
+        const result=await collectSptQueue({directory,candidates,tabId:tab.id,limit,indexLimit,checkpoint,
+          createSink:c=>sptPageSink(c.doc,wp,range,status),
+          onOpen:c=>{status.textContent='Membuka SPT '+c.doc.period+' · pembetulan '+c.doc.revision+'…';}});
+        status.textContent=result.attempted+' dari '+docs.length+' versi diproses. '+result.withPages+' versi menghasilkan '+result.pages+' halaman.'+
+          (result.problem?' '+sptErrorText(result.problem):'');
+      }catch(error){
+        for(const doc of docs)sptPageSink(doc,wp,range,status).finish(error);
+        status.textContent='0 dari '+docs.length+' versi diproses. '+sptErrorText(error);
+      }finally{
+        actions.replaceChildren();autoSpt=false;run.disabled=false;jobButtons();
+      }
+    });
+  });
+  block.append(run,status,actions);return block;
 }
 function sptViewControls(doc,pageLimit) {
   const block=document.createElement('div'),actions=document.createElement('div'),status=document.createElement('span');
@@ -364,15 +475,12 @@ function sptViewControls(doc,pageLimit) {
   const wp=captureOwner(),range=period(),periodStart={y:Number(val('year-start')),m:Number(val('month-start'))},
     periodEnd={y:Number(val('year-end')),m:Number(val('month-end'))};
   const navigation=sptNavigation({ext,wp,period:{from:periodStart,to:periodEnd},doc});
-  const errorText=error=>/chrome|tab id|https?:\/\/|frame/i.test(error.message)?
-    'Tab Coretax berubah. Pilih ulang tab dan periksa tampilan SPT.':error.message;
+  const errorText=sptErrorText;
   function check() {
     if (!block.isConnected || busy || paging || batch.active || wp!==captureOwner() || range!==period() ||
         !checked('forms').includes(doc.type) || !checked('sources').includes('sptisi') || !$('consent').checked)
       throw Object.assign(Error('Cakupan berubah. Buka kembali pratinjau WP.'),{code:'SCOPE'});
   }
-  const proofFor=result=>({recordId:result.recordId,receipt:result.receipt,period:doc.period,revision:doc.revision,
-    part:result.part,label:result.label,docKey:doc.key});
   const withSptLock=run=>navigator.locks.request('scv2-spt-navigation',{ifAvailable:true},lock=>{
     if(!lock)throw Error('Tunggu sampai pembacaan SPT yang sedang berjalan selesai.');
     check();return run();
@@ -396,7 +504,7 @@ function sptViewControls(doc,pageLimit) {
         try {
           const result=await withSptLock(()=>navigation.capture(view,select.value));
           check();
-          const proof=proofFor(result);
+          const proof=sptProof(doc,result);
           const page={Payload:{Data:result.rows,...(result.zero?{TotalRecords:0}:{})}};
           const existing=queue.filter(e=>e.detailProof?.docKey===doc.key && e.detailProof.part===result.part &&
             (e.detailProof.recordId && proof.recordId ? e.detailProof.recordId===proof.recordId : e.detailProof.receipt && e.detailProof.receipt===proof.receipt));
@@ -420,43 +528,15 @@ function sptViewControls(doc,pageLimit) {
     if(autoSpt)throw Error('Pembacaan SPT masih berjalan.');
     await withSptLock(async()=>{
       autoSpt=true;auto.disabled=open.disabled=true;jobButtons();actions.replaceChildren();
-      let paused=false,stopped=false,pages=0,previous=null,first=null;
-      const observed=new Set(),issues=[],startTab=val('tab');
-      const pause=button('Jeda pembacaan SPT',()=>{paused=!paused;pause.textContent=paused?'Lanjutkan pembacaan SPT':'Jeda pembacaan SPT';
-        status.textContent=paused?'Pembacaan dijeda pada batas langkah.':'Pembacaan dilanjutkan.';});
-      const halt=button('Hentikan pembacaan SPT',()=>{stopped=true;halt.disabled=true;});
-      actions.append(pause,halt);
-      const checkpoint=async()=>{
-        do {
-          check();
-          if(val('tab')!==startTab)throw Object.assign(Error('Tab sumber yang dipilih berubah.'),{code:'SCOPE'});
-          if(stopped)throw Object.assign(Error('Pembacaan dihentikan.'),{code:'STOP'});
-          if(paused)await sleep(100);
-        } while(paused);
-      };
+      const checkpoint=sptPlayback(actions,status,check),sink=sptPageSink(doc,wp,range,status);
+      let failure;
       try {
         status.textContent='Mencocokkan WP dan versi SPT…';
         const tab=await tabNow(),view=await navigation.inspect(tab.id) || await navigation.open(tab.id);
-        await navigation.collect(view,{limit,checkpoint,onPage(result){
-          const proof={urutan:{id:result.pass,halaman:result.page},columns:result.columns,
-            morePagesAvailable:result.paging==='next',...(result.zero?{nolPadaSumber:true}:{})};
-          const info={wp,source:'sptisi',spt:doc.type,period:range,detailProof:proofFor(result),proof};
-          const page={Payload:{Data:result.rows,...(result.zero?{TotalRecords:0}:{})}};
-          addEntry(info,page,result.label+' · halaman pengambilan '+result.page,'Tabel tampak');
-          const entry=queue.at(-1);first ||= entry;
-          if(previous?.proof.urutan.id===result.pass)delete previous.proof.morePagesAvailable;
-          previous=entry;pages++;observed.add(result.part);renderQueue();
-          status.textContent=result.label+' · halaman '+result.page+' tersimpan.';
-        },onIssue(section,error){issues.push(section.label+' · '+errorText(error));}});
-      } catch(error){issues.push(errorText(error));}
+        await navigation.collect(view,{limit,checkpoint,...sink});
+      } catch(error){failure=error;}
       finally {
-        const note=observed.size+' bagian dan '+pages+' halaman terbaca.';
-        status.textContent=[note,...issues].join(' ');
-        if(issues.length){
-          const source=first || queue.find(e=>isSptList(e.source) && e.wp===wp && e.period===range);
-          if(source)(source.sptAutoChecks ||= []).push({type:doc.type,pesan:doc.period+' · pembetulan '+doc.revision+' · '+status.textContent});
-          message(status.textContent,true);
-        }
+        status.textContent=sink.finish(failure).note;
         actions.replaceChildren();autoSpt=false;auto.disabled=open.disabled=false;jobButtons();
       }
     });

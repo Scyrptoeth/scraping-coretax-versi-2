@@ -2,17 +2,38 @@ import {kbli} from './catalog-data.js';
 import {kluZ} from './klu-z.js';
 
 // KBLI 2020 table of contents, from the first to last division of each category.
-const divisions=[
+const divisions2020=[
   ['A',1,3],['B',5,9],['C',10,33],['D',35,35],['E',36,39],['F',41,43],['G',45,47],
   ['H',49,53],['I',55,56],['J',58,63],['K',64,66],['L',68,68],['M',69,75],['N',77,82],
   ['O',84,84],['P',85,85],['Q',86,88],['R',90,93],['S',94,96],['T',97,98],['U',99,99]
 ];
+// Division ranges in the annex to BPS Regulation 7/2025, checked for all 87 divisions.
+const divisions2025=[...divisions2020.slice(0,6),['G',46,47],['H',49,53],['I',55,56],['J',58,60],['K',61,63],
+  ['L',64,66],['M',68,68],['N',69,75],['O',77,82],['P',84,84],['Q',85,85],['R',86,88],['S',90,93],['T',94,96],['U',97,98],['V',99,99]];
 const levelNames=['Kategori','Golongan pokok','Golongan','Subgolongan','Kelompok'];
-export const codeTitle=code=>kluZ[code]?.title||kbli['2020'][code]||'';
+export const codeTitle=(code,edition='2020')=>kluZ[code]?.title||kbli[edition]?.[code]||'';
 
-function category(code) {
+function editionOf(activities,choice){
+  if(['2020','2025'].includes(choice))return choice;
+  if(choice!=='auto')return '';
+  const editions=new Set();
+  const normalize=s=>String(s||'').toLocaleUpperCase('id-ID').replace(/[^\p{L}\p{N}]/gu,'');
+  for(const r of activities){
+    const code=String(r.code||'').trim().toUpperCase();
+    if(kluZ[code])continue;
+    const available=['2020','2025'].filter(y=>Object.hasOwn(kbli[y],code));
+    if(available.length===1)editions.add(available[0]);
+    if(available.length===2&&r.name){
+      const matches=available.filter(y=>normalize(kbli[y][code])===normalize(r.name));
+      if(matches.length===1)editions.add(matches[0]);
+    }
+  }
+  return editions.size>1?'':editions.values().next().value||'2025';
+}
+function category(code,edition) {
   if(code.startsWith('Z'))return 'Z';
   const division=Number(code.slice(0,2));
+  const divisions=edition==='2025'?divisions2025:divisions2020;
   return divisions.find(([,from,to])=>division>=from && division<=to)?.[0];
 }
 function totals(rows,key) {
@@ -25,14 +46,16 @@ function totals(rows,key) {
     a.amount===b.amount?a.code.localeCompare(b.code):a.amount>b.amount?-1:1);
 }
 
-export function hierarchicalKlu(activities) {
-  const result={code:'',message:'',total:0n,steps:[]};
+export function hierarchicalKlu(activities,choice='2020') {
+  const edition=editionOf(activities,choice);
+  const result={code:'',message:'',total:0n,steps:[],edition};
   const rows=[];
   if(!activities.length){result.message='Tambahkan kegiatan untuk menguji KLU utama.';return result;}
+  if(!edition){result.message='Kode atau uraian kegiatan berasal dari edisi KBLI berbeda. Samakan edisi seluruh kegiatan sebelum menghitung.';return result;}
   for(const [index,activity] of activities.entries()){
     const code=String(activity.code||'').trim().toUpperCase(), amount=String(activity.amount??'').trim();
-    if(!/^(?:\d{5}|Z\d{4})$/.test(code) || !codeTitle(code) || !category(code)) {
-      result.message='Baris '+(index+1)+' memerlukan kode kelompok yang terdapat dalam KBLI 2020 atau KLU Z.';return result;
+    if(!/^(?:\d{5}|Z\d{4})$/.test(code) || !codeTitle(code,edition) || !category(code,edition)) {
+      result.message='Baris '+(index+1)+' memerlukan kode kelompok yang terdapat dalam KBLI '+edition+' atau KLU Z.';return result;
     }
     if(!/^\d+$/.test(amount)) {
       result.message='Isi nilai bruto tahun sebelumnya dalam rupiah utuh pada baris '+(index+1)+'.';return result;
@@ -57,10 +80,11 @@ export function hierarchicalKlu(activities) {
   function trade(division) {
     const wholesale=division==='46';
     const own='462–469 · Perdagangan besar yang dilakukan sendiri', agency='461 · Balas jasa atau kontrak';
-    const shop='471–477 · Eceran di toko', outside='478–479 · Eceran di luar toko';
+    const shop=edition==='2025'?'471–478 · Penjualan eceran':'471–477 · Eceran di toko';
+    const outside=edition==='2025'?'479 · Jasa intermediasi eceran':'478–479 · Eceran di luar toko';
     const totalDivision=active.reduce((sum,r)=>sum+r.amount,0n);
     const route=choose('Cabang perdagangan',r=>wholesale?(r.code.startsWith('461')?agency:own):
-      (Number(r.code.slice(0,3))<=477?shop:outside));
+      (Number(r.code.slice(0,3))<=(edition==='2025'?478:477)?shop:outside));
     if(!route)return false;
     if(route===agency || route===outside)return true;
     const general=wholesale?'469':'471';
@@ -87,7 +111,7 @@ export function hierarchicalKlu(activities) {
     }
     return true;
   }
-  if(!choose(levelNames[0],r=>category(r.code)))return result;
+  if(!choose(levelNames[0],r=>category(r.code,edition)))return result;
   const division=choose(levelNames[1],r=>r.code.slice(0,2));
   if(!division)return result;
   if(['46','47'].includes(division) && !trade(division))return result;
@@ -96,7 +120,7 @@ export function hierarchicalKlu(activities) {
     if(!chosen)return result;
     if(length===5)result.code=chosen;
   }
-  result.message='Kelompok hasil uji · '+result.code+' · '+codeTitle(result.code);
+  result.message='Kelompok hasil uji · '+result.code+' · '+codeTitle(result.code,edition);
   return result;
 }
 

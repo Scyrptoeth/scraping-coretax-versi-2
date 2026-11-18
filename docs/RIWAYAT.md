@@ -1,5 +1,11 @@
 # Riwayat Scraping Coretax Versi 2
 
+## 19 November 2026 · Prarilis 0.8.0
+
+Di pratinjau WP, pilih beberapa versi SPT untuk membaca induk dan lampiran dalam satu antrean. Penarik memeriksa kembali WP, masa dan pembetulan setelah daftar berubah. Jika sebagian dokumen belum terbaca, alasannya tercantum bersama hasil yang sudah tersimpan. [Cara memakai antrean](SCRAPING.md)
+
+Indeks N.3, G.2.1 dan K.2.1 menghubungkan DPP per masa ke induk PPN atau bukti potong Unifikasi. Pada SPT Tahunan Badan, B.1.4 menyandingkan peredaran usaha dengan penyerahan PPN dan B.7 merinci koreksi fiskal positif. Kertas kerja gabungan juga memuat proses bisnis, uji KLU dan, apabila ada SPT Badan, rasio serta simulasi benchmark. [Cara membaca hasil](ANALISIS.md)
+
 ## 18 November 2026 · Prarilis 0.7.0
 
 Pilih **Ambil induk dan lampiran** di pratinjau untuk membaca beberapa bagian dari satu versi SPT. Penarik memeriksa identitas WP dan dokumen saat berpindah bagian atau halaman, serta menyimpan catatan jika pembacaan berhenti di tengah. [Penarik](SCRAPING.md)

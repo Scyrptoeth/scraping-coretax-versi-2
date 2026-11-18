@@ -44,6 +44,23 @@ export function readSptView(request = {}) {
   if (scopes.length !== 1) return null;
   const {root,meta} = scopes[0];
   if (request.expected && JSON.stringify(meta)!==JSON.stringify(request.expected)) return {identityChanged:true};
+  if(request.returnIndex && request.expected){
+    const target=new URL(request.returnIndex);
+    if(target.origin!==location.origin || target.username || target.password ||
+        !/^\/returnsheets\/id-ID\/submitted-returnsheets\/[a-f\d]{8}(?:-[a-f\d]{4}){3}-[a-f\d]{12}\/?$/i.test(target.pathname))return null;
+    const edits=[...root.querySelectorAll('input:not([readonly]):not(:disabled),textarea:not([readonly]):not(:disabled),select:not(:disabled),[contenteditable=true]')]
+      .filter(visible).some(el=>{
+        if(el.isContentEditable)return true;
+        if(el.matches('select'))return [...el.options].some(o=>o.selected!==o.defaultSelected) &&
+          !(el.selectedIndex===0 && ![...el.options].some(o=>o.defaultSelected));
+        if(el.matches('[type=checkbox],[type=radio]'))return el.checked!==el.defaultChecked;
+        return el.value!==el.defaultValue;
+      });
+    if(edits)return {edited:true};
+    if(request.closeOpened)window.close();
+    else location.assign(target.href);
+    return {returning:true};
+  }
   function partName(label) {
     if (/^(?:induk(?: spt)?|spt induk)(?:\s|$)/i.test(label)) return 'induk';
     if (/^(?:(?:total|jumlah)\s+lampiran\s+c|lampiran\s+c\s*[:–-]\s*(?:total|jumlah))$/i.test(label)) return 'c-total';
@@ -263,5 +280,17 @@ export function sptNavigation({ext,wp,period,doc}) {
     }
     if(unresolved)onIssue({label:'Tampilan sumber'},Error(unresolved+' bagian berlabel belum bisa dicocokkan ke satu panel.'));
   }
-  return {open,inspect,capture,collect};
+  async function returnToIndex(view,indexUrl,indexTabId){
+    const closeOpened=view.tabId!==indexTabId;
+    let result;
+    try{result=await execute(view.tabId,readSptView,{returnIndex:indexUrl,expected:view.meta,closeOpened});}
+    catch(error){
+      if(!closeOpened)throw error;
+      try{await ext.tabs.get(view.tabId);}catch{return;}
+      throw error;
+    }
+    if(result?.edited)throw Object.assign(Error('Isian pada formulir berubah. Tab dibiarkan terbuka untuk diperiksa.'),{code:'SCOPE'});
+    if(!result?.returning)throw changedIdentity();
+  }
+  return {open,inspect,capture,collect,returnToIndex,matches:row=>Boolean(matchedDocument(row,wp,period,doc))};
 }

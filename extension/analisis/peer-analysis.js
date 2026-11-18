@@ -1,5 +1,6 @@
 import {rowsOf} from './model.js';
 import {annualBusinessCodes} from './profile.js';
+import {checkedCompanyEntry} from './kkp-company-annexes.js';
 
 export function taxpayerId(pkg) {
   const raw=String(pkg.manifest.wp?.npwp??'').replace(/[.\s-]/g,'');
@@ -29,8 +30,10 @@ function businessCode(pkg,year) {
 export const measures=[
   ['gpm','Margin laba kotor (GPM)','%', 'gross','sales'],
   ['opm','Margin laba usaha (OPM)','%', 'operating','sales'],
-  ['npm','Margin laba sebelum pajak (NPM)','%', 'profit','sales'],
+  ['ppm','Margin laba sebelum pajak (PPM)','%', 'profit','sales'],
+  ['npm','Margin laba setelah PPh (NPM)','%', 'net','sales'],
   ['cttor','PPh terutang terhadap penjualan (CTTOR)','%', 'tax','sales'],
+  ['etr','Tarif pajak efektif (ETR)','%', 'tax','profit'],
   ['expenses','Beban usaha terhadap penjualan','%', 'expenses','sales'],
   ['roa','Imbal hasil aset (ROA)','%', 'profit','assets'],
   ['roe','Imbal hasil ekuitas (ROE)','%', 'profit','equity'],
@@ -39,13 +42,17 @@ export const measures=[
   ['dio','Perputaran persediaan','hari','inventory','cogs'],
   ['dso','Umur piutang usaha','hari','receivables','sales']
 ];
+export const fiscalMeasures=['cttor','npm','ppm','gpm','opm','etr'].map(code=>measures.find(m=>m[0]===code));
 
 export function annualRatios(pkg,year) {
   const versions=pkg.forms.filter(f=>f.type==='BADAN'&&f.period===year);
   const last=Math.max(...versions.map(f=>f.version));
   const latest=versions.filter(f=>f.version===last);
   const form=latest.length===1?latest[0]:null,entry=form?.parts.get('induk');
-  const rows=rowsOf(entry),body=rows.length===1?rows[0]:{};
+  // Older packages can provide traceable dashboard amounts without an owner for comparisons.
+  const source=form?checkedCompanyEntry(pkg,form,'induk',{requireOwner:false}):null;
+  const verified=Boolean(source&&taxpayerId(pkg));
+  const rows=rowsOf(source),body=rows.length===1?rows[0]:{};
   const variants=Object.keys(body).filter(k=>/^L1[a-l]FormData$/.test(k)&&body[k]&&typeof body[k]==='object');
   const variant=variants.length===1?variants[0].slice(0,3):null;
   const table=variant?body[variant+'FormData']:{};
@@ -72,6 +79,9 @@ export function annualRatios(pkg,year) {
   ])assign(key,name,accounts.get(code),variant?prefix+'TreeData · akun '+code+' · Amount':'');
   assign('profit','Laba sebelum pajak',table[variant+'TreeTotalRow']?.Amount,variant?prefix+'TreeTotalRow.Amount':'');
   assign('tax','PPh Badan terutang',body.MainFormData?.IncomeTaxInAYear,'MainFormData.IncomeTaxInAYear');
+  const {profit,tax}=values;
+  assign('net','Laba sebelum pajak dikurangi PPh terutang',profit.value!==null&&tax.value!==null?profit.value-tax.value:null,
+    profit.field?profit.field+' − '+tax.field:'');
   const balance=side=>table[variant+side]||{};
   const assets=balance('Assets'),liabilities=balance('LiabilitiesAndEquity');
   for(const [key,name,side,code] of [
@@ -88,15 +98,17 @@ export function annualRatios(pkg,year) {
   const ratios={};
   for(const [key,,unit,n,d] of measures){
     const a=values[n].value,b=values[d].value,scale=unit==='hari'?365:unit==='%'?100:1;
-    ratios[key]=a!==null && b!==null && b!==0 ? plainNumber(a/b*scale) : null;
+    const validBase=(d==='sales'||key==='etr')?b>0:b!==0;
+    ratios[key]=verified && a!==null && b!==null && validBase ? plainNumber(a/b*scale) : null;
   }
   let condition='Induk dan L1 tersedia';
   if(!versions.length)condition='SPT Badan tahun ini belum tersedia';
   else if(!form)condition='Terdapat beberapa rekaman dengan nomor pembetulan terakhir yang sama';
+  else if(entry?.cap?.lengkap===false)condition='Induk ditandai belum lengkap';
+  else if(entry&&!verified)condition='Identitas, integritas atau kelengkapan induk belum terkonfirmasi';
   else if(rows.length!==1)condition='Induk tunggal belum tersedia';
   else if(!variant)condition='Varian L1 tunggal belum tersedia';
-  else if(entry.cap?.lengkap===false)condition='Induk ditandai belum lengkap';
-  return {pkg,form,ratios,values,condition,klu:businessCode(pkg,year),year};
+  return {pkg,form,ratios,values,condition,complete:Boolean(verified&&rows.length===1&&variant),klu:businessCode(pkg,year),year};
 }
 
 export function peerBenchmark(active,packages,year,selections=new Map()) {
