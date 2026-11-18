@@ -1,5 +1,6 @@
 import {checkIdentity, forms, normalizeId, rowsOf} from './app-data.js';
 import {appendPackageEntry, isSptList, listRowType} from './app-package-entries.js';
+import {stageSptSource,queuedSptEvidence,filteredSptSource} from './app-spt-snapshots.js';
 
 const months = 'januari februari maret april mei juni juli agustus september oktober november desember'.split(' ');
 const annualTypes = new Set(['ICT_RCITR', 'ICT_PITR']);
@@ -72,7 +73,7 @@ function readIndex(row, owner) {
   const fingerprint = record || receipt ? keyOf(owner,form,period?.label || date,revision ?? amendment,record,receipt) : null;
   return {type, period, revision, record, receipt, fingerprint,conflict:declaredTypes.size>1 || records.size>1 || revisions.size>1};
 }
-function partEvidence(item, wp, failed) {
+function partEvidence(item, wp, failed, reusable=false) {
   if (item.source === 'sptisi') {
     if (!item.page || rowsOf(item.page).some(row => !ownsRow(row,wp))) return null;
     const groups = new Map();
@@ -87,8 +88,8 @@ function partEvidence(item, wp, failed) {
   const part = textValue(ctx.bagian).toLowerCase();
   if (!period || revision === null || !/^[a-z0-9][a-z0-9_-]{0,79}$/.test(part)) return null;
   const pages = Array.isArray(item.pages) ? item.pages : [];
-  const error = failed || pages.some(p => p?.IsSuccessful === false);
-  const ready = !error && item.cap.lengkap === true && pages.length > 0 &&
+  const error = failed || pages.some(p => p?.IsSuccessful === false || p?.Errors?.length);
+  const ready = !error && (item.cap.lengkap === true || reusable) && !filteredSptSource(item.cap.payload) && pages.length > 0 &&
     pages.every(p => p && typeof p === 'object' && p.Payload != null);
   return {slot:keyOf(spt.jenis,period.label,revision),record:textValue(spt.recordId),receipt:referenceValue(textValue(spt.nomor)),part,
     status:error ? 'retry' : ready ? 'ready' : 'pending'};
@@ -100,7 +101,7 @@ export function planSptDetails({wp,period,types = forms.map(([type]) => type),it
   const owner = normalizeId(wp);
   if (!owner) throw Error('Rencana detail SPT memerlukan satu NPWP.');
   if (!rangeIsValid(period)) throw Error('Periode rencana detail SPT tidak valid.');
-  const selected = new Set(types), seen = new Set(), slots = new Map(), referenceSlots = new Map(), evidence = [];
+  const selected = new Set(types), seen = new Set(), slots = new Map(), referenceSlots = new Map(), evidence = [], staged=new Map();
   const counts = {periods:0, versions:0, unknown:0, outside:0, excludedType:0, conflicts:0, duplicateRows:0,
     missing:0, readyParts:0, pendingParts:0, retryParts:0, drafts:0, failedIndexPages:0, unmatchedParts:0};
   for (const item of items) {
@@ -112,9 +113,11 @@ export function planSptDetails({wp,period,types = forms.map(([type]) => type),it
       continue;
     }
     if (source === 'sptisi') {
+      if(item.page && rowsOf(item.page).every(row=>ownsRow(row,owner)) && stageSptSource(staged,item,owner))continue;
       evidence.push(partEvidence(item,owner,false));
       continue;
     }
+    for(const part of item.sptObservedParts || [])evidence.push(partEvidence(part,owner,part.failed));
     for (const page of pages) {
       if (page?.IsSuccessful === false) { counts.failedIndexPages++; continue; }
       for (const row of rowsOf(page)) {
@@ -167,10 +170,14 @@ export function planSptDetails({wp,period,types = forms.map(([type]) => type),it
     counts.duplicateRows += group.rows-1;
   }
   const statusRank = {pending:0,retry:1,ready:2};
+  for(const samples of staged.values()){
+    const {primary,reusable}=queuedSptEvidence(samples);
+    evidence.push(partEvidence(primary,owner,false,reusable));
+  }
   for (const failed of failures) evidence.push(partEvidence(failed,owner,true));
   for (const part of evidence) {
     const group = part && bySlot.get(part.slot);
-    const matches = group && (group.doc.recordId && part.record ? group.doc.recordId===part.record :
+    const matches = group && !(group.doc.receipt && part.receipt && group.doc.receipt!==part.receipt) && (group.doc.recordId && part.record ? group.doc.recordId===part.record :
       group.doc.receipt && group.doc.receipt===part.receipt);
     if (!matches) { counts.unmatchedParts++; continue; }
     const old = group.sections.get(part.part);

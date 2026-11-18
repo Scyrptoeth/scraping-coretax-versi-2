@@ -35,7 +35,9 @@ function listRow(doc) {
 }
 function indexPage(mode,afterVisit) {
   let pages = [[normal,revision]];
-  if(mode==='lanjut'){
+  if(mode==='seratus')pages=[Array.from({length:103},(_,revision)=>({id:'versi-'+revision,month:'Januari',revision}))];
+  else if(mode==='tindaklanjut')pages=afterVisit?[[normal,revision]]:[[normal]];
+  else if(mode==='lanjut'){
     pages = afterVisit ? [[unselected,unavailable,normal],[newTab,revision,unavailable]] :
       [[normal,revision,unavailable,newTab,unselected]];
   }else if(mode==='ganti'){
@@ -64,7 +66,7 @@ function indexPage(mode,afterVisit) {
     'if(first)first.onclick=()=>{page=0;show();console.log("fixture:first-page");};'+
     'next.onclick=()=>{page=(page+1)%pages.length;show();console.log("fixture:index-page");};</script>';
 }
-function detailPage(doc,mode) {
+function detailPage(doc,mode,visit) {
   const changed = mode==='ganti' && doc===revision;
   const pairs = [['NPWP Wajib Pajak',changed?'0000000000000002':owner],['Jenis SPT','SPT Masa PPN'],
     ['Masa Pajak',doc.month+' 2025'],['Model SPT',model(doc)],['ID SPT',doc.id],['Nomor Bukti Penerimaan',receipt(doc)]];
@@ -72,9 +74,21 @@ function detailPage(doc,mode) {
     '<section aria-label="Lampiran A1"><table id="a1"><thead><tr><th>Uraian</th></tr></thead>'+
     '<tbody><tr><td>HALAMAN-SATU</td></tr></tbody></table><button type="button" aria-controls="a1" '+
     'aria-label="Berikutnya" onclick="console.log(\'fixture:detail-page\')">Berikutnya</button></section>' : '';
+  let followup='';
+  if(mode==='tindaklanjut'){
+    followup='<section aria-label="Lampiran A1"><table id="pages"><thead><tr><th>Uraian</th></tr></thead><tbody><tr><td id="cell">'+doc.id+'-satu</td></tr></tbody></table>'+
+      '<div id="range" role="status">Menampilkan 1 sampai 1 dari 2 baris</div><button type="button" aria-controls="pages" aria-label="Berikutnya" onclick="this.disabled=true;document.getElementById(\'range\').textContent=\'Menampilkan 2 sampai 2 dari 2 baris\';document.getElementById(\'cell\').textContent=\''+doc.id+'-dua\'">Berikutnya</button></section>'+
+      '<button type="button" role="tab" aria-controls="b" onclick="console.log(\'fixture:b1:'+doc.id+'\');document.getElementById(\'b\').hidden=false">Lampiran B1</button>'+
+      '<section role="tabpanel" id="b" aria-label="Lampiran B1" hidden><dl><dt>Rincian</dt><dd>'+doc.id+'-b1</dd></dl></section>'+
+      '<section aria-label="Lampiran B2">'+(doc!==normal || visit>1?'<dl><dt>Rincian</dt><dd>'+doc.id+'-b2</dd></dl>':'Belum tampil')+'</section>'+
+      '<section aria-label="Lampiran C1"><table id="tail"><thead><tr><th>Uraian</th></tr></thead><tbody><tr><td>Halaman terakhir</td></tr></tbody></table>'+
+      '<button type="button" aria-controls="tail" aria-label="Halaman pertama">Pertama</button><button type="button" aria-controls="tail" aria-label="Berikutnya" disabled>Berikutnya</button></section>'+
+      '<section aria-label="Lampiran C2"><input type="search" aria-label="Cari baris" value="terpilih"><table><thead><tr><th>Uraian</th></tr></thead>'+
+      '<tbody><tr><td>Hasil filter</td></tr></tbody></table><div role="status">Menampilkan 1 sampai 1 dari 1 baris</div></section>';
+  }
   return '<!doctype html><main><dl>'+pairs.map(([k,v])=>'<dt>'+k+'</dt><dd>'+v+'</dd>').join('')+'</dl>'+
     '<section aria-label="Induk SPT"><dl><dt>Keterangan</dt><dd>'+(changed?'WP-LAIN':'INDUK-'+doc.id)+'</dd></dl></section>'+
-    pageForStop+(mode==='isian'?'<label>Catatan fiktif <input id="note" value="Awal"></label>'+
+    pageForStop+followup+(mode==='isian'?'<label>Catatan fiktif <input id="note" value="Awal"></label>'+
       '<script>document.getElementById("note").value="Diubah";</script>':'')+'</main>';
 }
 async function prepare(ui) {
@@ -103,6 +117,60 @@ async function downloadPackage(ui) {
   ]);
   return readPackage(await readFile(await download.path()));
 }
+async function exerciseFollowup(ctx,ui,opened,activations){
+  const choices=ui.getByRole('checkbox',{name:/^Pilih .*pembetulan \d+$/i});
+  const execute=async()=>{
+    await ui.getByRole('button',{name:'Ambil versi SPT terpilih',exact:true}).click();
+    const status=ui.getByRole('status',{name:'Proses versi SPT terpilih'});
+    await status.filter({hasText:/versi diproses/}).waitFor();
+    return status.innerText();
+  };
+  const preview=async()=>{
+    await ui.locator('#preview').click();await ui.getByText('Rincian versi SPT dan bagian yang tersedia',{exact:true}).click();await choices.first().waitFor();
+  };
+  await ui.getByLabel('Halaman maksimal per bagian SPT').fill('1');
+  assert.equal(await choices.count(),1);await execute();
+  assert.deepEqual(opened,[normal.id]);assert.deepEqual(activations,[normal.id]);
+  await ui.locator('#scope-ok').check();await ui.locator('#list-tables').click();await ui.locator('#add-table').click();await preview();
+  assert.equal(await choices.count(),2);
+  const row=ui.getByRole('row').filter({has:choices.first()});
+  assert.match(await row.locator('th,td').nth(3).innerText(),/induk.*b1/);
+  assert.match(await row.locator('th,td').nth(4).innerText(),/c1.*c2/);
+  assert.match(await row.locator('th,td').nth(5).innerText(),/a1.*b2/);
+  assert.deepEqual(await choices.evaluateAll(nodes=>nodes.map(n=>n.checked)),[true,true]);
+  assert.match(await execute(),/2 bagian dari antrean dipakai kembali/);
+  assert.deepEqual(activations,[normal.id,revision.id]);
+  await preview();
+  for(const item of await choices.all())await item.uncheck();
+  await choices.first().check();await ui.getByRole('checkbox',{name:'Ambil ulang semua bagian versi yang dipilih'}).check();
+  assert.doesNotMatch(await execute(),/dipakai kembali/);
+  assert.deepEqual(activations,[normal.id,revision.id,normal.id]);
+  const pkg=await downloadPackage(ui);assert.ok(pkg.report.valid);
+  const primary=pkg.entries.filter(e=>e.path.startsWith('spt/PPN/'));
+  for(const doc of [normal,revision]){
+    const section=name=>primary.find(e=>e.cap.konteks.spt.recordId===doc.id && e.cap.konteks.bagian===name);
+    const a=section('a1');assert.equal(a.cap.lengkap,false);
+    assert.deepEqual(a.pages.flatMap(p=>p.Payload.Data.map(r=>r.Uraian)),[doc.id+'-satu',doc.id+'-dua']);
+    assert.equal(a.cap.halamanSumber[0].pencocokan.awalTampilan,true);
+    assert.equal(a.cap.halamanSumber.at(-1).pencocokan.akhirTampilan,true);
+    assert.equal(section('c1').cap.halamanSumber[0].pencocokan.awalTampilan,undefined);
+    assert.equal(section('c2').cap.halamanSumber[0].pencocokan.filterTampilan,true);
+    assert.equal(section('c2').cap.halamanSumber[0].pencocokan.awalTampilan,undefined);
+    assert.equal(section('b2').pages[0].Payload.Data[0].Rincian,doc.id+'-b2');
+  }
+  const handoff=ctx.waitForEvent('page');await ui.getByRole('button',{name:'Buka di Analisis'}).first().click();
+  const viewer=await handoff;await viewer.waitForFunction(wp=>document.querySelector('#taxpayer option:checked')?.textContent.includes(wp),owner);
+  await viewer.getByRole('button',{name:'SPT',exact:true}).first().click();
+  await viewer.getByRole('table',{name:'Daftar SPT',exact:true}).getByRole('button',{name:'Buka',exact:true}).first().click();
+  const dialog=viewer.getByRole('dialog'),version=dialog.getByRole('combobox',{name:'Versi',exact:true});
+  assert.equal(await version.locator('option').count(),2);
+  const read=[];
+  for(const value of await version.locator('option').evaluateAll(nodes=>nodes.map(n=>n.value))){
+    await version.selectOption(value);await dialog.getByRole('combobox',{name:'Induk / lampiran'}).selectOption('a1');
+    read.push(await dialog.getByRole('cell',{name:/jan-(?:normal|revision)-dua/}).innerText());
+  }
+  assert.deepEqual(read.sort(),[normal.id+'-dua',revision.id+'-dua'].sort());
+}
 async function run(mode) {
   const profile = await mkdtemp(path.join(tmpdir(),'scv2-antrean-'));
   let ctx;
@@ -110,9 +178,10 @@ async function run(mode) {
     ctx=await chromium.launchPersistentContext(profile,{channel:'chromium',headless:true,
       executablePath:process.env.CHROMIUM_PATH || undefined,acceptDownloads:true,
       args:['--disable-extensions-except='+extension,'--load-extension='+extension]});
-    const opened=[],blocked=[],listVisits=[],pageErrors=[];
+    const opened=[],blocked=[],listVisits=[],pageErrors=[],activations=[];
     let nextClicks=0,firstClicks=0;
     ctx.on('console',event=>{
+      if(event.text().startsWith('fixture:b1:'))activations.push(event.text().slice('fixture:b1:'.length));
       if(event.text()==='fixture:index-page')nextClicks++;
       if(event.text()==='fixture:first-page')firstClicks++;
     });
@@ -126,7 +195,7 @@ async function run(mode) {
       const doc=docs.find(d=>url===detailBase+d.id);
       if(request.method()==='GET' && doc){
         opened.push(doc.id);
-        return route.fulfill({contentType:'text/html; charset=utf-8',body:detailPage(doc,mode)});
+        return route.fulfill({contentType:'text/html; charset=utf-8',body:detailPage(doc,mode,opened.filter(id=>id===doc.id).length)});
       }
       if(url!==site+'/favicon.ico')blocked.push([request.method(),url]);
       return route.abort();
@@ -135,8 +204,17 @@ async function run(mode) {
     const source=await ctx.newPage();await source.goto(listing);
     const ui=await ctx.newPage();await ui.goto(new URL('app.html',worker.url()).href);
     await prepare(ui);
+    if(mode==='tindaklanjut'){
+      await exerciseFollowup(ctx,ui,opened,activations);assert.deepEqual(blocked,[]);assert.deepEqual(pageErrors,[]);return;
+    }
     const choices=ui.getByRole('checkbox',{name:/^Pilih .*pembetulan \d+$/i});
     await choices.first().waitFor();
+    if(mode==='seratus'){
+      assert.equal(await choices.count(),100);await ui.getByText(/100 versi dipilih dari 100 versi yang ditampilkan.*103/).waitFor();
+      await choices.first().uncheck();await ui.getByText(/99 versi dipilih dari 100 versi yang ditampilkan.*103/).waitFor();
+      await ui.getByRole('button',{name:'Tampilkan versi berikutnya'}).click();assert.equal(await choices.count(),103);
+      await ui.getByText(/102 versi dipilih dari 103 versi yang ditampilkan/).waitFor();assert.deepEqual(opened,[]);return;
+    }
     assert.equal(await choices.count(),mode==='lanjut'?5:mode==='ganti'?3:2);
     for(const choice of await choices.all())assert.equal(await choice.isChecked(),true);
     if(mode==='lanjut')await ui.getByRole('checkbox',{name:/^Pilih .*2025-04.*pembetulan 0$/i}).uncheck();
@@ -183,5 +261,5 @@ async function run(mode) {
     await rm(profile,{recursive:true,force:true});
   }
 }
-for(const mode of ['lanjut','berulang','ganti','henti','pertama','isian'])await run(mode);
-console.log('PASS: selected SPT versions, reordered index, first and next page, partial navigation, repeating list, changed WP, stop and verified ZIP.');
+for(const mode of ['tindaklanjut','seratus','lanjut','berulang','ganti','henti','pertama','isian'])await run(mode);
+console.log('PASS: queued sections, new amendments, selection beyond 100, full reread, navigation guards, separate ZIP versions and viewer.');

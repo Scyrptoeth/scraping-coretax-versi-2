@@ -1,6 +1,14 @@
 # Matriks kesetaraan terhadap VERITAX v1.32.0
 
-Prarilis 0.8.0, 19 November 2026. Kedua aplikasi masih memiliki perbedaan dengan VERITAX. **Terverifikasi** berlaku untuk perilaku dan masukan yang disebutkan. **Berbeda** berarti ada selisih yang telah diketahui. **Belum teruji** berarti bukti pembandingan belum tersedia.
+Prarilis 0.9.0, 19 November 2026. Kedua aplikasi masih memiliki perbedaan dengan VERITAX. **Terverifikasi** berlaku untuk perilaku dan masukan yang disebutkan. **Berbeda** berarti ada selisih yang telah diketahui. **Belum teruji** berarti bukti pembandingan belum tersedia.
+
+## Hasil prarilis 0.9.0
+
+Pada formulir Badan dengan rekonsiliasi L1a atau L1c, pemutar dan Excel menyediakan empat kontrol sumber pada indeks B. Pada satu contoh fiktif dengan masukan lengkap, 24 posisi cocok dengan Studio. Setelah dua masukan diubah pada salinan Excel, LibreOffice menghitung ulang empat kontrol sesuai hasil yang diharapkan. Data uji juga mencakup saldo bertanda, isian kosong, akun ganda, jumlah yang bertentangan dengan rinciannya dan mata uang yang tidak mendukung pembulatan PKP rupiah. [Uji penghitungan dan Excel](../tests/kkp-company-controls.test.mjs)
+
+Di penarik, bagian yang sudah tersedia dapat dipakai kembali dalam antrean untuk WP dan versi SPT yang sama. Status itu mengikuti bukti ekspor atau bukti awal hingga akhir tampilan. Cuplikan yang dimulai di tengah tabel tetap perlu diperiksa. Jika dua salinan bertentangan, data pembandingnya dapat ditelusuri di ZIP. [Penarikan dan batas bukti](SCRAPING.md) · [Uji antrean melalui Chrome](../tests/spt-multi-browser.mjs)
+
+Untuk PPh Pasal 22, uji dengan masukan fiktif membedakan DPP bukti aktif, DPP bukti batal, jumlah yang dipotong atau dipungut, serta jumlah yang disetor. Saat bukti batal ikut dijumlahkan di Studio, rincian Versi 2 menyajikan kedua dasar hitungnya. Saat nominal tidak terisi, petugas dapat menelusuri sumbernya. [Uji aturan per masa](../tests/kkp-index-source.test.mjs) · [Uji di pemutar dan Excel](../tests/kkp-index-browser.mjs)
 
 ## Hasil sampai prarilis 0.3.0
 

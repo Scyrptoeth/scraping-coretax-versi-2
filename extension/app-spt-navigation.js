@@ -115,7 +115,7 @@ export function readSptView(request = {}) {
   const otherParts=sections.filter(s=>s.part!==selection.part && selected.contains(s.el));
   const belongs=el=>!otherParts.some(s=>s.el.contains(el));
   const grids = selected.matches('table') ? [selected] : [...selected.querySelectorAll('table')].filter(el=>visible(el) && belongs(el));
-  let rows = [],columns=[],paging='none',zero=false;
+  let rows = [],columns=[],paging='none',zero=false,atStart=false,atEnd=false,range=null,filtered=false;
   if (grids.length === 1) {
     const grid=grids[0],heads=[...grid.querySelectorAll('thead tr')].filter(visible);
     if(selected.closest('[aria-busy=true]') || grid.closest('[aria-busy=true]') || [...selected.querySelectorAll('[role=progressbar]')].some(visible))return null;
@@ -126,6 +126,20 @@ export function readSptView(request = {}) {
     const host=grid.closest('.p-datatable,[data-pc-name=datatable],p-table') || selected;
     const local=[...host.querySelectorAll('table')].filter(visible).length<=1 && (selected.contains(host) || host.contains(selected));
     const pagers=local?[...host.querySelectorAll('.p-paginator,[data-pc-name=paginator],p-paginator,nav[aria-label]')].filter(visible):[];
+    const filterHost=local && selected.contains(host)?selected:host;
+    filtered=Boolean(filterHost.querySelector('.p-column-filter-menu-button-active,.p-datatable-column-filter-button-active,.p-column-filter-active'));
+    const fields=[...root.querySelectorAll('input,textarea,select,[role=combobox],[role=searchbox]')].filter(el=>
+      (filterHost.contains(el) && belongs(el) || grid.id && el.getAttribute('aria-controls')===grid.id) && !el.matches('input[type=hidden]'));
+    for(const field of fields){
+      const name=[field.getAttribute('aria-label'),field.getAttribute('placeholder'),field.title,field.id,field.name,
+        ...(field.labels||[]),...(field.getAttribute('aria-labelledby')||'').split(/\s+/).map(id=>document.getElementById(id))]
+        .map(s=>typeof s==='string'?s:s?.textContent||'').join(' ');
+      if(!field.matches('[type=search],[role=searchbox]') && !field.closest('thead,[role=search],p-columnfilter,.p-column-filter,.p-datatable-filter') &&
+        !/filter|search|cari|penyaring|saring/i.test(name))continue;
+      if(field.matches('input[type=checkbox],input[type=radio]')){if(field.checked)filtered=true;}
+      else if(field.matches('input,textarea,select')){if(clean(field.value))filtered=true;}
+      else if(!field.matches('[aria-valuetext=""]') && !field.querySelector('.p-placeholder'))filtered=true;
+    }
     const linked=grid.id?[...root.querySelectorAll('button[aria-controls]')].filter(b=>b.getAttribute('aria-controls')===grid.id):[];
     const candidates=[...new Set([...linked,...pagers.flatMap(el=>[...el.querySelectorAll('button')])])].filter(visible);
     const nextName=/^(?:(?:ke )?halaman (?:berikut(?:nya)?|selanjutnya)|berikut(?:nya)?|selanjutnya|(?:go to )?next(?: page)?|›|»|→)$/i;
@@ -148,6 +162,22 @@ export function readSptView(request = {}) {
       rows.push(Object.fromEntries(labels.map((label,i)=>[label,tr.cells[i].innerText.trim()])));
     }
     zero=reportedZero && !rows.length && ['end','none'].includes(paging);
+    const previous=candidates.filter(b=>{
+      if(riskyAction(b) || b.hasAttribute('aria-controls') && b.getAttribute('aria-controls')!==grid.id)return false;
+      const names=[b.getAttribute('aria-label'),b.title,b.innerText,(b.getAttribute('aria-labelledby')||'').split(/\s+/).map(id=>document.getElementById(id)?.innerText||'').join(' ')].map(clean).filter(Boolean);
+      return names.length?names.every(n=>/^(?:(?:ke )?halaman (?:pertama|sebelumnya)|(?:go to )?(?:first|previous)(?: page)?|sebelumnya|‹|«|←)$/i.test(n)):
+        b.matches('.p-paginator-first,.p-paginator-prev,[data-pc-section=firstpagebutton],[data-pc-section=previouspagebutton]') && pagers.some(p=>p.contains(b));
+    });
+    const positions=zeroLabels.map(el=>/^(?:(?:menampilkan|showing)\s+)?(\d+)\s*(?:-|–|s\.d\.|sampai|to)\s*(\d+)\s*(?:dari|of)\s*(\d+)(?:\s+(?:baris|data|entri|entries|records))?\.?$/i.exec(clean(el.innerText))).filter(Boolean);
+    if(positions.length && positions.every(p=>p.slice(1).join('/')===positions[0].slice(1).join('/'))){
+      const [first,last,total]=positions[0].slice(1).map(Number);
+      if(first>=1 && last>=first && last<=total && last-first+1===rows.length && Number.isSafeInteger(total))range={first,last,total};
+    }
+    const firstByButton=previous.length>0 && previous.every(b=>b.matches(':disabled,[aria-disabled=true],.p-disabled'));
+    const consistent=!positions.length || zero || Boolean(range && (paging!=='end' || range.last===range.total) && (paging!=='next' || range.last<range.total) &&
+      (!previous.length || firstByButton===(range.first===1)));
+    atStart=consistent && !filtered && (zero || (range?range.first===1:firstByButton));
+    atEnd=consistent && !filtered && (zero || paging==='end' || paging==='none' && range && range.last===range.total);
     if(request.mode==='advance'){
       if(paging!=='next' || JSON.stringify(columns)!==JSON.stringify(request.columns) ||
           JSON.stringify(rows.map(row=>columns.map(c=>row[c])))!==request.before)return {changed:true};
@@ -156,10 +186,13 @@ export function readSptView(request = {}) {
   } else if (!grids.length) {
     const fields=pairs(selected,belongs).filter(([label])=>label && !accepted.test(label));
     if (new Set(fields.map(([label])=>label)).size!==fields.length) return null;
-    if (fields.length) {rows=[Object.fromEntries(fields)];columns=fields.map(([k])=>k);}
+    if (fields.length) {
+      rows=[Object.fromEntries(fields)];columns=fields.map(([k])=>k);
+      atStart=atEnd=!selected.querySelector('.p-paginator,[data-pc-name=paginator],p-paginator,nav,[aria-busy=true],[role=progressbar],button[aria-controls],input:not([readonly]):not(:disabled),textarea:not([readonly]):not(:disabled),select:not(:disabled),[contenteditable=true]');
+    }
   }
   if (!rows.length && !zero) return null;
-  return {meta,part:selection.part,label:selection.label,rows,columns,paging,zero};
+  return {meta,part:selection.part,label:selection.label,rows,columns,paging,zero,atStart,atEnd,range,filtered};
 }
 
 function matchedDocument(row,wp,period,doc) {
@@ -225,14 +258,40 @@ export function sptNavigation({ext,wp,period,doc}) {
     }
     throw Error('Bagian belum terbaca sebagai satu tabel atau satu formulir yang jelas. Periksa identitas dan tampilan sumber.');
   }
-  async function collect(view,{limit,checkpoint,onPage,onIssue}) {
+  async function collect(view,{limit,checkpoint,onPage,onIssue,skipParts=new Set(),onSections=()=>{},onCovered=()=>{},onReuse=()=>{}}) {
     if(!Number.isInteger(limit) || limit<1 || limit>100)throw Error('Pilih batas 1–100 halaman per bagian.');
     const listed=[...view.sections].sort((a,b)=>Number(b.part==='induk')-Number(a.part==='induk'));
     if(!listed.length)throw Error('Nama induk atau lampiran belum terbaca pada tampilan ini.');
     const discovered=new Set(listed.map(s=>s.part));
+    onSections(listed);
     let unresolved=view.unresolved || 0;
+    function discover(current){
+      unresolved=Math.max(unresolved,current.unresolved||0);
+      for(const item of current.sections){
+        if(discovered.has(item.part))continue;
+        discovered.add(item.part);listed.push(item);onSections([item]);
+      }
+    }
     for(const section of listed){
       await checkpoint();
+      if(skipParts.has(section.part)){
+        let current=await execute(view.tabId,readSptView,{expected:view.meta});
+        if(!verified(current))throw changedIdentity();
+        discover(current);
+        if(doc.parts?.some(p=>!skipParts.has(p.name) && !discovered.has(p.name)) && current.sections.some(p=>p.part===section.part && !p.visible)){
+          const activation=await execute(view.tabId,readSptView,{part:section.part,expected:view.meta,mode:'activate'});
+          if(activation?.identityChanged)throw changedIdentity();
+          if(activation?.activated){
+            for(let attempt=0;attempt<10;attempt++){
+              await checkpoint();current=await execute(view.tabId,readSptView,{expected:view.meta});
+              if(!verified(current))throw changedIdentity();
+              if(current.sections.some(s=>s.part===section.part && s.visible)){discover(current);break;}
+              await wait(150);
+            }
+          }
+        }
+        onReuse(section);continue;
+      }
       const pass=crypto.randomUUID(),seen=new Set();
       try {
         let result=await capture(view,section.part,checkpoint);
@@ -246,7 +305,13 @@ export function sptNavigation({ext,wp,period,doc}) {
           seen.add(fingerprint);
           await onPage({...result,pass,page});
           if(result.paging==='unclear')throw Error('Kontrol halaman berikutnya belum dapat dipastikan.');
-          if(result.paging!=='next')break;
+          if(result.paging!=='next'){
+            if(result.atEnd){
+              if(!verified(await execute(view.tabId,readSptView,{expected:view.meta})))throw changedIdentity();
+              onCovered(pass);
+            }
+            break;
+          }
           if(page>=limit)throw Error('Batas halaman tercapai saat masih ada halaman berikutnya.');
           await checkpoint();
           const args={part:section.part,expected:view.meta};
@@ -263,6 +328,8 @@ export function sptNavigation({ext,wp,period,doc}) {
             if(JSON.stringify(candidate.rows.map(row=>candidate.columns.map(k=>row[k])))!==fingerprint){next=candidate;break;}
           }
           if(!next)throw Error('Halaman berikut belum berubah atau data berulang.');
+          if((result.range || next.range) && (!result.range || !next.range || result.range.total!==next.range.total || next.range.first!==result.range.last+1))
+            throw Error('Urutan atau total baris pada penanda halaman berubah.');
           result={...next,recordId:result.recordId,receipt:result.receipt};
         }
       } catch(error){
@@ -272,12 +339,10 @@ export function sptNavigation({ext,wp,period,doc}) {
       }
       const refreshed=await execute(view.tabId,readSptView,{expected:view.meta});
       if(!verified(refreshed))throw changedIdentity();
-      unresolved=Math.max(unresolved,refreshed.unresolved);
-      for(const item of refreshed.sections){
-        if(discovered.has(item.part))continue;
-        discovered.add(item.part);listed.push(item);
-      }
+      discover(refreshed);
     }
+    for(const part of doc.parts||[])if(!skipParts.has(part.name) && !discovered.has(part.name))
+      onIssue({part:part.name,label:part.name.toUpperCase()},Error('Bagian yang diperlukan belum ditemukan pada tampilan ini.'));
     if(unresolved)onIssue({label:'Tampilan sumber'},Error(unresolved+' bagian berlabel belum bisa dicocokkan ke satu panel.'));
   }
   async function returnToIndex(view,indexUrl,indexTabId){

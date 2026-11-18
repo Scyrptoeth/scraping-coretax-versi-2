@@ -113,6 +113,7 @@ export async function collectSptQueue({directory,candidates,tabId,limit,indexLim
         }
         const saved=sink.finish(failure);
         if(saved.pages){result.withPages++;result.pages+=saved.pages;}
+        if(saved.reused)result.reused=(result.reused||0)+saved.reused;
         if(saved.issues.length)result.problem=new Error(saved.issues.at(-1));
         if(fatal(failure))throw failure;
       }

@@ -68,6 +68,18 @@ export function differenceCell(row, leftColumn, rightColumn, cached) {
     cached: Number.isFinite(cached) ? cached : null };
 }
 
+// Addresses and signs are typed by the caller. Text from a document cannot become an Excel expression.
+export function signedSumCell(terms, column, cached, roundTaxableIncome = false) {
+  if (!Array.isArray(terms) || !terms.length || terms.some(term => ![1, -1].includes(term.sign))) {
+    throw new RangeError("Komponen rumus penjumlahan tidak sah.");
+  }
+  const addresses = terms.map(term => addressOf(term.row, column));
+  const sum = terms.map((term, i) => (term.sign < 0 ? "-" : i ? "+" : "") + addresses[i]).join("");
+  const expression = roundTaxableIncome ? "MAX(0,ROUNDDOWN((" + sum + ")/1000,0)*1000)" : sum;
+  return { [trustedFormula]: "IF(COUNT(" + addresses.join(",") + ")=" + terms.length + "," + expression + ',"")',
+    cached: Number.isFinite(cached) ? cached : null };
+}
+
 function worksheet(rows, names, back, contents) {
   if (!Array.isArray(rows) || rows.length > 1048576) throw new Error("Jumlah baris melebihi batas lembar Excel.");
   const hyperlinks = [];

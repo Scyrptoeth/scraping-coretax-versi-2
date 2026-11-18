@@ -1,5 +1,13 @@
 # Riwayat Scraping Coretax Versi 2
 
+## 19 November 2026 · Prarilis 0.9.0
+
+Pratinjau WP dapat memakai kembali bagian SPT yang sudah terbukti tersedia dalam antrean. Pengguna dapat melanjutkan pembacaan bagian lain atau memilih **Ambil ulang semua bagian versi yang dipilih**. [Cara melanjutkan](SCRAPING.md)
+
+Kertas kerja PPh Pasal 22 memisahkan objek pada D1-BPU (E.2.1) dan PPh yang dipotong atau dipungut pada induk Unifikasi (E.2.2). Jika ada bukti batal, rincian dan Excel juga memuat jumlah yang tercantum sebelum mengeluarkan bukti itu. [Panduan analisis](ANALISIS.md)
+
+Induk KKP Badan menelusuri laba, penghasilan neto fiskal, PKP dan saldo PPh sampai ke akun atau isian sumber. Empat kontrol dapat dihitung kembali di Excel dari angka yang tersedia. [Cakupan pengujian](KESETARAAN.md)
+
 ## 19 November 2026 · Prarilis 0.8.0
 
 Di pratinjau WP, pilih beberapa versi SPT untuk membaca induk dan lampiran dalam satu antrean. Penarik memeriksa kembali WP, masa dan pembetulan setelah daftar berubah. Jika sebagian dokumen belum terbaca, alasannya tercantum bersama hasil yang sudah tersimpan. [Cara memakai antrean](SCRAPING.md)

@@ -1,6 +1,7 @@
 import {normalizeId} from '../app-data.js';
 import {rowsOf} from './model.js';
 import {sourceAmount} from './withholding-forms.js';
+import {companyReconciliation} from './kkp-company-controls.js';
 
 const fiscalField='PositiveFiscalCorrection';
 const namedCosts=[['5314','Penyusutan dan amortisasi'],['5321','Biaya jamuan'],['5409','Sumbangan']];
@@ -208,7 +209,9 @@ export function companyAnnexIndices(pkg,year,index={}){
   if(!forms.length)return {groups:[],warnings:[]};
   const f=latest(forms);
   if(!f)return {groups:[],warnings:['Indeks B.1.4 dan B.7 menunggu identifikasi satu SPT Badan versi terakhir untuk '+year+'.']};
-  const tree=accountsOf(parent(pkg,f)),groups=index.groups instanceof Map?[...index.groups.values()]:index.groups||[];
+  const body=parent(pkg,f),tree=accountsOf(body),groups=index.groups instanceof Map?[...index.groups.values()]:index.groups||[];
   const base=groups.find(g=>g.key==='PPN/N.3')?.lines||[];
-  return {groups:[equalization(pkg,f,tree,base),positiveCorrections(pkg,f,tree)],warnings:[]};
+  const annual=groups.find(g=>g.key==='BADAN/B')||newGroup('B','Induk PPh Badan');
+  const current={...annual,companyReconciliation:true,support:companyReconciliation(body,tree,reference(f,'induk'),f)};
+  return {groups:[current,equalization(pkg,f,tree,base),positiveCorrections(pkg,f,tree)],warnings:[]};
 }

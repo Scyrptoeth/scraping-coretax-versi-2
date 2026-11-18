@@ -328,13 +328,14 @@ function showSptPlan(box,{counts,documents}) {
     hint.textContent='Setiap versi memerlukan induk. Lampiran ikut dihitung jika namanya tersedia di sumber yang ditambahkan.';
     panel.append(hint);
     const navigate=Boolean(ext && checked('sources').includes('sptisi'));
-    const pageLimit=document.createElement('input');
+    const pageLimit=document.createElement('input'),reread=document.createElement('input');
     if(navigate){
       pageLimit.type='number';pageLimit.min='1';pageLimit.max='100';pageLimit.value='100';
       const label=document.createElement('label');label.append('Halaman maksimal per bagian SPT',pageLimit);panel.append(label);
       const pagingHint=document.createElement('p');
-      pagingHint.textContent='Pembacaan dimulai dari halaman yang sedang tampil pada setiap bagian.';
-      panel.append(pagingHint);
+      pagingHint.textContent='Pembacaan dimulai dari halaman yang tampil. Penarik dapat memakai kembali cuplikan yang mencakup awal hingga akhir tampilan atau ekspor dengan jumlah baris terverifikasi.';
+      reread.type='checkbox';const fullLabel=document.createElement('label');fullLabel.append(reread,' Ambil ulang semua bagian versi yang dipilih');
+      panel.append(pagingHint,fullLabel);
     }
     if(ext && !navigate){
       const instructions=document.createElement('p');
@@ -343,14 +344,14 @@ function showSptPlan(box,{counts,documents}) {
     }
     const labels=new Map(forms),selected=new Map();
     const picked=document.createElement('span');
-    const updatePicked=()=>{picked.textContent=selected.size+' versi dipilih.';};
+    const updatePicked=()=>{picked.textContent=selected.size+' versi dipilih dari '+cursor+' versi yang ditampilkan. Jumlah versi dalam daftar: '+documents.length+'.';};
     if(navigate){
       const directoryLimit=document.createElement('input');
       directoryLimit.type='number';directoryLimit.min='1';directoryLimit.max='100';directoryLimit.value='100';
       const label=document.createElement('label');label.append('Halaman maksimal untuk mencari versi di daftar',directoryLimit);
       const hint=document.createElement('p');
-      hint.textContent='Centang versi yang ingin dibaca. Versi dengan bagian belum lengkap sudah dicentang.';
-      panel.append(label,hint,picked,batchSptControls(selected,pageLimit,directoryLimit));
+      hint.textContent='Versi yang ditampilkan dengan bagian belum siap sudah dicentang. Tampilkan versi berikutnya untuk menambah pilihan.';
+      panel.append(label,hint,picked,batchSptControls(selected,pageLimit,directoryLimit,reread));
     }
     const body=captureTable(panel,'Versi SPT yang ditemukan',['Jenis SPT','Masa atau tahun','Pembetulan','Bagian tersedia','Perlu diambil','Perlu diulang',...(navigate?['Pilih','Tampilan Coretax']:[])]);
     let cursor=0;
@@ -360,7 +361,7 @@ function showSptPlan(box,{counts,documents}) {
       for(;cursor<end;cursor++) {
         const doc=documents[cursor];
         const parts=status=>doc.parts.filter(part=>part.status===status).map(part=>part.name).join(', ') || '—';
-        const nav=navigate?sptViewControls(doc,pageLimit):null;
+        const nav=navigate?sptViewControls(doc,pageLimit,reread):null;
         let choice;
         if(nav){
           choice=document.createElement('input');choice.type='checkbox';
@@ -404,12 +405,24 @@ function sptPlayback(actions,status,check){
   };
 }
 function sptPageSink(doc,wp,range,status){
-  let pages=0,previous=null,first=null;
+  let pages=0,previous=null,first=null,reused=0;
   const observed=new Set(),issues=[];
+  const index=queue.find(e=>isSptList(e.source) && e.wp===wp && e.period===range);
+  function remember(part,failed){
+    if(!index || !part)return;
+    const notes=index.sptObservedParts ||= [];
+    const existing=notes.find(n=>n.docKey===doc.key && n.cap.konteks.spt.recordId===doc.recordId && n.cap.konteks.spt.nomor===doc.receipt && n.cap.konteks.bagian===part);
+    if(existing){if(failed)existing.failed=true;return;}
+    notes.push({docKey:doc.key,failed,cap:{konteks:{npwp:wp,bagian:part,spt:{recordId:doc.recordId,nomor:doc.receipt,jenis:doc.type,masa:doc.period,pemb:doc.revision}}}});
+  }
   return {
+    onSections(sections){for(const s of sections)remember(s.part,false);},
+    onReuse(){reused++;},
+    onCovered(pass){if(previous?.proof.urutan.id===pass)previous.proof.akhirTampilan=true;},
     onPage(result){
       const proof={urutan:{id:result.pass,halaman:result.page},columns:result.columns,
-        morePagesAvailable:result.paging==='next',...(result.zero?{nolPadaSumber:true}:{})};
+        morePagesAvailable:result.paging==='next',...(result.zero?{nolPadaSumber:true}:{}),...(result.page===1 && result.atStart?{awalTampilan:true}:{}),
+        ...(result.filtered?{filterTampilan:true}:{})};
       const info={wp,source:'sptisi',spt:doc.type,period:range,detailProof:sptProof(doc,result),proof};
       const page={Payload:{Data:result.rows,...(result.zero?{TotalRecords:0}:{})}};
       addEntry(info,page,result.label+' · halaman pengambilan '+result.page,'Tabel tampak');
@@ -418,21 +431,30 @@ function sptPageSink(doc,wp,range,status){
       previous=entry;pages++;observed.add(result.part);renderQueue();
       status.textContent=result.label+' · halaman '+result.page+' tersimpan.';
     },
-    onIssue(section,error){issues.push(section.label+' · '+sptErrorText(error));},
+    onIssue(section,error){remember(section.part,true);issues.push(section.label+' · '+sptErrorText(error));},
     finish(error){
       if(error)issues.push(sptErrorText(error));
-      const note=[observed.size+' bagian dan '+pages+' halaman terbaca.',...issues].join(' ');
+      const note=[observed.size+' bagian dan '+pages+' halaman terbaca.',...(reused?[reused+' bagian dari antrean dipakai kembali.']:[]),...issues].join(' ');
       if(issues.length){
         const source=first || queue.find(e=>isSptList(e.source) && e.wp===wp && e.period===range);
         const text=doc.period+' · pembetulan '+doc.revision+' · '+note;
         if(source)(source.sptAutoChecks ||= []).push({type:doc.type,pesan:text});
         message(text,true);
       }
-      return {note,pages,issues};
+      return {note,pages,issues,reused};
     }
   };
 }
-function batchSptControls(selected,pageLimit,directoryLimit){
+function currentSptParts(docs,reread){
+  const {plan,meta,inPeriod}=prepare({preview:true});
+  const current=planSptDetails({wp:plan.wp,period:meta.opsi.periode,types:meta.opsi.jenisSpt,items:inPeriod});
+  return new Map(docs.map(doc=>{
+    const match=current.documents.find(d=>d.key===doc.key && d.recordId===doc.recordId && d.receipt===doc.receipt);
+    if(!match)throw Error('Versi atau identitas pada daftar berubah. Buka kembali pratinjau.');
+    return [doc.key,new Set(reread?[]:match.parts.filter(p=>p.status==='ready').map(p=>p.name))];
+  }));
+}
+function batchSptControls(selected,pageLimit,directoryLimit,reread){
   const block=document.createElement('div'),actions=document.createElement('div'),status=document.createElement('span');
   status.setAttribute('role','status');status.setAttribute('aria-label','Proses versi SPT terpilih');
   const run=button('Ambil versi SPT terpilih',async()=>{
@@ -449,27 +471,28 @@ function batchSptControls(selected,pageLimit,directoryLimit){
     }
     await navigator.locks.request('scv2-spt-navigation',{ifAvailable:true},async lock=>{
       if(!lock || autoSpt)throw Error('Tunggu sampai pembacaan SPT yang sedang berjalan selesai.');
-      check();autoSpt=true;run.disabled=true;jobButtons();
+      check();const parts=currentSptParts(docs,reread.checked);autoSpt=true;run.disabled=reread.disabled=true;jobButtons();
       const checkpoint=sptPlayback(actions,status,check);
       try{
         const tab=await tabNow(),directory=await sptDirectory(ext,tab.id,wp);
         const candidates=docs.map(doc=>({doc,navigation:sptNavigation({ext,wp,period:bounds,doc})}));
         const result=await collectSptQueue({directory,candidates,tabId:tab.id,limit,indexLimit,checkpoint,
-          createSink:c=>sptPageSink(c.doc,wp,range,status),
+          createSink:c=>({...sptPageSink(c.doc,wp,range,status),skipParts:parts.get(c.doc.key)}),
           onOpen:c=>{status.textContent='Membuka SPT '+c.doc.period+' · pembetulan '+c.doc.revision+'…';}});
         status.textContent=result.attempted+' dari '+docs.length+' versi diproses. '+result.withPages+' versi menghasilkan '+result.pages+' halaman.'+
+          (result.reused?' '+result.reused+' bagian dari antrean dipakai kembali.':'')+
           (result.problem?' '+sptErrorText(result.problem):'');
       }catch(error){
         for(const doc of docs)sptPageSink(doc,wp,range,status).finish(error);
         status.textContent='0 dari '+docs.length+' versi diproses. '+sptErrorText(error);
       }finally{
-        actions.replaceChildren();autoSpt=false;run.disabled=false;jobButtons();
+        actions.replaceChildren();autoSpt=false;run.disabled=reread.disabled=false;jobButtons();
       }
     });
   });
   block.append(run,status,actions);return block;
 }
-function sptViewControls(doc,pageLimit) {
+function sptViewControls(doc,pageLimit,reread) {
   const block=document.createElement('div'),actions=document.createElement('div'),status=document.createElement('span');
   status.setAttribute('role','status');
   const wp=captureOwner(),range=period(),periodStart={y:Number(val('year-start')),m:Number(val('month-start'))},
@@ -527,17 +550,18 @@ function sptViewControls(doc,pageLimit) {
     if(!Number.isInteger(limit) || limit<1 || limit>100)throw Error('Pilih batas 1–100 halaman per bagian.');
     if(autoSpt)throw Error('Pembacaan SPT masih berjalan.');
     await withSptLock(async()=>{
-      autoSpt=true;auto.disabled=open.disabled=true;jobButtons();actions.replaceChildren();
+      const skipParts=currentSptParts([doc],reread.checked).get(doc.key);
+      autoSpt=true;auto.disabled=open.disabled=reread.disabled=true;jobButtons();actions.replaceChildren();
       const checkpoint=sptPlayback(actions,status,check),sink=sptPageSink(doc,wp,range,status);
       let failure;
       try {
         status.textContent='Mencocokkan WP dan versi SPT…';
         const tab=await tabNow(),view=await navigation.inspect(tab.id) || await navigation.open(tab.id);
-        await navigation.collect(view,{limit,checkpoint,...sink});
+        await navigation.collect(view,{limit,checkpoint,skipParts,...sink});
       } catch(error){failure=error;}
       finally {
         status.textContent=sink.finish(failure).note;
-        actions.replaceChildren();autoSpt=false;auto.disabled=open.disabled=false;jobButtons();
+        actions.replaceChildren();autoSpt=false;auto.disabled=open.disabled=reread.disabled=false;jobButtons();
       }
     });
   });

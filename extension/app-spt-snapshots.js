@@ -39,12 +39,28 @@ function stableText(value) {
   return JSON.stringify(value,(_,v)=>v && typeof v==='object' && !Array.isArray(v) ?
     Object.fromEntries(Object.keys(v).sort().map(k=>[k,v[k]])):v);
 }
+export function filteredSptSource(block){
+  return Object.entries(block||{}).some(([key,value])=>/^(?:\$?filters?|columnfilters|globalfilter|search|searchtext|searchterm)$/i.test(key) &&
+    value!=null && (typeof value==='object'?Object.keys(value).length:String(value).trim().length));
+}
 function verifiedCount(entry) {
   if (entry.pages.length!==1) return false;
   const [page]=entry.pages, p=page.Payload;
-  return page.IsSuccessful===true && Array.isArray(p?.Data) && (p.Index==null || p.Index===0) && Number.isSafeInteger(p.TotalRecords) &&
+  const meta=[page,p,entry.cap.payload,page.Request,p?.Request,page.Query,p?.Query];
+  if(meta.some(filteredSptSource))return false;
+  if(meta.some(block=>Object.entries(block||{}).some(([key,value])=>(/^(?:first|offset|startindex)$/i.test(key) && value!=null && Number(value)!==0) ||
+    (/^(?:hasmore|morepagesavailable)$/i.test(key) && (value===true || value==='true')))))return false;
+  return page.IsSuccessful===true && !page.Errors?.length && Array.isArray(p?.Data) && (p.Index==null || p.Index===0) && Number.isSafeInteger(p.TotalRecords) &&
     p.TotalRecords===p.Data.length && entry.cap.total===p.TotalRecords && entry.cap.baris===p.TotalRecords &&
     entry.cap.halamanSumber[0]?.metode==='Ekspor lokal';
+}
+function completeView(entry) {
+  const pages=entry.cap.halamanSumber || [];
+  if(!entry.cap.konteks?.cuplikanTampilan || !pages.length || pages.length!==entry.pages.length)return false;
+  const first=pages[0].pencocokan,last=pages.at(-1).pencocokan;
+  return first?.awalTampilan===true && last?.akhirTampilan===true && last.morePagesAvailable!==true && Boolean(first.urutan?.id) &&
+    pages.every((page,i)=>page.metode==='Tabel tampak' && page.pencocokan?.urutan?.id===first.urutan.id &&
+      page.pencocokan.urutan.halaman===i+1 && !page.pencocokan.filterTampilan && !entry.pages[i]?.Errors?.length && entry.pages[i]?.IsSuccessful!==false);
 }
 function rowCounts(entry) {
   const counts=new Map();
@@ -54,11 +70,19 @@ function rowCounts(entry) {
   return counts;
 }
 function sourceChoice(entries) {
-  if (!entries.some(verifiedCount)) return {primary:entries[0],reason:'Cuplikan pertama dipakai pada formulir. Kelengkapan bagian belum dapat dipastikan.'};
+  if (!entries.some(e=>verifiedCount(e) || completeView(e))) return {primary:entries[0],reason:'Cuplikan pertama dipakai pada formulir. Kelengkapan bagian belum dapat dipastikan.'};
   const counts=entries.map(rowCounts);
-  const index=entries.findIndex((e,i)=>verifiedCount(e) && counts.every(other=>[...other].every(([key,n])=>(counts[i].get(key)||0)>=n)));
+  const covers=i=>counts.every(other=>[...other].every(([key,n])=>(counts[i].get(key)||0)>=n));
+  let index=entries.findIndex((e,i)=>verifiedCount(e) && covers(i));
+  if(index<0)index=entries.findIndex((e,i)=>completeView(e) && covers(i));
   if (index<0) return {primary:entries[0],reason:'Isi sumber belum sejalan. Formulir menampilkan cuplikan pertama untuk ditelusuri.'};
-  return {primary:entries[index],reason:'Jumlah baris ekspor cocok dengan total pada respons dan mencakup seluruh baris cuplikan lain.'};
+  const reusable=entries.every(e=>(!verifiedCount(e) && !completeView(e)) || e.cap.baris===entries[index].cap.baris);
+  return {primary:entries[index],reusable,reason:verifiedCount(entries[index])?'Jumlah baris ekspor cocok dengan total pada respons dan mencakup seluruh baris cuplikan lain.':
+    'Cuplikan mencakup awal hingga akhir tampilan dan memuat baris dari cuplikan lain.'};
+}
+export function queuedSptEvidence(samples){
+  const entries=samples.flatMap(sample=>[...sample.entries.values()]);
+  return sourceChoice(entries);
 }
 export function finishSptSources(sections,groups,checks,dedupe) {
   for (const samples of sections.values()) {
@@ -68,7 +92,10 @@ export function finishSptSources(sections,groups,checks,dedupe) {
       const fingerprint=dedupe && entries.length>1 ? stableText(entry.pages) : null;
       const same=fingerprint && seen.get(fingerprint);
       if (same) {
-        (same.cap.sumberSalinanIdentik ||= []).push(...entry.cap.halamanSumber);
+        if((completeView(entry) || verifiedCount(entry)) && !completeView(same) && !verifiedCount(same)){
+          entry.cap.sumberSalinanIdentik=[...(same.cap.sumberSalinanIdentik||[]),...same.cap.halamanSumber];
+          distinct[distinct.indexOf(same)]=entry;seen.set(fingerprint,entry);
+        }else (same.cap.sumberSalinanIdentik ||= []).push(...entry.cap.halamanSumber);
         continue;
       }
       if (fingerprint) seen.set(fingerprint,entry);

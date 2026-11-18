@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {readFile} from 'node:fs/promises';
+import {readFile,readdir} from 'node:fs/promises';
 import {join} from 'node:path';
 import {spawnSync} from 'node:child_process';
 import {indexPackage} from '../extension/analisis/model.js';
@@ -22,6 +22,10 @@ function grid(rows,opts){return entry('UNIFIKASI','d1-bpu',{Data:rows,TotalRecor
 function vat(body,opts){return entry('PPN','induk',{FormData:JSON.stringify(body)},opts);}
 function pack(entries){return indexPackage({manifest:{wp:{npwp:wp}},entries,report:{valid:true}});}
 function lines(index,ref){return index.groups.find(g=>g.ref===ref)?.lines||[];}
+const tax22=(withheld,paid=999)=>({data:{Type:'Tax Article',Name:'Article 22',TotalWithholding:withheld,TotalIncomeTaxPaid:paid},
+  children:[{data:{Type:'Tax Object',Name:'Objek contoh',TotalWithholding:1234}}]});
+const main22=(items,opts,fields={})=>entry('UNIFIKASI','induk',{FormData:JSON.stringify({IncomeTaxes:items,...fields})},opts);
+const doc22=(base,number,fields={})=>({...slip('Pasal 22',base),WithholdingSlipsNumber:number,IncomeTax:700,...fields});
 
 test('zero self-collected sales stay zero when a different VAT delivery group accounts for all sales',()=>{
   const row={DeliveryOfTaxableGoodsSubjectToVAT:{SellingPrice:150},DomesticDeliveriesUncollectedVAT:{SellingPrice:150},
@@ -98,6 +102,119 @@ test('document state, numeric strings, repeated IDs and partially overlapping pa
     const line=lines(buildIndex(pack([e]),'2025'),'G.2.1')[0];assert.equal(line.amount,null);assert.equal(line.partial,true);
   }
 });
+
+test('article 22 uses active D1 bases and the latest separate parent subtotal, with stable review keys and cancellation evidence',()=>{
+  const revision={version:1},feb={period:'2025-02'},mar={period:'2025-03'},may={period:'2025-05'};
+  const other={data:{Type:'Tax Article',Name:'Article 23',TotalWithholding:80}};
+  const p=pack([grid([doc22(800,'old')]),main22([tax22(800)],{}),
+    grid([doc22('35','N01'),doc22(55,'C01',{IsCancelled:true}),doc22(10,'N02',{TaxIdentificationNumber:'0000000000000002'})],revision),
+    main22([other,tax22('13')],revision),
+    grid([doc22(0,'Z')],feb),main22([tax22(0)],feb),
+    grid([doc22(null,'U')],mar),main22([tax22(null)],mar),
+    grid([doc22(60,'C02',{WithholdingSlipsStatus:'NORMAL',Status:'CANCELLED'})],may),main22([tax22(12)],may)]);
+  const index=buildIndex(p,'2025'),baseRows=lines(index,'E.2.1'),taxRows=lines(index,'E.2.2');
+  const month=(list,period)=>list.find(l=>l.period==='2025-'+period);
+  assert.deepEqual(baseRows.map(l=>[l.period,l.amount]).sort(),[['2025-01',45],['2025-02',0],['2025-03',null],['2025-05',0]]);
+  assert.deepEqual(taxRows.map(l=>[l.period,l.amount]).sort(),[['2025-01',13],['2025-02',0],['2025-03',null],['2025-05',12]]);
+  for(const list of [baseRows,taxRows]){
+    assert.equal(month(list,'01').version,1);assert.equal(month(list,'02').partial,false);assert.equal(month(list,'03').partial,true);
+  }
+  const baseLine=month(baseRows,'01'),taxLine=month(taxRows,'01');assert.match(baseLine.source,/baris 1, 3/);
+  assert.match(taxLine.source,/p01_demo-1\/induk\.json.*IncomeTaxes\[1\]\.data\.TotalWithholding/);
+  const checks=[baseLine,taxLine].map(l=>assessLine(l,{value:l.amount,document:'Dokumen uji',officer:'Fiktif'}));
+  assert.deepEqual(restoreIndexedRows(checks,checks,index),checks);
+  const reordered=buildIndex(pack([main22([tax22(13),other],revision),grid([doc22(45,'X')],revision)]),'2025');
+  assert.equal(lines(reordered,'E.2.2')[0].id,taxLine.id);assert.match(lines(reordered,'E.2.2')[0].source,/IncomeTaxes\[0\]/);
+  assert.equal(lines(reordered,'E.2.1')[0].id,baseLine.id);
+  const group=index.groups.find(g=>g.ref==='E.2.1'),jan=group.support.filter(s=>s.Masa==='2025-01');
+  assert.deepEqual(jan.map(s=>s.Nilai),[55,100]);assert.match(jan[0].Sumber,/baris 2/);
+  const sheets=completeIndexBook(p,'2025',index,new Map(),{});
+  assert.ok(sheets.find(s=>s.name.startsWith('E.2.1 ')).rows.some(r=>r.includes(jan[1].Uraian)&&r.includes(100)));
+  const taxCell=sheets.find(s=>s.name.startsWith('E.2.2 ')).rows.find(r=>r.includes(taxLine.source))[3];
+  assert.equal(taxCell.cached,13);assert.equal(taxCell.target.name,'SPT Data');
+});
+
+test('article 22 is scoped to source evidence within the same return and year',()=>{
+  const index=(entries)=>buildIndex(pack(entries),'2025');
+  const refs=i=>i.groups.map(g=>g.ref).filter(s=>s.startsWith('E.2.'));
+  assert.deepEqual(refs(index([grid([doc22(0,'N')]),main22([tax22(0)])])),[]);
+  assert.deepEqual(refs(index([grid([]),main22([tax22(12)])])),['E.2.2']);
+  assert.deepEqual(refs(index([grid([doc22(100,'N')]),main22([tax22(0)])])),['E.2.1','E.2.2']);
+  const orphan=index([grid([doc22(100,'N')]),main22([])]);
+  assert.deepEqual(refs(orphan),[]);assert.ok(orphan.warnings.some(s=>s.includes('D1-BPU 2025-01')));
+  const feb={period:'2025-02'},mixed=index([grid([doc22(100,'N')]),main22([]),grid([doc22(20,'S')],feb),main22([tax22(4)],feb)]);
+  assert.deepEqual(refs(mixed),['E.2.1','E.2.2']);
+  for(const ref of refs(mixed))assert.equal(lines(mixed,ref).find(l=>l.period==='2025-01').amount,null);
+  assert.equal(mixed.groups.find(g=>g.ref==='E.2.1').support[0].Nilai,100);
+  for(const main of [
+    main22([tax22(12)],{}, {TaxIdentificationNumber:'0000000000000055'}),main22([tax22(12)],{},{TaxPeriodCode:'02022025'}),
+    main22([tax22(12)],{},{ReturnSheetRecordIdentifier:'other'}),main22([tax22(12)],{ok:false}),main22([tax22(12),tax22(12)]),
+    main22([tax22(12)],{cap:{lengkap:false}})
+  ]){
+    const p=index([grid([doc22(100,'N')]),main,main22([tax22(1)],{period:'2025-02'})]);
+    const jan=lines(p,'E.2.2').find(l=>l.period==='2025-01');assert.equal(jan.amount,null);assert.equal(jan.partial,true);
+    assert.equal(lines(p,'E.2.1').length,0);
+  }
+  const tied=index([main22([tax22(12)],{id:'a'}),main22([tax22(12)],{id:'b'}),grid([doc22(1,'N')],{id:'a'})]);
+  assert.deepEqual(refs(tied),[]);assert.equal(tied.warnings.length,1);
+});
+
+test('article 22 preserves a supported tax amount when the annex is missing, duplicated, filtered or for another WP',()=>{
+  const otherMonth={period:'2025-03'};
+  for(const bad of [null,grid([doc22(10,'A'),doc22(10,'A')]),grid([doc22(10,'A',{RecordId:'same'}),doc22(25,'B',{RecordId:'same'})]),
+    grid([doc22(10,'A',{Status:'UNKNOWN'})]),grid([doc22(10,'A',{Status:'AMENDED',WithholdingSlipsStatus:'NORMAL'})]),
+    grid([doc22(10,'A')],{cap:{payload:{First:20}}}),
+    grid([doc22(10,'A')],{cap:{konteks:{npwp:'0000000000000091'}}})]){
+    const p=pack([main22([tax22(19)]),main22([tax22(12)],otherMonth),grid([doc22(45,'Z')],otherMonth),...(bad?[bad]:[])]);
+    const index=buildIndex(p,'2025');
+    assert.equal(lines(index,'E.2.1').find(l=>l.period==='2025-01').amount,null);
+    assert.equal(lines(index,'E.2.2').find(l=>l.period==='2025-01').amount,19);
+  }
+});
+
+test('article 22 annual totals report known coverage, preserve active and gross bases, and do not create reviewable principal',()=>{
+  const jan={period:'2025-01'},mar={period:'2025-03'};
+  const entries=[grid([doc22(50,'A'),doc22(20,'B',{Status:'CANCELLED'})],jan),main22([tax22(10)],jan),
+    grid([doc22(0,'C')],mar),main22([tax22(0)],mar)];
+  const annual=(index,ref)=>index.groups.find(g=>g.ref===ref).support.filter(s=>s.Masa==='2025');
+  const p=pack(entries),i=buildIndex(p,'2025'),totals=[...annual(i,'E.2.1'),...annual(i,'E.2.2')];
+  assert.deepEqual(totals.map(s=>s.Nilai),[50,70,10]);
+  for(const s of totals){
+    assert.equal(s.Satuan,'Rp (format KKP)');
+    assert.equal(s['Masa SPT dalam paket'],2);assert.equal(s['Masa terkonfirmasi'],2);
+    assert.equal(s['Masa belum terkonfirmasi'],'');assert.equal(s['Masa tanpa rekaman SPT di paket'].split(', ').length,10);
+    assert.match(s.Sumber,/2025-01.*\.json/);assert.match(s.Sumber,/2025-03.*\.json/);
+  }
+  assert.equal(lines(i,'E.2.1').length,2);assert.equal(lines(i,'E.2.2').length,2);
+  const sheets=completeIndexBook(p,'2025',i,new Map(),{});
+  assert.ok(sheets.find(s=>s.name.startsWith('E.2.1 ')).rows.some(r=>r.includes(totals[1].Uraian)&&r.includes(70)));
+  assert.ok(sheets.find(s=>s.name.startsWith('E.2.2 ')).rows.some(r=>r.includes(totals[2].Uraian)&&r.includes(10)));
+  assert.equal(sheets.find(s=>s.name==='Temuan Sementara').rows.length,1);
+  const filed=(period,model,id)=>({RecordId:id,TaxPeriodCode:period,ReturnSheetTypeCode:'ICT_WTR',ReturnSheetModel:model,ReturnSheetStatusCode:'SUBMITTED'});
+  const list={path:'spt/daftar.json',cap:{konteks:{npwp:wp}},pages:[{Payload:{Data:[filed('02022025','Normal','missing'),filed('03032025','Amendment 001','newer')]}}]};
+  const uncertain=buildIndex(pack([...entries,list]),'2025');
+  const march=lines(uncertain,'E.2.1').find(l=>l.period==='2025-03');assert.equal(march.amount,null);assert.match(march.source,/Pembetulan terakhir/);
+  for(const s of [...annual(uncertain,'E.2.1'),...annual(uncertain,'E.2.2')]){
+    assert.equal(s.Nilai,null);assert.equal(s['Masa SPT dalam paket'],3);assert.equal(s['Masa terkonfirmasi'],1);
+    assert.equal(s['Masa belum terkonfirmasi'],'2025-02, 2025-03');assert.match(s.Sumber,/daftar\.json/);
+  }
+  const torn=buildIndex(pack([...entries,grid([],{period:'2025-04',id:'a'}),grid([],{period:'2025-04',id:'b'})]),'2025');
+  assert.equal(annual(torn,'E.2.2')[0].Nilai,null);assert.equal(annual(torn,'E.2.2')[0]['Masa belum terkonfirmasi'],'2025-04');
+});
+
+test('article 22 totals accept rupiah and isolate foreign currency by supporting source',()=>{
+  const jan=[main22([tax22(1)],{},{CurrencyCode:'IDR'}),grid([doc22(15,'J')])],feb={period:'2025-02'};
+  const summary=(extra,ref)=>buildIndex(pack([...jan,...extra]),'2025').groups.find(g=>g.ref===ref).support.filter(r=>r.Masa==='2025');
+  const foreignSlip=[main22([tax22(2)],feb),grid([doc22(4,'F',{CurrencyCode:'USD'})],feb)];
+  assert.equal(summary(foreignSlip,'E.2.1')[0].Nilai,null);assert.equal(summary(foreignSlip,'E.2.2')[0].Nilai,3);
+  const cancelledSlip=[main22([tax22(2)],feb),grid([doc22(8,'F',{Currency:'rupiah'}),doc22(5,'X',{Status:'CANCELLED',Currency:'USD'})],feb)];
+  const gross=summary(cancelledSlip,'E.2.1');
+  assert.deepEqual(gross.map(r=>r.Nilai),[23,null]);assert.match(gross[1].Sumber,/Mata uang/);
+  const foreignForm=[main22([tax22(2)],feb,{CurrencyCode:'USD'}),grid([doc22(8,'F')],feb)];
+  for(const ref of ['E.2.1','E.2.2']){
+    const s=summary(foreignForm,ref)[0];assert.equal(s.Nilai,null);assert.match(s.Sumber,/Mata uang/);
+  }
+});
 test('old reviewed row IDs survive new indexes, distinct source IDs round-trip, and unreviewed rows export with empty officer amounts',()=>{
   const p=pack([vat({...base(900),OutputTaxMustBeSelfCollected:{VAT:12}}),grid([slip('Pasal 23',9)])]),index=buildIndex(p,'2025');
   const original=lines(index,'N.3.1')[0],vatLine=lines(index,'N.3')[0],uniLine=lines(index,'G.2.1')[0];
@@ -110,6 +227,38 @@ test('old reviewed row IDs survive new indexes, distinct source IDs round-trip, 
   }
 });
 const fixtures=process.env.VERITAX_FIXTURES,studio=process.env.STUDIO_KKP_XLSX;
+const article22Books=process.env.STUDIO_PPH22_DIR;
+test('physical Studio exports of controlled article 22 packages confirm worksheet presence, source choice, and evidence limits',{skip:!article22Books},async()=>{
+  const excel=spawnSync(process.env.PYTHON||'python3',['-c',[
+    'import sys,json,openpyxl,pathlib','p=pathlib.Path(sys.argv[1])',
+    "def e22(f): return {s.title.split()[0]:[r[3] for r in list(s.values)[15:28]] for s in openpyxl.load_workbook(f,read_only=True,data_only=True) if s.title.startswith('E.2.')}",
+    "print(json.dumps({f.name:e22(f) for f in p.glob('studio-*-2025.xlsx')}))"
+  ].join('\n'),article22Books],{encoding:'utf8'});
+  assert.equal(excel.status,0,excel.stderr);const books=JSON.parse(excel.stdout);
+  const packages=(await readdir(article22Books)).filter(n=>n.startsWith('cas-')&&n.endsWith('.zip'));
+  assert.ok(packages.length);packages.push('contoh-22.zip');
+  for(const name of packages){
+    const p=indexPackage(await readPackage(await readFile(join(article22Books,name)))),index=buildIndex(p,'2025');
+    const ref=books['studio-'+name.replace('.zip','').replace('contoh-22','contoh22')+'-2025.xlsx'];
+    assert.ok(ref,name);assert.deepEqual(index.groups.map(g=>g.ref).filter(k=>k.startsWith('E.2.')).sort(),Object.keys(ref).sort(),name);
+    for(const key of Object.keys(ref)){
+      const group=index.groups.find(g=>g.ref===key);
+      for(const l of group.lines){
+        const expected=ref[key][Number(l.period.slice(-2))-1];
+        const listed=group.support?.find(s=>s.Masa===l.period&&s.Uraian.includes('termasuk bukti dibatalkan'));
+        if(l.amount===null){
+          assert.equal(expected,0);assert.ok(l.partial);assert.ok(l.source);
+        }else assert.equal(listed?listed.Nilai:l.amount,expected,name+' '+key+' '+l.period);
+      }
+      const totals=group.support.filter(s=>s.Masa==='2025');
+      assert.ok(totals.length);
+      const studioComparable=totals.at(-1);
+      if(studioComparable['Masa terkonfirmasi']===studioComparable['Masa SPT dalam paket']){
+        assert.equal(studioComparable.Nilai,ref[key][12]);
+      }else assert.equal(studioComparable.Nilai,null);
+    }
+  }
+});
 test('independent Studio workbook matches each documented period of the fictitious demo ZIP',{skip:!fixtures||!studio},async()=>{
   // Read saved worksheet values through Python, independently of the V2 model or XLSX writer.
   const py=spawnSync(process.env.PYTHON||'python3',['-c',

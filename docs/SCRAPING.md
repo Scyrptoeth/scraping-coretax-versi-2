@@ -50,6 +50,8 @@ Pada rute resmi **SPT Dilaporkan**, kategori, susunan kolom, tautan navigasi WP,
 
 ## Hasil, integritas dan retensi
 
+Jika tarikan SPT terhenti, buka kembali **Pratinjau WP** untuk melihat bagian yang masih perlu dibaca. Dalam antrean yang sama, penarik dapat memakai kembali ekspor dengan jumlah baris terverifikasi atau cuplikan yang terbukti mencakup awal hingga akhir tampilan. Untuk meminta salinan baru dari semua bagian versi yang dipilih, centang **Ambil ulang semua bagian versi yang dipilih**. Jika ada pembetulan baru, tambahkan kembali daftar SPT sebelum membuka pratinjau. Setiap versi memiliki bukti sendiri.
+
 Setiap tarikan menghasilkan satu paket untuk satu NPWP. Bila proses berhenti sesudah antrean tersimpan, klik **Lanjutkan NPWP** pada nomor yang dimaksud. Sumber untuk nomor itu dirakit kembali. Pada antrean dari versi lama yang berisi beberapa WP, setiap NPWP yang belum selesai memiliki tombol lanjut tersendiri. Hasil yang sudah selesai tetap tersedia pada kartu masing-masing WP. Buka **Tarikan sebelumnya** untuk mengakses periode yang pernah disimpan. Gunakan **Unduh paket** untuk menyimpan ZIP atau mengunci paket dengan kata sandi minimal 10 karakter menjadi `.sedotax`. Setiap paket memiliki manifest, sidik jari dan berita acara. Selisih jumlah baris yang dinyatakan sumber dan yang diterima ditampilkan pada kartu hasil.
 
 **Buka di Analisis** membuat salinan serah terima terenkripsi dengan kunci sementara. Pemutar menghapus salinan itu setelah berhasil membacanya. Salinan kedaluwarsa setelah sepuluh menit dan dibersihkan saat halaman dibuka atau alarm ekstensi berjalan. Unduhan yang sudah disimpan pengguna berada di luar retensi ekstensi.

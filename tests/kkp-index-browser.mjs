@@ -3,7 +3,7 @@ import {createRequire} from 'node:module';
 import {mkdtemp,readFile,readdir,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join,resolve} from 'node:path';
-import {readPackage} from '../extension/archive/package.js';
+import {createPackage,readPackage} from '../extension/archive/package.js';
 import {decodeText,readZip} from '../extension/archive/zip.js';
 import {indexPackage} from '../extension/analisis/model.js';
 import {buildIndex} from '../extension/analisis/kkp-index.js';
@@ -11,7 +11,7 @@ import {buildIndex} from '../extension/analisis/kkp-index.js';
 const {chromium}=createRequire(import.meta.url)(process.env.PLAYWRIGHT_MODULE||'playwright');
 const fixtures=process.env.VERITAX_FIXTURES;
 if(!fixtures)throw Error('Set VERITAX_FIXTURES to the local fictitious reference directory.');
-const profile=await mkdtemp(join(tmpdir(),'coretax-kkp-test-')), extension=resolve('extension');
+const profile=await mkdtemp(join(tmpdir(),'coretax-kkp-test-')), extension=resolve(process.env.EXTENSION_DIR||'extension');
 let browser;
 try{
   browser=await chromium.launchPersistentContext(profile,{channel:'chromium',headless:true,executablePath:process.env.CHROMIUM_PATH||undefined,
@@ -42,6 +42,17 @@ try{
     const table=page.getByRole('table',{name:'Pengujian per indeks'});
     await table.getByText(group.lines[0].topic,{exact:true}).first().waitFor();
     for(const g of index.groups)checks.add(g.key);
+    if(!op){
+      await page.getByLabel('Pilih indeks KKP').selectOption('BADAN/B');
+      const details=page.getByRole('table',{name:'Rincian dan angka pembanding'});
+      for(const code of ['K1','K2','K3','K4'])await details.getByRole('cell',{name:code,exact:true}).waitFor();
+      const sheet=await readZip(await download('Excel KKP ini'));
+      const xml=decodeText(sheet.get('xl/worksheets/sheet1.xml').data);
+      const currency=index.groups.find(g=>g.key==='BADAN/B').support.find(row=>row.Kode==='PKP').Satuan;
+      assert.equal(xml.includes('ROUNDDOWN('),currency==='IDR');
+      assert.ok(xml.includes('FiscalNetIncomeAfterTax'));
+      await page.getByLabel('Pilih indeks KKP').selectOption(group.key);
+    }
     if(op){
       const professional=name.includes('PEKERJAAN-BEBAS');
       await page.getByLabel('Tahun pajak',{exact:true}).selectOption(professional?'2025':'2023');
@@ -139,9 +150,42 @@ try{
   }
   assert.ok(checks.has('runtime-review'));assert.ok(checks.has('UNIFIKASI/G'));assert.ok(checks.has('UNIFIKASI/K'));
   assert.ok(checks.has('tanpa-spt'));
+  const owner='0000000000000045';
+  const form={IncomeTaxes:[{data:{Type:'Tax Article',Name:'Article 22',TotalWithholding:17,TotalIncomeTaxPaid:501}}]};
+  const slips=[{TaxArticle:'Pasal 22',TaxBase:910,WithholdingSlipsNumber:'FIKTIF-A'},
+    {TaxArticle:'Pasal 22',TaxBase:220,WithholdingSlipsNumber:'FIKTIF-B',IsCancelled:true,WithholdingSlipsStatus:'CANCELLED'}];
+  const entries=[['induk',{FormData:JSON.stringify(form)}],['d1-bpu',{Data:slips,TotalRecords:slips.length}]].map(([part,Payload])=>({
+    path:'spt/UNIFIKASI/2025-01/p00_uji22/'+part+'.json',cap:{sumber:'sptisi',lengkap:true,
+      konteks:{npwp:owner,bagian:part,spt:{recordId:'uji22',jenis:'ICT_WTR',masa:'01012025',pemb:0,tahun:2025}},
+      ...(part==='d1-bpu'?{total:slips.length,baris:slips.length}:{})},pages:[{IsSuccessful:true,Payload}]
+  }));
+  const articleBytes=Buffer.from(await (await createPackage({meta:{wp:{npwp:owner,nama:'Contoh Pasal 22'}},entries})).arrayBuffer());
+  const {report}=await readPackage(articleBytes);
+  await page.getByRole('navigation').getByRole('button',{name:'Muat paket',exact:true}).click();
+  await page.locator('#filePkg').setInputFiles({name:'contoh-pasal-22.zip',mimeType:'application/zip',buffer:articleBytes});
+  await page.waitForFunction(hash=>document.getElementById('taxpayer')?.value===hash,report.manifestHash);
+  await page.getByRole('navigation').getByRole('button',{name:'Kertas Kerja',exact:true}).click();
+  await page.getByRole('button',{name:'KKP',exact:true}).click();
+  await page.getByLabel('Tahun pajak',{exact:true}).selectOption('2025');
+  for(const [ref,value,sourceField] of [['E.2.1',910,'TaxBase'],['E.2.2',17,'TotalWithholding']]){
+    await page.getByLabel('Pilih indeks KKP').selectOption('UNIFIKASI/'+ref);
+    const table=page.getByRole('table',{name:'Pengujian per indeks'});
+    await table.getByRole('cell',{name:String(value),exact:true}).waitFor();
+    const sheet=await readZip(await download('Excel KKP ini'));
+    const xml=decodeText(sheet.get('xl/worksheets/sheet1.xml').data);
+    assert.ok(xml.includes('<v>'+value+'</v>')&&xml.includes(sourceField));
+    if(ref==='E.2.1'){
+      const detail=page.getByRole('table',{name:'Rincian dan angka pembanding'});
+      for(const label of ['DPP bukti Pasal 22 yang tercantum, termasuk bukti dibatalkan','Jumlah DPP Pasal 22 termasuk bukti dibatalkan']){
+        const row=detail.getByRole('row').filter({has:page.getByRole('cell',{name:label,exact:true})});
+        await row.getByRole('cell',{name:'1.130',exact:true}).waitFor();
+      }
+      assert.ok(xml.includes('<v>1130</v>'));
+    }
+  }
   assert.deepEqual(errors,[]);
   const families=[...checks].filter(k=>k.includes('/')).length;
-  console.log('PASS: four fictitious packages in the installed V2 extension, '+families+' index families, B-8 and B-17 without an annual return, documented correction, revision, Excel, workfile, KKA and SP2DK.');
+  console.log('PASS: four reference packages, '+families+' index families, B-8 and B-17 without an annual return, documented correction, revision, Excel, workfile, KKA, SP2DK and a separate Pasal 22 package with a cancelled slip.');
 }finally{
   if(browser)await browser.close();
   await rm(profile,{recursive:true,force:true});

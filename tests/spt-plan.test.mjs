@@ -114,6 +114,41 @@ test('queued source evidence identifies a named attachment without declaring a v
   assert.deepEqual(entry.pages[0],visible.page);
 });
 
+test('reusing a view requires one retained contiguous pass and matching document evidence',()=>{
+  const listing=table([row('r1',{DocumentReceiptNumber:'BPE-UJI'}),row('r2',{ReturnSheetModel:'Pembetulan 1'})]);
+  const capture=(id,n,proof={},extra={})=>({wp,spt:'VAT_VATR',source:'sptisi',id:id+'-'+n,name:id,rows:1,total:null,origin:'Tabel tampak',
+    detailProof:{recordId:'r1',receipt:'BPE-UJI',period:'2025-06',revision:0,part:'a1',label:'Lampiran A1'},
+    proof:{urutan:{id,halaman:n},...proof},page:{Payload:{Data:[{Baris:n}]}},...extra});
+  const first=capture('pass',1,{awalTampilan:true}),middle=capture('pass',2),last=capture('pass',3,{akhirTampilan:true});
+  const status=(items)=>plan([listing,...items]).documents[0].parts.find(p=>p.name==='a1')?.status;
+  assert.equal(status([first,middle,last]),'ready');
+  assert.equal(status([first,middle,last,capture('singkat',1,{awalTampilan:true,akhirTampilan:true})]),'pending');
+  for(const incomplete of [[first,middle],[middle,last],[first,last],[first,middle,capture('lain',3,{akhirTampilan:true})],
+    [capture('pass',1,{akhirTampilan:true})],[capture('pass',1),middle,last],
+    [first,capture('pass',2,{filterTampilan:true}),last],
+    [first,{...middle,page:{IsSuccessful:false,Payload:{Data:[{Baris:2}]}}},last],
+    [first,middle,last,capture('berbeda',1,{}, {page:{Payload:{Data:[{Baris:'dibetulkan'}]}}})]]){
+    assert.notEqual(status(incomplete),'ready');
+  }
+  const [original,amendment]=plan([listing,first,middle,last]).documents;
+  assert.equal(original.parts.find(x=>x.name==='a1').status,'ready');assert.deepEqual(amendment.parts.map(x=>x.status),['pending']);
+  assert.equal(status([capture('doc',1,{awalTampilan:true,akhirTampilan:true},{detailProof:{...first.detailProof,receipt:'BPE-LAIN'}})]),undefined);
+});
+
+test('a whole local export can be reused while a cropped or failed export is retained for follow-up',()=>{
+  const listing=table([row('r1')]);
+  const record={'ID SPT':'r1',Pembetulan:0,'Masa Pajak':'2025-06','Bagian SPT':'A1',NPWP:wp};
+  const source=(payload,extra={})=>({wp,spt:'VAT_VATR',source:'sptisi',id:'contoh',name:'contoh.json',origin:'Ekspor lokal',rows:1,
+    total:payload.TotalRecords,page:{IsSuccessful:true,Payload:payload,...extra}});
+  const status=item=>plan([listing,item]).documents[0].parts.find(p=>p.name==='a1')?.status;
+  assert.equal(status(source({TotalRecords:1,Data:[record]})),'ready');
+  const declared=section('a1');declared.cap.payload={Filters:[{Field:'Nama',Value:'Uji'}]};assert.equal(status(declared),'pending');
+  for(const item of [source({TotalRecords:2,Data:[record]}),source({TotalRecords:1,Data:[record],Index:1}),
+    source({TotalRecords:1,Data:[record],Filters:[{Field:'Nama',Value:'Uji'}]}),
+    source({TotalRecords:1,Data:[record]},{Request:{First:2}}),source({TotalRecords:1,Data:[record],HasMore:true}),
+    source({TotalRecords:1,Data:[record]},{Errors:['gagal']}),source({TotalRecords:1,Data:[{...record,NPWP:other}]})])assert.notEqual(status(item),'ready');
+});
+
 test('all four reference demonstration packages plan the same in-scope document versions as their captured files', async t => {
   const folder = new URL('../01-VERITAX_v1.32.0/',import.meta.url);
   let files;
