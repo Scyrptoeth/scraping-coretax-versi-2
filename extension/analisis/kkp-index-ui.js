@@ -2,13 +2,21 @@ import {assessLine,completeIndexBook,documentRows,documentStatuses,indexSheets,i
 import {probisSourceFields} from '../probis-guide.js';
 import {button,box,card,dataTable,el,exportSheets,field,notice,select,showDialog} from './ui.js';
 import {count} from './model.js';
-import {clearIndexReview,markEdit,rowIdentity} from './team-work.js';
+import {clearIndexReview,markEdit,nextIndexDocumentNumber,rowIdentity} from './team-work.js';
 import {companyProvisionalSupport} from './kkp-company-without-return.js';
 
+export const outputMenus={
+  ts:['TS · Daftar temuan sementara','temporary-findings-title'],
+  'simulasi-kkp':['SIM · Simulasi ketetapan','assessment-simulation-title'],
+  jadwal:['JD · Jadwal pemeriksaan','inspection-schedule-title'],
+  dok:['DOK · Permintaan dokumen dan cakupan SP2','document-requests-title']
+};
 function outputSection(go){
-  const section=el('section'),schedule=button('JD · Jadwal pemeriksaan',()=>go('kerja','jadwal'));
-  section.setAttribute('aria-label','Keluaran');schedule.id='kkp-open-schedule';
-  section.append(el('h3','Keluaran'),schedule);
+  const section=el('section'),controls=box('toolbar');
+  section.setAttribute('aria-label','Keluaran');section.append(el('h3','Keluaran'),controls);
+  for(const [route,[title]] of Object.entries(outputMenus)){
+    const item=button(title,()=>go('kerja',route));item.id='kkp-open-'+route;controls.append(item);
+  }
   return section;
 }
 
@@ -133,7 +141,7 @@ export function editIndexLine(line,work,repaint,wp){
 }
 
 function editDocument(group,index,work,repaint,existing){
-  const number=existing?.number??work.indexDocuments.reduce((n,d)=>Math.max(n,d.number),0)+1;
+  const number=existing?.number??nextIndexDocumentNumber(work);
   const form=el('form'),name=el('input'),date=el('input'),due=el('input'),source=el('input'),error=el('p',null,'error');
   date.type=due.type='date';error.setAttribute('role','alert');
   name.value=existing?.name||'';name.required=true;date.value=existing?.date||'';due.value=existing?.due||'';source.value=existing?.reference||'';

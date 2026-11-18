@@ -1,8 +1,27 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
-import {clearIndexReview,identifyRows,markEdit,mergeWork,planMerge,progressReport,readAudit,readClearedRows,rowIdentity,validateTimes,workAuditRows} from '../extension/analisis/team-work.js';
+import {clearIndexDocument,clearIndexReview,identifyRows,markEdit,mergeWork,nextIndexDocumentNumber,planMerge,progressReport,readAudit,readClearedRows,readRemovedDocuments,rowIdentity,validateTimes,workAuditRows} from '../extension/analisis/team-work.js';
 const id='manual/00000000-0000-4000-8000-000000000001',row=(fact,idValue=id)=>({teamId:idValue,topik:'Penjualan',sumber:'Buku penjualan',fakta:fact,status:'Selesai'});
 const key=JSON.stringify(['rows',id]);
+test('deleted request numbers survive save and merge without reusing a number or resurrecting a document',()=>{
+  const initial={indexDocuments:[{number:1,name:'Buku'},{number:3,name:'Faktur'}]},local=structuredClone(initial);
+  clearIndexDocument(local,3);clearIndexDocument(local,3);
+  assert.deepEqual(readRemovedDocuments(local.removedDocuments,local.indexDocuments),[3]);
+  assert.equal(nextIndexDocumentNumber(local),4);assert.equal(workAuditRows(local).length,1);
+  assert.equal(readAudit(local.auditLog)[0].action,'removeDocument');
+  for(const bad of [[1],[3,3],[0],[1.5],['3']])assert.throws(()=>readRemovedDocuments(bad,local.indexDocuments));
+  const plan=planMerge(local,initial),conflict=plan.decisions.find(r=>r.rule==='pilih');
+  assert.throws(()=>mergeWork(plan));
+  const keep=mergeWork(plan,{[conflict.key]:'lokal'}),restore=mergeWork(plan,{[conflict.key]:'berkas'});
+  assert.deepEqual(keep.removedDocuments,[3]);assert.deepEqual(restore.indexDocuments,initial.indexDocuments);
+  assert.deepEqual(restore.removedDocuments,[]);assert.deepEqual(mergeWork(planMerge({},local)).removedDocuments,[3]);
+  const scope={type:'terfokus',taxes:['PPN']},edited={documentScope:scope};
+  markEdit(edited,'documentScope','sp2');assert.deepEqual(validateTimes(edited.editTimes,edited),edited.editTimes);
+  assert.equal(planMerge(edited,{documentScope:{type:'lengkap',taxes:[]}}).decisions[0].rule,'pilih');
+  const blank={simulation:{end:'',cases:[]}};markEdit(blank,'simulation','sim');
+  assert.deepEqual(validateTimes(blank.editTimes,blank),blank.editTimes);
+  assert.equal(planMerge(blank,{simulation:{end:'2026-12-01',cases:[]}}).decisions[0].rule,'pilih');
+});
 test('resetting an indexed review survives reopening, requires a merge choice and permits a fresh review',()=>{
   const line={id:'spt/PPN/2025-01/p00_demo/induk.json#A'},r={...row('hasil'),kkpLine:line.id};
   const index={byId:new Map([[line.id,line],['kode',{id:'kode',refundCode:'1'}]])};

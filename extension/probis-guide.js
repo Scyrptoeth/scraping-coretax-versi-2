@@ -50,13 +50,20 @@ export function probisSourceFields(source) {
   return {'KLU acuan':source.klu,'Edisi klasifikasi':source.edition,'Tahun pajak':source.year,
     'Prosedur Probis':source.procedure,'Langkah penelusuran':source.check,'Kode saran dokumen':source.document};
 }
+export function isRegisteredProbisCode(code){
+  return typeof code==='string'&&/^(?:\d{5}|Z\d{4})$/.test(code)&&[kbli['2020'],kbli['2025'],kluZ].some(c=>Object.hasOwn(c,code));
+}
 export function validatedProbisSource(source,year) {
   const fail=()=>{throw Error('Periksa asal saran Probis, tahun, serta kode dokumen.');};
-  if(!source || typeof source.klu!=='string' || !['2020','2025','KLU Z'].includes(source.edition) ||
-    !(source.edition==='KLU Z'?/^Z\d{4}$/:/^\d{5}$/).test(source.klu) ||
-    typeof source.year!=='string' || !/^(?:19|20)\d{2}$/.test(source.year) || (year!==undefined && String(year)!==source.year))fail();
-  const catalog=source.edition==='KLU Z'?kluZ:kbli[source.edition];
-  if(!Object.hasOwn(catalog,source.klu))fail();
+  if(!source || typeof source.klu!=='string' || typeof source.year!=='string' || !/^(?:19|20)\d{2}$/.test(source.year) ||
+    (year!==undefined && String(year)!==source.year))fail();
+  if(source.edition==='Registrasi Coretax'){
+    if(!isRegisteredProbisCode(source.klu))fail();
+  }else{
+    if(!['2020','2025','KLU Z'].includes(source.edition)||!(source.edition==='KLU Z'?/^Z\d{4}$/:/^\d{5}$/).test(source.klu))fail();
+    const catalog=source.edition==='KLU Z'?kluZ:kbli[source.edition];
+    if(!Object.hasOwn(catalog,source.klu))fail();
+  }
   const guide=publicGuide(source.klu);
   if(source.procedure!==guide.code || !guide.documents.some(([id])=>id===source.document))fail();
   if(typeof source.check!=='string' || !source.check.trim() || source.check.length>500)fail();

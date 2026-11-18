@@ -71,13 +71,18 @@ export function findingKey(finding) {
   return JSON.stringify([finding.kind,finding.period,finding.source,finding.detail]);
 }
 
+export function findingFromWorkRow(row, year) {
+  if (row.review==='Terjelaskan' || row.review==='Tidak relevan' || row.evidence==='none') return null;
+  return {...emptyFinding(),kind:row.tax||'Belum ditentukan',detail:[row.topik,row.fakta,row.simpulan].filter(Boolean).join(' · '),
+      source:row.sumber,period:row.kkpLine&&row.kkpPeriod?row.kkpPeriod:String(year),status:row.evidence==='verified' && row.sumber && row.fakta?'berbukti':'indikatif',
+      amount:Number.isFinite(row.principal)?row.principal:''};
+}
+
 export function findingsFor(pkg, year, rows) {
   const findings=sourceFindings(pkg,String(year));
   for (const row of rows) {
-    if (row.review==='Terjelaskan' || row.review==='Tidak relevan' || row.evidence==='none') continue;
-    findings.push({...emptyFinding(),kind:row.tax||'Belum ditentukan',detail:[row.topik,row.fakta,row.simpulan].filter(Boolean).join(' · '),
-      source:row.sumber,period:row.kkpLine&&row.kkpPeriod?row.kkpPeriod:String(year),status:row.evidence==='verified' && row.sumber && row.fakta?'berbukti':'indikatif',
-      amount:Number.isFinite(row.principal)?row.principal:''});
+    const finding=findingFromWorkRow(row,year);
+    if(finding)findings.push(finding);
   }
   return findings;
 }

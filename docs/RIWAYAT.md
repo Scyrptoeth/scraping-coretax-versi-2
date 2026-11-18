@@ -1,5 +1,9 @@
 # Riwayat Scraping Coretax Versi 2
 
+## 19 November 2026 WIB · Prarilis 0.12.0
+
+Penarik dapat mencocokkan tabel profil, registrasi, dokumen dan buku besar pada tab yang sudah terbuka untuk satu NPWP. Di **KKP → Keluaran**, tersedia permintaan dokumen dan lingkup SP2, daftar temuan sementara serta simulasi ketetapan dengan penelusuran kompensasi PPN antarmasa. [Uji pembanding dan selisih dengan Studio](KESETARAAN.md#hasil-prarilis-0120)
+
 ## 19 November 2026 WIB · Prarilis 0.11.0
 
 Pemutar menyediakan **JD · Jadwal pemeriksaan** dengan empat jenis pemeriksaan. Petugas dapat melihat dasar setiap tenggat, memasukkan hari libur, mengunduh Excel dan mencetak jadwal. Isian melekat pada paket WP dan tahun pajak. Fitur ini memperhitungkan tanggal pemeriksaan yang dapat berbeda dari tahun pajak berkas kerja. [Panduan jadwal](ANALISIS.md#jadwal-pemeriksaan)

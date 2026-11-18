@@ -89,6 +89,14 @@ Isi UP2, pembuat dan penelaah untuk indeks yang dipilih. Setelah telaah, **Buat 
 4. Gunakan **Excel kertas kerja**, **Word**, atau **Cetak / PDF**. Excel KKP memuat rumus selisih untuk dua nilai pembanding yang terisi. KKA memuat profil, kriteria pemilihan WP, perbandingan SPT dua tahun pada Tabel 4.1, potensi per jenis dan rinciannya pada Tabel 5 dan 5.1, serta usulan petugas. Pilihan indikatif menambahkan Lampiran L-9. [Konsep surat dan berita acara](KONSEP.md)
 5. Gunakan **Unduh berkas kerja** untuk menyimpan pilihan, catatan, draf dan simulasi. **Buka berkas kerja** mencocokkan paket dan tahun. Berkas lama dapat dibuka dengan pilihan awal untuk bidang yang belum ada pada versi sebelumnya.
 
+### Keluaran KKP
+
+Di **KKP → Keluaran**, ada juga tiga laporan yang memakai WP dan tahun pajak aktif.
+
+- **DOK** menampilkan daftar permintaan dan saran yang sesuai dengan jenis pemeriksaan dan pajak pada SP2. Petugas dapat menambahkan dokumen, mengubah indeks tujuannya, mencatat tanggal serta status penerimaan, kemudian mengekspor atau mencetak daftar. Permintaan yang sudah dicatat tetap terlihat ketika lingkup saran berubah.
+- **TS** membedakan angka pada SPT, pembanding otomatis, hasil uji petugas dan koreksi berbukti. Pilih lingkup untuk menyertakan temuan indikatif. Di Excel lengkap, lembar **Daftar TS** memuat perbandingan ini beserta sumbernya.
+- **SIM** menampilkan dampak hasil uji pada pokok dan sanksi. Periksa saldo SPT, saldo rekonstruksi sebelum uji dan saldo setelah uji pada **Kaskade PPN**. Masukkan tanggal rencana ketetapan untuk menghitung bunga. Jika pembetulan, dasar PK/PM atau kesinambungan masa meragukan, baca catatan pada baris tersebut. Untuk PPh Badan, bagian **Pembanding PPh Badan** menunjukkan komponen yang dapat ditelusuri. Periksa satuan, hak atas kredit pajak, dan saldo akhir B sebelum menggunakan angka sebagai pokok. Tombol simulasi manual membuka perhitungan dengan dasar yang diisi petugas.
+
 ### Jadwal pemeriksaan
 
 Pilih tahun pajak berkas kerja, lalu buka **KKP**, **Keluaran**, **JD · Jadwal pemeriksaan**. Isikan tanggal kejadian menurut dokumen. Tanggal penyampaian SPHP dan tanggal WP menerimanya memiliki kolom tersendiri. Pemeriksaan dapat berlangsung setelah tahun pajak yang dipilih. Tanggal acuan pada layar digunakan untuk menghitung sisa hari.

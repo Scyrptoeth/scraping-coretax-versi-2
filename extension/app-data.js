@@ -99,7 +99,7 @@ export function rowsOf(page) {
   return payload && typeof payload === 'object' ? [payload] : [];
 }
 export function checkIdentity(rows,npwp) {
-  const ownKeys = new Set(['npwp','npwpwp','npwpwajibpajak','npwpwajibpajakpusat','maintaxpayertin','taxpayeridentificationnumber','taxpayeridentificationno']);
+  const ownKeys = new Set(['npwp','npwpwp','npwpwajibpajak','npwpwajibpajakpusat','npwppemilik','maintaxpayertin','taxpayeridentificationnumber','taxpayeridentificationno']);
   for (const row of rows) {
     if (row === null || typeof row !== 'object') continue;
     for (const [label,value] of Object.entries(row)) {
@@ -141,7 +141,7 @@ export async function visibleTables(selected) {
   const visible = el => el.checkVisibility ? el.checkVisibility({visibilityProperty:true,opacityProperty:true}) && el.getClientRects().length > 0 : el.getClientRects().length > 0;
   const listTables=()=>[...document.querySelectorAll('table,[role=table],[role=grid]')].filter(visible);
   const tables=listTables();
-  const ownerKeys=['npwp','npwpwp','npwpwajibpajak','npwpwajibpajakpusat','maintaxpayertin','taxpayeridentificationnumber','taxpayeridentificationno'];
+  const ownerKeys=['npwp','npwpwp','npwpwajibpajak','npwpwajibpajakpusat','npwppemilik','maintaxpayertin','taxpayeridentificationnumber','taxpayeridentificationno'];
   const tableTitle = (table,index) => table.caption?.innerText?.trim() || table.getAttribute('aria-label') ||
     (table.getAttribute('aria-labelledby') || '').split(/\s+/).map(id=>document.getElementById(id)).filter(el=>el && visible(el)).map(el=>el.innerText.trim()).join(' ') || 'Tabel '+(index+1);
   function shape(table) {
@@ -328,11 +328,14 @@ export async function visibleTables(selected) {
   function checkScope(rows,labels,table=currentTable) {
     const key = value => value.toLowerCase().replace(/[^a-z]/g,'');
     const ownerColumns = labels.filter(label=>ownerKeys.includes(key(label)));
-    const periodColumns = labels.filter(label=>['masapajak','periodepajak','taxperiod','taxperiodcode','tahunpajak','taxyear'].includes(key(label)));
+    const periodColumns = labels.filter(label=>['masapajak','periodepajak','taxperiod','taxperiodcode','tahunpajak','taxyear'].includes(key(label)) ||
+      ['bb','bbtotal'].includes(selected.scope.source) && key(label)==='periodcode');
     const months = ['januari','februari','maret','april','mei','juni','juli','agustus','september','oktober','november','desember'];
     function interval(text) {
       const s=String(text).trim().toLowerCase();
       if (/^(?:19|20)\d{2}$/.test(s)) return [s+'-01',s+'-12'];
+      const native=/^(0[1-9]|1[0-2])(0[1-9]|1[0-2])((?:19|20)\d{2})$/.exec(s);
+      if(native)return native[1]<=native[2]?[native[3]+'-'+native[1],native[3]+'-'+native[2]]:null;
       let year, month, match=s.match(/^((?:19|20)\d{2})[-/](\d{1,2})$/);
       if(match) [,year,month]=match;
       else if((match=s.match(/^(\d{1,2})[-/]((?:19|20)\d{2})$/))) [,month,year]=match;
@@ -344,17 +347,31 @@ export async function visibleTables(selected) {
     if(submitted && ((selected.scope.source==='sptdaftar')!==index))return {skip:'Kategori sumber berbeda dari tabel SPT Dilaporkan.'};
     if(index && (panelOwner()!==selected.scope.wp || listTables().filter(t=>isIndex(shape(t).labels)).length!==1))
       return {skip:'Panel WP pada daftar SPT berbeda atau tidak dapat dipastikan.'};
-    if(selected.previewIndex && index){
+    if(selected.previewIndex && index || selected.quick){
       const host=table.closest('.p-datatable,[data-pc-name="datatable"],p-table,[role=region]')||table;
       if(table.closest('[aria-busy=true]') || [...host.querySelectorAll('.p-datatable-loading-overlay,.p-datatable-loading,[data-pc-section=loadingoverlay],[role=progressbar]')].some(visible))
-        return {loading:true,skip:'Daftar SPT masih dimuat.'};
+        return {loading:true,skip:selected.quick?'Tabel sumber masih dimuat.':'Daftar SPT masih dimuat.'};
     }
     if(!rows.length && !(selected.previewIndex && index && indexPosition(table,0).range?.total===0))return {skip:'Tabel kosong atau belum selesai dimuat.'};
+    if(selected.quick && !ownerColumns.some(c=>['npwpwp','npwpwajibpajak','npwppemilik','taxpayeridentificationnumber','taxpayeridentificationno'].includes(key(c)) ||
+          selected.scope.source==='info' && key(c)==='npwp'))
+      return {skip:'Kolom NPWP pemilik tabel belum dapat dipastikan.'};
     if((!ownerColumns.length && !index && !selected.scope.manual) || !rows.every(row=>ownerColumns.every(col=>{
       const id=row[col].replace(/[.\s-]/g,'');
       return /^\d{15,16}$/.test(id) && id.padStart(16,'0')===selected.scope.wp;
     }))) return {skip:'Identitas WP di setiap baris belum cocok.'};
     if(index)return {rows,ownerColumns,periodColumns,indexScope:'Daftar SPT lintas masa',ownerEvidence:'Panel WP pada SPT Dilaporkan'};
+    if(selected.quick && selected.scope.periodRequired){
+      const rowPeriods=rows.map(row=>{
+        const values=periodColumns.map(col=>String(row[col]).trim());
+        const bounds=values.map(interval);
+        const month=bounds.find(b=>b && b[0]===b[1])?.[0];
+        if(!month || month<selected.scope.from || month>selected.scope.to)return '';
+        return bounds.every((b,i)=>b && (b[0]===month && b[1]===month || /^(19|20)\d{2}$/.test(values[i]) && values[i]===month.slice(0,4)))?month:'';
+      });
+      if(rowPeriods.some(m=>!m))return {skip:'Sumber buku besar belum menunjukkan satu masa pajak yang cocok pada setiap baris.'};
+      return {rows,ownerColumns,periodColumns,rowPeriods};
+    }
     if(!selected.scope.manual && (selected.scope.periodRequired || periodColumns.length)) {
       if(!periodColumns.length || !rows.every(row=>periodColumns.every(col=>{
         const bounds=interval(row[col]);
@@ -365,6 +382,36 @@ export async function visibleTables(selected) {
   }
   if (selected.scope) {
     const checked=checkScope(currentRows,current.labels);
+    if(selected.quick){
+      if(checked.skip)return {skip:checked.skip};
+      if(location.origin!=='https://coretax.intranet.pajak.go.id')return {skip:'Tab ini bukan sumber Coretax yang dipilih.'};
+      const normal=s=>s.toLowerCase().replace(/\s+/g,' ').trim(),refs=(currentTable.getAttribute('aria-labelledby')||'').split(/\s+/).filter(Boolean).map(id=>document.getElementById(id));
+      if(refs.some(el=>!el || !visible(el)))return {skip:'Label tabel belum dapat diperiksa.'};
+      const names=[currentTable.caption && visible(currentTable.caption)?currentTable.caption.innerText.trim():'',
+        currentTable.getAttribute('aria-label')||'',refs.map(el=>el.innerText.trim()).join(' ')].filter(Boolean).map(normal);
+      if(!names.length || names.some(n=>n!==normal(selected.title)))return {skip:'Judul dan label tabel belum cocok.'};
+      if(!currentRows.some(r=>selected.quick.fields.every(group=>group.some(field=>r[field]?.trim()))))
+        return {skip:'Kolom khas sumber belum memuat isian yang dapat dikenali.'};
+      const position=indexPosition(currentTable,currentRows.length);
+      if(position.conflict)return {skip:'Rentang halaman dan jumlah baris sumber bertentangan.'};
+      const digest=async value=>Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(JSON.stringify(value)))),
+        b=>b.toString(16).padStart(2,'0')).join('');
+      const stamp=await digest([current.labels,currentRows,position]);
+      if(selected.quick.expect && stamp!==selected.quick.expect)return {skip:'Isi atau filter tabel berubah sejak pratinjau. Buka kembali Pratinjau WP.'};
+      const groups=new Map();
+      currentRows.forEach((row,i)=>{const month=checked.rowPeriods?.[i]||'';if(!groups.has(month))groups.set(month,[]);groups.get(month).push(row);});
+      const slices=[];
+      for(const [month,rows] of groups){
+        const canonical=rows.map(r=>JSON.stringify(Object.keys(r).sort().map(k=>[k,r[k]]))).sort();
+        slices.push({month,count:rows.length,hash:await digest(canonical),...(selected.quick.expect && selected.quick.includeRows?{rows}:{})});
+      }
+      const latest=shape(currentTable),latestRows=records(latest);
+      if(location.href!==selected.url || listTables()[selected.index]!==currentTable || tableTitle(currentTable,selected.index)!==selected.title ||
+          checkScope(latestRows,latest.labels).skip || JSON.stringify([latest.labels,latestRows,indexPosition(currentTable,latestRows.length)])!==JSON.stringify([current.labels,currentRows,position]))
+        return {skip:'Halaman sumber berubah saat isi tabel sedang dicocokkan.'};
+      return {stamp,slices,owner:checked.ownerColumns,period:checked.periodColumns,range:position.range,filtered:position.filtered,
+        atStart:position.atStart,atEnd:position.atEnd,canAdvance:!!nextButton(currentTable)};
+    }
     if(selected.restartIndex){
       if(checked.skip || !checked.indexScope || selected.scope.source!=='sptdaftar')return {skip:'Daftar dan WP belum cocok.'};
       location.assign(location.href);

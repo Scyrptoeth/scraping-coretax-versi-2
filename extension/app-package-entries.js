@@ -59,8 +59,10 @@ function consistentField(rows, labels) {
   }
   return values.size===1?[...values][0]:'';
 }
-function periodLabel(rows) {
-  const value=consistentField(rows,['masapajak','periodepajak','taxperiod','taxperiodcode']) ||
+export function periodLabel(rows,ledger=false) {
+  const fields=['masapajak','periodepajak','taxperiod','taxperiodcode'];
+  if(ledger)fields.push('periodcode');
+  const value=consistentField(rows,fields) ||
     consistentField(rows,['tahunpajak','taxyear']);
   const code=/^(0[1-9]|1[0-2])(0[1-9]|1[0-2])((?:19|20)\d{2})$/.exec(value);
   if(code)return code[1]===code[2]?code[3]+'-'+code[1]:code[3];
@@ -73,6 +75,9 @@ function periodLabel(rows) {
 export function packagePath(item) {
   if(item.source==='tabelumum') return 'tabel/'+item.id+'.json';
   if(item.source==='bbsaldo') return 'bukubesar-saldo.json';
+  const month=item.proof?.pratinjauSumber?.masa;
+  if(['bb','bbtotal'].includes(item.source) && /^(?:19|20)\d{2}-(?:0[1-9]|1[0-2])$/.test(month))
+    return (item.source==='bb'?'bukubesar/':'bukubesar-total/')+month+'.json';
   if(Object.hasOwn(profiles,item.source)) return 'profil/'+profiles[item.source]+'.json';
   if(Object.hasOwn(lists,item.source)) return 'spt/'+lists[item.source]+'.json';
   if(item.source==='sptisi' && item.detailProof) {
@@ -85,7 +90,7 @@ export function packagePath(item) {
     const pass=item.proof?.urutan?.id;
     return 'sptisi/'+(item.detailProof.receipt && /^[a-f0-9-]{36}$/i.test(pass || '')?pass:item.id)+'.json';
   }
-  const rows=rowsOf(item.page), period=periodLabel(rows);
+  const rows=rowsOf(item.page), period=periodLabel(rows,['bb','bbtotal'].includes(item.source));
   if(['bb','bbtotal'].includes(item.source) && period.length===7) {
     return (item.source==='bb'?'bukubesar/':'bukubesar-total/')+period+'.json';
   }

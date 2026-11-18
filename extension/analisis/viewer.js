@@ -10,6 +10,7 @@ import {rateUpdateTools} from './rate-updates-ui.js';
 import {buildIndex} from './kkp-index.js';
 import {box,button,card,detail,el,notice,select,showDialog,toggleSet} from './ui.js';
 import {probisRequests,renderWork} from './work.js';
+import {outputMenus} from './kkp-index-ui.js';
 import {readPref,resetAppearance,setPref} from './preferences.js';
 import {renderTestingPrograms} from './testing-programs.js';
 import {renderAppportal} from './appportal-ui.js';
@@ -76,7 +77,7 @@ function search(){
   if(state.pkg){
     routes.push({title:'Rincian mutu data',aliases:'pencocokan baris CSV dan isi tabel',act:()=>go('muat','mutu')});
     if(state.pkg.report.valid && state.year){
-      routes.push({title:'JD · Jadwal pemeriksaan',aliases:'KKP Keluaran SPP SPHP tenggat',act:()=>go('kerja','jadwal')});
+      for(const [route,[title]] of Object.entries(outputMenus))routes.push({title,aliases:route==='jadwal'?'KKP Keluaran SPP SPHP tenggat':'KKP Keluaran',act:()=>go('kerja',route)});
       const workKey=JSON.stringify([state.pkg.report.manifestHash||state.pkg.fileKey,state.year]);
       const work=state.work.get(workKey)||{rows:[],drafts:[]};
       state.work.set(workKey,work);
@@ -248,8 +249,8 @@ function render(){
   else if(['profil','tabel'].includes(state.tab))renderEntries(root,state,state.tab==='profil');
   else if(state.tab==='kerja'){
     renderWork(root,state);
-    if(state.section==='jadwal'&&(previousTab!=='kerja'||previousSection!=='jadwal'))$('inspection-schedule-title')?.focus();
-    if(previousTab==='kerja'&&previousSection==='jadwal'&&state.section==='kkp')$('kkp-open-schedule')?.focus();
+    if(Object.hasOwn(outputMenus,state.section)&&(previousTab!=='kerja'||previousSection!==state.section))$(outputMenus[state.section][1])?.focus();
+    if(previousTab==='kerja'&&Object.hasOwn(outputMenus,previousSection)&&state.section==='kkp')$('kkp-open-'+previousSection)?.focus();
   }
   else if(['probis','peraturan'].includes(state.tab))renderCatalog(root,state.tab,{manifest:state.pkg?.manifest,entries:state.pkg?.entries,query:state.query,openBusinessSearch:state.section==='klu',
     requests:state.pkg?.report.valid && state.year?()=>probisRequests(state):null});

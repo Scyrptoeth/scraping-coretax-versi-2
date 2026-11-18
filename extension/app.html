@@ -55,6 +55,7 @@
     </section>
     <section><h2><span>4</span>Tarik data</h2><details><summary>Bagaimana prosesnya?</summary><p>Ekstensi menyusun satu paket untuk NPWP pada penugasan. Anda dapat menambahkan beberapa tabel atau berkas ekspor untuk WP yang sama. Pemrosesan dan penyimpanan berlangsung di perangkat ini.</p></details>
       <label class="check notice"><input type="checkbox" id="consent">Saya menarik data sesuai penugasan dan akan menjaga kerahasiaannya.</label>
+      <p class="hint">Untuk profil, registrasi, daftar dokumen, dan buku besar, pilih Pratinjau WP agar tabel yang sedang terbuka di Coretax dapat dicocokkan dengan penugasan.</p>
       <div id="preview-index-options" hidden><p class="hint">Pratinjau WP dapat membaca daftar SPT untuk NPWP ini dari tab Coretax yang sudah terbuka. Periode dan jenis SPT menentukan versi yang ditampilkan pada pratinjau.</p>
         <label>Halaman daftar maksimal untuk pratinjau<input type="number" id="preview-index-limit" min="1" max="100" value="100"></label>
         <label class="check"><input type="checkbox" id="preview-save" autocomplete="off" aria-describedby="preview-save-hint">Simpan kemajuan pratinjau daftar SPT untuk penugasan ini di perangkat</label>
@@ -62,7 +63,7 @@
       <div class="actions"><button id="preview">Pratinjau WP</button><button id="start" class="primary" disabled>Mulai tarik</button><button id="pause" hidden>Jeda</button><button id="stop" class="danger" hidden>Hentikan</button></div>
       <div class="actions" id="preview-read-actions"></div><p id="preview-read-status" role="status"></p>
       <div id="preview-recovery"></div><div id="pending-jobs"></div>
-      <div id="preview-box"></div><progress id="progress" value="0" max="1" hidden></progress><p id="status" role="status"></p>
+      <div id="preview-box"></div><div id="other-preview"></div><progress id="progress" value="0" max="1" hidden></progress><p id="status" role="status"></p>
       <div class="actions spread"><h3>Catatan proses</h3><label class="check"><input type="checkbox" id="problems">Hanya masalah</label></div><ol id="log"></ol>
     </section>
     <section><h2><span>5</span>Hasil &amp; paket</h2><div id="results"></div>

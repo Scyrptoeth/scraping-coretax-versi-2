@@ -6,15 +6,18 @@ import {businessSheets} from './business-work.js';
 import {benchmarkSheet} from './benchmark-work.js';
 import {companyAnnexIndices} from './kkp-company-annexes.js';
 import {simulationTables} from './sanksi.js';
+import {assessmentOutput,assessmentSheets} from './assessment-simulation.js';
+import {temporaryFindingsSheet} from './temporary-findings.js';
 import {rateSourceLabel} from './rate-updates.js';
 import {withoutReturnIndices} from './kkp-without-return.js';
 import {workAuditRows} from './team-work.js';
 import {findingKey,findingRows,findingsFor} from './findings.js';
 import {normalizeId} from '../app-data.js';
-import {listRowType} from '../app-package-entries.js';
+import {sourceProblem,listedReturns as withholdingReturnList,revisionProblem,usesOtherCurrency} from './return-source.js';
 import {projectWithholdingTax} from './kkp-withholding-tax.js';
 import {sourceAmount} from './withholding-forms.js';
 import {companySupportWorksheet} from './kkp-company-controls.js';
+import {validateDocumentOrigin} from './document-requests-output-model.js';
 
 // Each rule names an explicit value on the SPT. Empty or nonnumeric source cells stay empty.
 const annualCompany=[
@@ -65,26 +68,6 @@ const taxableSales='DeliveryOfTaxableGoodsSubjectToVAT',exportsSales='ExportTang
 const articleBases=[['E.2.1','22','PPh Pasal 22'],['G.2.1','23','PPh Pasal 23'],['K.2.1','4(2)','PPh Pasal 4 ayat (2)']];
 const given=v=>v!==null&&v!==undefined&&v!=='';
 
-function sourceProblem(pkg,form,part,entry){
-  if(!entry)return 'Bagian ini belum ada dalam paket.';
-  const {cap={},pages=[]}=entry,ctx=cap.konteks||{},spt=ctx.spt||{},query=cap.payload||{};
-  const m=form.period.slice(-2),periodCode=m+m+form.year,owner=normalizeId(pkg.manifest.wp?.npwp);
-  if(!owner||/^0+$/.test(owner))return 'NPWP paket belum dapat diperiksa.';
-  const matches=(values,expected)=>values.filter(given).every(v=>String(v)===String(expected));
-  if(!matches([ctx.bagian],part)||!matches([spt.recordId,query.RecordId,query.ReturnSheetRecordId],form.id)||
-    !matches([spt.tahun],form.year)||!matches([spt.pemb],form.version)||
-    !matches([spt.jenis],{PPN:'VAT_VATR',PPH2126:'ICT_WITR',UNIFIKASI:'ICT_WTR'}[form.type])||
-    (given(spt.masa)&&![periodCode,form.period].includes(String(spt.masa)))||
-    [ctx.npwp,spt.npwp].filter(given).some(v=>!owner||normalizeId(v)!==owner))return 'Identitas sumber berbeda dari SPT yang dipilih.';
-  const failures=Array.isArray(pkg.manifest.gagal)?pkg.manifest.gagal:[];
-  if(pkg.report?.valid===false||failures.some(f=>[entry.path,'data/'+entry.path].includes(typeof f==='string'?f:f?.path))||
-     cap.lengkap!==true||!pages.length||pages.some(p=>!p||p.IsSuccessful===false||p.Errors?.length)||
-     !matches([cap.halaman],pages.length))return 'Sumber belum lengkap atau ada halaman gagal.';
-  if(Number(query.First)>0||query.Filters?.length)return 'Sumber memakai filter atau dimulai setelah baris pertama.';
-  if(Array.isArray(cap.halamanSumber)&&cap.halamanSumber.some(s=>s?.pencocokan?.morePagesAvailable))return 'Masih ada halaman sumber yang belum disertakan.';
-  return '';
-}
-
 function selfCollectedBase(row){
   const listed=salesFields.filter(k=>Object.hasOwn(row,k));
   if(!listed.length)return {reason:'Belum ada komponen DPP dipungut sendiri yang dapat dicocokkan dengan subtotal induk.'};
@@ -116,11 +99,6 @@ function articleCode(value){
 }
 
 const currencyIssue='Mata uang sumber belum dapat dijumlahkan dalam rupiah pada KKP.';
-const currencyFields=['CurrencyCode','Currency','MataUang','Mata Uang','TaxBaseCurrencyCode','IncomeTaxCurrencyCode'];
-const rupiahLabels=new Set(['IDR','RP','RP.','RUPIAH']);
-function usesOtherCurrency(...records){
-  return records.some(r=>currencyFields.some(k=>given(r?.[k])&&!rupiahLabels.has(String(r[k]).trim().toUpperCase())));
-}
 
 function article22Tax(pkg,form,entry,row){
   const source='IncomeTaxes · Tax Article · Pasal 22 · TotalWithholding';
@@ -214,33 +192,6 @@ function withholdingBases(entry){
     return {reason:'Jumlah baris mencapai batas permintaan dan halaman penutup belum tersedia.'};
   if(!totals.length||totals.some(t=>!Number.isSafeInteger(t)||t!==count)||(given(cap.baris)&&cap.baris!==count))return {reason:'Jumlah baris D1-BPU belum terkonfirmasi oleh total sumber.'};
   return {results,count,cancelled22};
-}
-
-function withholdingReturnList(pkg,year,type){
-  const periods=new Map(),owner=normalizeId(pkg.manifest.wp?.npwp);
-  for(const entry of pkg.entries.filter(e=>e.path==='spt/daftar.json'||e.cap?.sumber==='sptdaftar')){
-    const cap=entry.cap||{},query=cap.payload||{};
-    if(query.isArchieved===true||(given(cap.konteks?.npwp)&&normalizeId(cap.konteks.npwp)!==owner))continue;
-    for(const row of rowsOf(entry)){
-      if(listRowType(row)!==type||(given(row.ReturnSheetStatusCode)&&String(row.ReturnSheetStatusCode).toUpperCase()!=='SUBMITTED')||
-        (given(row.TaxpayerAggregateIdentifier)&&given(query.TaxpayerAggregateIdentifier)&&row.TaxpayerAggregateIdentifier!==query.TaxpayerAggregateIdentifier))continue;
-      const code=String(row.TaxPeriodCode??'');
-      const period=/^(0[1-9]|1[0-2])\1(\d{4})$/.test(code)?code.slice(4)+'-'+code.slice(0,2):code;
-      if(period.slice(0,4)!==String(year)||!/^\d{4}-(0[1-9]|1[0-2])$/.test(period))continue;
-      const model=String(row.ReturnSheetModel||'').trim(),amendment=/^(?:Amendment|Pembetulan)\s*(\d+)$/i.exec(model);
-      const version=/^Normal$/i.test(model)?0:amendment?Number(amendment[1]):null;
-      if(!periods.has(period))periods.set(period,[]);
-      periods.get(period).push({id:row.RecordId,version,path:entry.path});
-    }
-  }
-  return periods;
-}
-
-function revisionProblem(list,versions,form){
-  const later=list.find(r=>r.version>form.version||
-    given(r.id)&&r.version===form.version&&r.id!==form.id||
-    given(r.id)&&r.version===null&&!versions.some(f=>f.id===r.id));
-  return later?'Pembetulan terakhir pada '+later.path+' belum cocok dengan rekaman SPT dalam paket.':'';
 }
 
 function annualArticle22(group,label,months,year,listed,grossByPeriod){
@@ -515,16 +466,20 @@ export function validateIndexDocuments(documents,index,year){
   if(!Array.isArray(documents))throw Error('Daftar permintaan dokumen tidak sah.');
   const groups=new Set(index.groups.map(g=>g.key)),numbers=new Set(),sources=new Set();
   return documents.map(d=>{
-    if(!d||!Number.isSafeInteger(d.number)||d.number<1||numbers.has(d.number)||!groups.has(d.index)||
+    if(!d||!Number.isSafeInteger(d.number)||d.number<1||numbers.has(d.number)||(!groups.has(d.index)&&!/^SP2\/(?:UMUM|B|OP|N|C|G|K|E|F)$/.test(d.index))||
       typeof d.name!=='string'||!d.name.trim()||!documentStatuses.includes(d.status)||
       typeof d.date!=='string'||typeof d.due!=='string'||typeof d.reference!=='string')throw Error('Periksa nomor, indeks, nama dan status dokumen.');
-    for(const date of [d.date,d.due].filter(Boolean)){
+    if((d.received!==undefined&&typeof d.received!=='string')||(d.notes!==undefined&&typeof d.notes!=='string'))throw Error('Periksa tanggal penerimaan dan catatan dokumen.');
+    for(const date of [d.date,d.due,d.received].filter(Boolean)){
       const parsed=new Date(date+'T00:00:00Z');
       if(!/^\d{4}-\d{2}-\d{2}$/.test(date)||!Number.isFinite(parsed.getTime())||parsed.toISOString().slice(0,10)!==date)throw Error('Tanggal dokumen tidak sah.');
     }
     if(d.date&&d.due&&d.date>d.due)throw Error('Tenggat mendahului tanggal permintaan.');
     numbers.add(d.number);
     const result={number:d.number,index:d.index,name:d.name.trim(),status:d.status,date:d.date,due:d.due,reference:d.reference.trim()};
+    if(d.received)result.received=d.received;
+    if(d.notes?.trim())result.notes=d.notes.trim();
+    if(d.origin!==undefined)result.origin=validateDocumentOrigin(d.origin,d.index);
     if(d.probis!==undefined){
       result.probis=validatedProbisSource(d.probis,year);
       const key=probisRequestKey(d.index,result.probis);
@@ -536,10 +491,12 @@ export function validateIndexDocuments(documents,index,year){
 }
 export function documentRows(documents){
   const source=documents.find(d=>d.probis)?.probis, extra=Object.keys(probisSourceFields(source));
-  return [['Nomor','Jenis dokumen','Indeks','Status','Tanggal permintaan','Tenggat tercatat','Rujukan',...extra],
+  const receipt=documents.some(d=>d.received||d.notes||d.origin);
+  return [['Nomor','Jenis dokumen','Indeks','Status','Tanggal permintaan','Tenggat tercatat','Rujukan',...extra,...(receipt?['Tanggal diterima','Catatan','Asal saran KKP']:[])],
     ...documents.map(d=>{
       const fields=probisSourceFields(d.probis);
-      return ['DOK.'+d.number,d.name,d.index.split('/')[1],d.status,d.date,d.due,d.reference,...extra.map(k=>fields[k]??'')];
+      return ['DOK.'+d.number,d.name,d.index.startsWith('SP2/')?d.index:d.index.split('/')[1],d.status,d.date,d.due,d.reference,...extra.map(k=>fields[k]??''),
+        ...(receipt?[d.received||'',d.notes||'',d.origin?d.origin.index+' · '+d.origin.rule:'']:[])];
     })];
 }
 
@@ -632,6 +589,7 @@ export function completeIndexBook(pkg,year,index,reviewed,notes,documents=[],sim
     }
   }
   const sim=simulationTables(simulation);
+  const selectedWork={...work,simulation,rows:work.rows??[...reviewed.values()]};
   if(index.warnings.length)source.push([],['Keterangan cakupan sumber'],...index.warnings.map(s=>[s]));
   if(sim.summary.length)main.push([],['Simulasi ketetapan per jenis pajak'],...worksheet(sim.summary));
   const formal=filingAndPaymentRows(pkg,year);
@@ -645,6 +603,7 @@ export function completeIndexBook(pkg,year,index,reviewed,notes,documents=[],sim
     {name:'Daftar Indeks',rows:list},{name:'Temuan Sementara',rows:findings},{name:'INDUK',rows:main},
     {name:'Permintaan Dokumen',rows:documentRows(documents)},sourceSheet,{name:'Kepatuhan Formal',rows:formal},
     {name:'Review Sheet',rows:review},{name:'Jejak Audit',rows:audit.length?worksheet(audit):[['Belum ada perubahan tercatat.']]},
-    {name:'Temuan Langsung',rows:findingRows(direct)},...(benchmark?[benchmark]:[]),...businessSheets(pkg,year,work),
+    {name:'Temuan Langsung',rows:findingRows(direct)},temporaryFindingsSheet(pkg,year,selectedWork,index),
+    ...assessmentSheets(assessmentOutput(pkg,year,selectedWork,index)),...(benchmark?[benchmark]:[]),...businessSheets(pkg,year,work),
     ...groupSheets];
 }

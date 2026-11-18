@@ -10,6 +10,7 @@ import {sptNavigation} from './app-spt-navigation.js';
 import {collectSptQueue,sptDirectory} from './app-spt-directory.js';
 import {findSubmittedTab,readSubmittedPreview} from './app-spt-preview.js';
 import {previewKind,sameScope,wholePreview,coversRows,savedPages,removePreview,previewWriter} from './app-spt-progress.js';
+import {openSourcePreview} from './app-open-sources.js';
 
 const $ = id => document.getElementById(id);
 const coretax = 'https://coretax.intranet.pajak.go.id';
@@ -18,6 +19,7 @@ const queue = [], messages = [];
 let tables = [], tabUrl = '', stored = [], busy = false, paused = false, stop = false, noticeTimer;
 let paging=false,pagingPaused=false,pagingStopped=false,batch,autoSpt=false;
 let chosenPreviewTab=null;
+let otherSources;
 const sleep = ms => new Promise(resolve => setTimeout(resolve,ms));
 const checked = id => [...$(id).querySelectorAll('input:checked')].map(el => el.value);
 const val = id => $(id).value.trim();
@@ -115,6 +117,7 @@ function sourceChanged() {
   $('scope-ok').checked = false; scopeChanged();
 }
 function scopeChanged() {
+  otherSources?.invalidate();
   try { $('period-info').textContent = val('source')==='tabelumum' && $('undated-general').checked ?
     'Tabel umum yang ditambahkan akan disimpan tanpa masa pajak.' : 'Periode terpilih · '+period(); }
   catch(e) { $('period-info').textContent = e.message; }
@@ -133,6 +136,7 @@ function requireSourceConfirmation() {
   throw Error('Cocokkan dan centang pernyataan WP serta periode pada sumber.');
 }
 function scope() {
+  if(otherSources?.active)throw Error('Tunggu sampai sumber pada pratinjau selesai ditambahkan.');
   const wp = captureOwner(), source = val('source');
   if (!source) throw new Error('Pilih sumber data terlebih dahulu.');
   const spt = source==='sptisi' ? val('spt') : '';
@@ -161,7 +165,7 @@ function renderQueue() {
   const box = $('queue'); box.replaceChildren();
   queue.forEach(entry => line(box,entry.wp+' · '+sources[entry.source]+' · '+entry.name+' · '+entry.rows+' baris'+(entry.period===null?' · Masa tidak tercantum':''),[
     button('Keluarkan',() => {
-      if(busy || autoSpt || paging || batch.active)throw Error('Selesaikan pembacaan yang sedang berjalan.');
+      if(busy || autoSpt || paging || batch.active || otherSources?.active)throw Error('Selesaikan pembacaan yang sedang berjalan.');
       queue.splice(queue.indexOf(entry),1);
       const prior=entry.proof?.daftarPratinjau;
       if(prior){
@@ -361,7 +365,7 @@ function renderPreviewRecovery(){
   row.querySelectorAll('button').forEach(b=>b.disabled=busy||autoSpt);
 }
 async function withPreviewLock(fn){
-  if(busy || autoSpt || paging || batch.active)throw Error('Selesaikan pembacaan yang sedang berjalan.');
+  if(busy || autoSpt || paging || batch.active || otherSources.active)throw Error('Selesaikan pembacaan yang sedang berjalan.');
   return navigator.locks.request('scv2-spt-navigation',{ifAvailable:true},lock=>{
     if(!lock)throw Error('Pembacaan SPT sedang berjalan di tab lain.');return fn();
   });
@@ -399,7 +403,7 @@ async function restorePreview(id){
   });
 }
 async function previewFromTab(force=false,resumeId=null){
-  if(busy || autoSpt || paging || batch.active)throw Error('Selesaikan pembacaan yang sedang berjalan.');
+  if(busy || autoSpt || paging || batch.active || otherSources.active)throw Error('Selesaikan pembacaan yang sedang berjalan.');
   const {plan}=prepare({preview:true,allowEmpty:true});
   if(!ext || !checked('sources').includes('sptdaftar'))return showPreview();
   const wp=plan.wp,range=period(),types=checked('forms').join('|');
@@ -467,6 +471,16 @@ async function previewFromTab(force=false,resumeId=null){
       if(storageError){status.textContent='Kemajuan terakhir belum tersimpan di perangkat. '+storageError;message(status.textContent,true);}
     }
   });
+}
+async function previewSelectedSources(){
+  if(busy || autoSpt || paging || batch.active || otherSources.active)throw Error('Selesaikan pembacaan yang sedang berjalan.');
+  const {inPeriod}=prepare({preview:true,allowEmpty:true});
+  const shown=await otherSources.scan();
+  if(shown && !inPeriod.length && !checked('sources').includes('sptdaftar'))return;
+  try{await previewFromTab();}
+  catch(error){
+    if(!shown || inPeriod.length || !error.message.startsWith('Tambahkan tabel atau berkas'))throw error;
+  }
 }
 function showSptPlan(box,{counts,documents}) {
   const summary=captureTable(box,'SPT dalam periode terpilih',['Jenis dan masa berbeda','Versi SPT','Bagian tersedia','Bagian perlu diambil','Bagian perlu diulang']);
@@ -664,7 +678,7 @@ function sptViewControls(doc,pageLimit,reread) {
   const navigation=sptNavigation({ext,wp,period:{from:periodStart,to:periodEnd},doc});
   const errorText=sptErrorText;
   function check() {
-    if (!block.isConnected || busy || paging || batch.active || wp!==captureOwner() || range!==period() ||
+    if (!block.isConnected || busy || paging || batch.active || otherSources.active || wp!==captureOwner() || range!==period() ||
         !checked('forms').includes(doc.type) || !checked('sources').includes('sptisi') || !$('consent').checked)
       throw Object.assign(Error('Cakupan berubah. Buka kembali pratinjau WP.'),{code:'SCOPE'});
   }
@@ -744,10 +758,11 @@ function pendingPlans(record) {
   return record.plan ? [record.plan] : record.plans.slice(record.cursor);
 }
 async function run(resume) {
-  if (busy || paging || autoSpt || batch.active) return;
+  if (busy || paging || autoSpt || batch.active || otherSources.active) return;
   await navigator.locks.request('scv2-capture-job',{ifAvailable:true},async lock => {
     if (!lock) throw new Error('Tarikan sedang berjalan pada tab penarik lainnya.');
-    if (busy || paging || autoSpt || batch.active) return;
+    if (busy || paging || autoSpt || batch.active || otherSources.active) return;
+    otherSources.invalidate();
     busy = true; paused = false; stop = false;
     try {
       renderQueue();
@@ -952,7 +967,7 @@ function init() {
     const event=['ids','letter','date','officer','nip'].includes(id)?'input':'change';
     $(id).addEventListener(event,()=>{
       $('preview-save').checked=false;
-      if(['officer','nip','letter','date','role','basis'].includes(id))$('preview-box').replaceChildren();
+      if(['officer','nip','letter','date','role','basis'].includes(id)){$('preview-box').replaceChildren();otherSources?.invalidate();}
       renderPreviewRecovery();
     });
   }
@@ -986,7 +1001,7 @@ function init() {
     try{requireSourceConfirmation();}
     catch(error){event.preventDefault();message(error.message,true);}
   });
-  batch=batchCollector({ext,origin:coretax,isBusy:()=>Boolean(busy || paging || autoSpt),enqueue:addEntry,refresh:scopeChanged,log:message,context:()=>{
+  batch=batchCollector({ext,origin:coretax,isBusy:()=>Boolean(busy || paging || autoSpt || otherSources?.active),enqueue:addEntry,refresh:scopeChanged,log:message,context:()=>{
     const wp=captureOwner(), range=period();
     requireSourceConfirmation();
     const [from,to]=range.split(' s.d. ');
@@ -995,7 +1010,12 @@ function init() {
   action('table',pageOptions,'change'); action('collect-pages',collectPages);
   action('pause-pages',()=>{pagingPaused=!pagingPaused;$('pause-pages').textContent=pagingPaused?'Lanjutkan pembacaan':'Jeda pembacaan';});
   action('stop-pages',()=>{pagingStopped=true;pagingPaused=false;});
-  action('preview',()=>previewFromTab()); action('start',() => run());
+  otherSources=openSourcePreview({ext,origin:coretax,box:$('other-preview'),queued:queue,enqueue:addEntry,notice:message,
+    context:()=>{
+      if(!$('consent').checked || !val('officer') || busy || autoSpt || paging || batch.active)throw Error('Periksa penugasan dan tunggu pembacaan yang sedang berjalan.');
+      return {wp:captureOwner(),period:period(),sources:checked('sources'),assignment:['role','basis','letter','date','officer','nip'].map(val)};
+    },render:()=>{renderQueue();showPreview();}});
+  action('preview',previewSelectedSources); action('start',() => run());
   action('pause',() => {paused=!paused; jobButtons(); $('status').textContent=paused ? 'Tarikan dijeda setelah sumber yang sedang dibaca.' : 'Tarikan dilanjutkan.';});
   action('stop',() => {stop=true; paused=false;}); action('problems',renderLog,'change');
   action('encrypt',async () => {

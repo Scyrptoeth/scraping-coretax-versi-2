@@ -18,7 +18,7 @@ function difference(base, components) {
   return base===null || rest===null ? null : base-rest;
 }
 
-function monthlyAmounts(record,period,notes) {
+export function monthlyAmounts(record,period,notes) {
   const price=group=>value(record,group,'SellingPrice');
   const vat=group=>value(record,group,'VAT');
   const exports=price('ExportTangibleTaxableGoods');

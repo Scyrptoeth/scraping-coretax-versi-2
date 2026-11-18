@@ -1,6 +1,19 @@
 # Matriks kesetaraan terhadap VERITAX v1.32.0
 
-Prarilis 0.11.0, 19 November 2026 WIB. Penarik dan pemutar masih memiliki perbedaan dengan VERITAX. **Terverifikasi** berlaku untuk perilaku dan masukan yang disebutkan. **Berbeda** berarti ada selisih yang telah diketahui. **Belum teruji** berarti bukti pembandingan belum tersedia.
+Prarilis 0.12.0, 19 November 2026 WIB. Penarik dan pemutar masih memiliki perbedaan dengan VERITAX. **Terverifikasi** berlaku untuk perilaku dan masukan yang disebutkan. **Berbeda** berarti ada selisih yang telah diketahui. **Belum teruji** berarti bukti pembandingan belum tersedia.
+
+## Hasil prarilis 0.12.0
+
+| Alur | Hasil yang diperiksa | Batas bukti |
+| --- | --- | --- |
+| Tabel non-SPT di tab terbuka | Pratinjau dengan satu WP fiktif menghasilkan empat berkas untuk rekening bank, KLU dan dua masa buku besar. Pemutar menampilkan kembali data dari ZIP. [Uji penarik sampai pemutar](../tests/scraper-open-sources-browser.mjs) | Cakupan mengikuti tabel, filter dan halaman yang dapat dibaca. Uji operasional sumber ini memerlukan koneksi kantor. |
+| DOK · Permintaan dokumen | Dua permintaan pada paket Badan yang sama memiliki 16 dari 16 isian yang sepadan di Excel kedua pemutar. Nama WP, NPWP teks, tahun dan tenggat JD cocok. Tiga nomor dokumen tercantum dalam hasil cetak. [Uji alur DOK](../tests/document-requests-output-browser.mjs) | Untuk lingkup lengkap dan khusus PPN, Studio memberi 34 dan 22 saran. Versi 2 memberi 21 dan 8 pada contoh yang sama. Aturan saran sektoral dan per akun masih berbeda. |
+| TS · Daftar temuan sementara | Pada contoh Badan, empat dari enam pembanding otomatis awal cocok. Setelah nilai Januari pada N.3.1 dinaikkan Rp12.345, kedua pemutar menunjukkan perubahan dan proyeksi tahunan yang sama. Angka dapat dibuka di Excel dan cetak. [Uji daftar dan ekspor TS](../tests/temporary-findings-browser.mjs) | Contoh Studio memuat 18 temuan langsung dan 7 indikasi. Versi 2 memuat 6 dan 2. Periksa bukti dan lingkup pada setiap butir. |
+| SIM · Simulasi ketetapan | Pada contoh Badan fiktif 2025, 14 kolom kaskade PPN untuk 12 masa cocok pada kedua Excel, sebelum dan sesudah koreksi N.3.1. Dengan kenaikan PK Januari Rp12.345 dan tanggal rencana 18 November 2026, keduanya menghasilkan pokok Rp12.345, bunga Rp4.997 dan jumlah Rp17.342. [Uji hitung dan cakupan sumber](../tests/assessment-simulation.test.mjs) · [Uji menu dan Excel](../tests/assessment-simulation-browser.mjs) | Kesetaraan semua dasar PPh, penetapan sanksi khusus, serta skenario kompensasi sebagian dan lintas tahun masih terbuka. |
+
+Pada contoh Badan yang sama, perubahan dua isian KKP memengaruhi bagian hasil uji di TS. Di Studio, kedua perubahan itu tidak mengubah daftar temuan langsung (TL) atau indikatif (TI). Menggeser tanggal rencana mengubah sejumlah angka pada TL dan TI. Kesetaraan kedua laporan tersebut masih memerlukan perhitungan dan pembandingan tersendiri.
+
+Untuk PPh Badan, pada contoh tersebut angsuran di buku besar, bukti potong dalam negeri dan isian kredit luar negeri di induk dapat ditelusuri. Angka awal simulasi Studio dapat direproduksi secara aritmetis dengan memperlakukan kredit pada dua sumber yang berbeda itu sebagai pembanding. Paket belum membuktikan bahwa keduanya merujuk pada hak kredit yang sama. Versi 2 menampilkan komponen, asumsi dan rujukannya. Pokok tambahan tetap kosong sampai ada hasil uji saldo yang mendukungnya. [Uji komponen PPh Badan](../tests/assessment-company.test.mjs)
 
 ## Hasil prarilis 0.11.0
 

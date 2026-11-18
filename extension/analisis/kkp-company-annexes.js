@@ -216,3 +216,4 @@ export function companyAnnexIndices(pkg,year,index={}){
   const current={...annual,companyReconciliation:true,support:companyReconciliation(body,tree,reference(f,'induk'),f)};
   return {groups:[current,equalization(pkg,f,tree,base),positiveCorrections(pkg,f,tree)],warnings:[]};
 }
+export {table as checkedCompanyTable};
