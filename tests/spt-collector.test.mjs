@@ -28,7 +28,8 @@ test('round-trips the four known collector VAT parts, presents the type and expo
   const sheets=formSheets([form],pkg,true);assert.equal(sheets.length,4);
   assert.ok(sheets.every(s=>s.rows.some(r=>r.includes('0007'))));
   const workbook=await readZip(new Uint8Array(await (await createXlsx({sheets})).arrayBuffer()));
-  assert.equal([...workbook.keys()].filter(path=>/^xl\/worksheets\/sheet\d+\.xml$/.test(path)).length,4);
+  assert.equal([...workbook.keys()].filter(path=>/^xl\/worksheets\/sheet\d+\.xml$/.test(path)).length,5);
+  assert.match(decodeText(workbook.get('xl/workbook.xml').data),/<sheets><sheet name="Daftar Isi"/);
   assert.match(decodeText(workbook.get('xl/worksheets/sheet1.xml').data),/0007/);
 });
 test('keeps a collector table without confirmed metadata or a recognized part as raw evidence',()=>{

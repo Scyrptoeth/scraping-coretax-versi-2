@@ -47,9 +47,9 @@ export function showDialog(title,content) {
   const d=document.getElementById('dialog');document.getElementById('dialog-title').textContent=title;
   document.getElementById('dialog-body').replaceChildren(content); if(!d.open)d.showModal();return d;
 }
-export function exportSheets(sheets, filename, wp) {
+export function exportSheets(sheets, filename, wp, contentsName) {
   const name=outputFilename(filename,'xlsx',wp);
-  return createXlsx({sheets}).then(blob=>download(blob,name)).catch(error=>notice('Excel gagal dibuat. '+error.message,true));
+  return createXlsx({sheets,contentsName}).then(blob=>download(blob,name)).catch(error=>notice('Excel gagal dibuat. '+error.message,true));
 }
 export function dataTable(rows, {name='Tabel',openRow,filename='Tabel',empty='Tidak ada baris pada sumber ini.',formatNumber=count,incremental=false,wp}={}) {
   const root=box('table-panel');

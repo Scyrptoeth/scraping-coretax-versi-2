@@ -6,7 +6,10 @@ const keyOf=(group,id)=>JSON.stringify([group,id]);
 export const rowIdentity=row=>row.kkpLine?'indeks/'+row.kkpLine:row.teamId;
 export function markEdit(work,group,id,before,after){
   if(arguments.length===5&&equal(before,after))return;
-  (work.editTimes??={})[keyOf(group,id)]=new Date().toISOString();
+  const key=keyOf(group,id),time=new Date().toISOString();
+  work.auditLog??=readAudit(undefined,work.editTimes);
+  (work.editTimes??={})[key]=time;
+  work.auditLog.push({event:crypto.randomUUID(),key,time});
 }
 
 export function identifyRows(rows){
@@ -34,6 +37,39 @@ function equal(a,b){
 }
 const labels={rows:'Butir pengujian',drafts:'Konsep dokumen',analysis:'Isian KKA',dispositions:'Status temuan',
   scopes:'Lingkup temuan',indexNotes:'Telaah indeks',indexDocuments:'Permintaan dokumen',simulation:'Simulasi ketetapan'};
+function validTime(time){
+  return typeof time==='string'&&/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(time)&&
+    Number.isFinite(Date.parse(time))&&new Date(time).toISOString()===time;
+}
+export function readAudit(log,times={}){
+  if(log===undefined)return Object.entries(times||{}).map(([key,time])=>({event:'lama/'+key+'/'+time,key,time}));
+  if(!Array.isArray(log))throw Error('Format riwayat perubahan tidak dikenali.');
+  const seen=new Set();
+  return log.map(r=>{
+    let pair;try{pair=JSON.parse(r?.key);}catch{/* Reject malformed record keys below. */}
+    if(!Array.isArray(pair)||pair.length!==2||!Object.hasOwn(labels,pair[0])||typeof pair[1]!=='string'||
+        !validTime(r.time)||typeof r.event!=='string'||seen.has(r.event)||
+        !(r.event==='lama/'+r.key+'/'+r.time||/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(r.event)))throw Error('Periksa waktu, identitas butir, dan penanda riwayat perubahan.');
+    seen.add(r.event);return {event:r.event,key:r.key,time:r.time};
+  });
+}
+function joinAudit(a,b){
+  const events=new Map();
+  for(const r of [...readAudit(a.auditLog,a.editTimes),...readAudit(b.auditLog,b.editTimes)]){
+    const previous=events.get(r.event);
+    if(previous&&(previous.key!==r.key||previous.time!==r.time))throw Error('Dua riwayat memuat penanda perubahan yang sama dengan isi berbeda.');
+    events.set(r.event,r);
+  }
+  return [...events.values()].sort((x,y)=>x.time.localeCompare(y.time));
+}
+export function workAuditRows(work){
+  const known=records(work);
+  return readAudit(work.auditLog,work.editTimes).map(r=>{
+    const [group,id]=JSON.parse(r.key);
+    return {'Waktu (UTC)':r.time,Bagian:labels[group],Butir:known.get(r.key)?.title||id,
+      Catatan:r.event.startsWith('lama/')?'Sunting terakhir yang tercatat pada berkas lama':'Isian disunting'};
+  });
+}
 function records(work){
   const map=new Map();
   function add(group,id,title,value){
@@ -59,8 +95,7 @@ export function validateTimes(input,work){
   if(!input||typeof input!=='object'||Array.isArray(input))throw Error('Format waktu perubahan tidak dikenali.');
   const known=records({...work,editTimes:input}), valid={};
   for(const [key,time] of Object.entries(input)){
-    if(typeof time!=='string'||!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(time)||
-      !Number.isFinite(Date.parse(time))||new Date(time).toISOString()!==time)throw Error('Waktu perubahan atau rujukan butir pada berkas tidak sah.');
+    if(!validTime(time))throw Error('Waktu perubahan atau rujukan butir pada berkas tidak sah.');
     if(known.has(key))valid[key]=time;
   }
   return valid;
@@ -98,7 +133,7 @@ export function planMerge(current,incoming){
     }
     decisions.push({key,local:here,incoming:other,rule});
   }
-  return {local,decisions};
+  return {local,decisions,auditLog:joinAudit(current,incoming)};
 }
 export function mergeWork(plan,choices={}){
   const selected=new Map(plan.local);
@@ -115,6 +150,7 @@ export function mergeWork(plan,choices={}){
     else result[group][id]=cloned;
     if(time)result.editTimes[key]=time;
   }
+  result.auditLog=plan.auditLog;
   return result;
 }
 

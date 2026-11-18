@@ -1,5 +1,5 @@
 import {packageLedger} from './profile.js';
-import {receiptNumber,rowsOf,sptDay,submittedDay,worksheet} from './model.js';
+import {receiptFields,rowsOf,sptDay,submittedDay,worksheet} from './model.js';
 import {box,button,card,dataTable,el,exportSheets,select,showDialog} from './ui.js';
 
 function sourceRows(pkg,source,path) {
@@ -51,7 +51,7 @@ export function eventsFor(pkg,year) {
     const late=due && reported>due;
     const amendment=/amend|pembetulan|correction/i.test(r.ReturnSheetModel||'');
     const group=amendment?'Pembetulan SPT':late?'SPT melewati tanggal pada sumber':'Pelaporan SPT';
-    add(reported,group,[kinds[r.ReturnSheetTypeCode]||r.ReturnSheetTypeCode,r.TaxPeriodCode,r.ReturnSheetModel].filter(Boolean).join(' · '),r['Berkas sumber'],periodYear(r.TaxPeriodCode),receiptNumber(r));
+    add(reported,group,[kinds[r.ReturnSheetTypeCode]||r.ReturnSheetTypeCode,r.TaxPeriodCode,r.ReturnSheetModel].filter(Boolean).join(' · '),r['Berkas sumber'],periodYear(r.TaxPeriodCode),Object.values(receiptFields(r)).join(' · '));
   }
   for(const r of packageLedger(pkg)){
     if(r.IsCancelled===true||r.IsCancelled==='true')continue;

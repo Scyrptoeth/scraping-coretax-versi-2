@@ -1,9 +1,12 @@
-import {differenceCell} from '../archive/table.js';
+import {differenceCell,numericReference,sheetLink} from '../archive/table.js';
 import {probisRequestKey,probisSourceFields,validatedProbisSource} from '../probis-guide.js';
 import {compare, rowsOf, typeNames, worksheet} from './model.js';
+import {filingAndPaymentRows} from './formal-compliance.js';
 import {simulationTables} from './sanksi.js';
 import {rateSourceLabel} from './rate-updates.js';
 import {withoutReturnIndices} from './kkp-without-return.js';
+import {workAuditRows} from './team-work.js';
+import {findingKey,findingRows,findingsFor} from './findings.js';
 
 // Each rule names an explicit value on the SPT. Empty or nonnumeric source cells stay empty.
 const annualCompany=[
@@ -200,13 +203,16 @@ export function restoreIndexedRows(rawRows,rows,index){
   });
 }
 
+export const reviewDecisions=['','Setuju','Revisi','Tolak'];
 export function restoreNotes(notes,index){
   if(notes===undefined)return {};
   const valid=new Set(index.groups.map(g=>g.key));
   if(!notes||typeof notes!=='object'||Array.isArray(notes))throw Error('Format penelaahan indeks tidak dikenali.');
   for(const [key,n] of Object.entries(notes)){
     if(!valid.has(key)||!n||!Number.isSafeInteger(n.revision)||n.revision<0||
-      !['unit','preparer','reviewer'].every(k=>typeof n[k]==='string'))throw Error('Isian penelaahan indeks tidak sah.');
+      !['unit','preparer','reviewer'].every(k=>typeof n[k]==='string')||
+      (n.decision!==undefined&&!reviewDecisions.includes(n.decision))||
+      (n.reviewNote!==undefined&&typeof n.reviewNote!=='string'))throw Error('Isian penelaahan indeks tidak sah.');
   }
   return notes;
 }
@@ -289,31 +295,48 @@ export function indexSheets(group,reviewed,notes={},documents=[]){
   return {name:group.ref+' '+group.title,rows};
 }
 
-export function completeIndexBook(pkg,year,index,reviewed,notes,documents=[],simulation={cases:[],end:''}){
-  const wp=pkg.manifest.wp||{}, assignment=pkg.manifest.penugasan||{};
+export function completeIndexBook(pkg,year,index,reviewed,notes,documents=[],simulation={cases:[],end:''},work={}){
+  const wp=pkg.manifest.wp||{}, assignment=pkg.manifest.penugasan||{},officer=pkg.manifest.penarik||{};
   const list=[['Indeks','Uraian','Jenis pajak','Status','Baris diuji','Jumlah baris','Baris koreksi','Revisi']];
   const findings=[['Indeks','Masa','Uraian','Menurut SPT/WP','Menurut petugas','Koreksi','Rujukan bukti','Sumber SPT']];
   const source=[['Indeks','Jenis pajak','Masa','P SPT','Uraian','Menurut SPT/WP','Sumber','Berkas ditandai belum lengkap']];
+  const sourceSheet={name:'SPT Data',rows:source}, groupSheets=[];
+  const review=[['Indeks','Judul','Baris diuji','Baris koreksi','Pembuat','Penelaah','Catatan penelaah','Keputusan','Revisi']];
   const hasProvisional=index.groups.some(g=>g.lines.some(l=>l.withoutReturn));
   if(hasProvisional)source[0].push('Dasar pembanding KKP','Nilai awal dari bukti potong');
   const main=[['Jenis pajak','Indeks','Masa','Uraian','Menurut SPT/WP','Menurut petugas','Selisih yang diuji','Pokok hasil pengujian (Rp)','Rujukan']];
   for(const group of index.groups){
     const status=indexStatus(group,reviewed);
-    list.push([group.ref,group.title,group.tax,status.state,status.tested,group.lines.length,status.changed,notes[group.key]?.revision||0]);
-    for(const l of group.lines){
+    const groupSheet=indexSheets(group,reviewed,notes,documents),meta=notes[group.key]||{};
+    groupSheets.push(groupSheet);
+    list.push([sheetLink(groupSheet,group.ref),group.title,group.tax,status.state,status.tested,group.lines.length,status.changed,meta.revision||0]);
+    review.push([sheetLink(groupSheet,group.ref),group.title,status.tested,status.changed,meta.preparer,meta.reviewer,meta.reviewNote,meta.decision,meta.revision||0]);
+    for(const [i,l] of group.lines.entries()){
+      const row=i+7;
       source.push([group.ref,group.tax,l.period,l.version,l.topic,l.amount,l.source,l.partial]);
       if(l.withoutReturn)source.at(-1).push(l.explanation,l.prefill);
+      if(!l.withoutReturn&&!Object.hasOwn(l,'refundCode'))groupSheet.rows[row-1][3]=numericReference(sourceSheet,source.length,6,l.amount);
       const r=reviewed.get(l.id);
-      if(r&&!Object.hasOwn(l,'refundCode'))main.push([group.tax,group.ref,l.period,l.topic,l.amount,r.menurutPetugas,
+      if(r&&!Object.hasOwn(l,'refundCode'))main.push([group.tax,sheetLink(groupSheet,group.ref,row),l.period,l.topic,
+        numericReference(groupSheet,row,4,l.amount),numericReference(groupSheet,row,5,r.menurutPetugas),
         differenceCell(main.length+1,5,6,l.amount===null?null:r.menurutPetugas-l.amount),r.principal,r.document]);
-      if(r&&l.amount!==null&&l.amount!==r.menurutPetugas)findings.push([group.ref,l.period,l.topic,l.amount,r.menurutPetugas,
+      if(r&&l.amount!==null&&l.amount!==r.menurutPetugas)findings.push([sheetLink(groupSheet,group.ref,row),l.period,l.topic,
+        numericReference(groupSheet,row,4,l.amount),numericReference(groupSheet,row,5,r.menurutPetugas),
         differenceCell(findings.length+1,4,5,r.menurutPetugas-l.amount),r.document,l.source]);
     }
   }
   const sim=simulationTables(simulation);
   if(sim.summary.length)main.push([],['Simulasi ketetapan per jenis pajak'],...worksheet(sim.summary));
-  return [{name:'ID',rows:[['Isian','Nilai'],['Nama WP',wp.nama],['NPWP',wp.npwp],['Tahun',year],['Nomor penugasan',assignment.nomor],['Pemeriksaan paket',pkg.report.manifestHash],['Pilihan tarif bunga sesi',rateSourceLabel()]]},
+  const formal=filingAndPaymentRows(pkg,year);
+  const audit=workAuditRows(work);
+  const direct=findingsFor(pkg,year,work.rows||[]).filter(f=>f.status==='berbukti'&&
+    !['Terjelaskan','Tidak relevan'].includes(work.dispositions?.[findingKey(f)]));
+  return [{name:'ID',rows:[['Isian','Nilai'],['Nama WP',wp.nama],['NPWP',wp.npwp],['Tahun',year],['Nomor penugasan',assignment.nomor],
+    ['Jenis penugasan',assignment.jenis],['Tanggal penugasan',assignment.tanggal],['Peran',assignment.peran||officer.peran],['Penarik',officer.nama],
+    ['Periode paket',pkg.manifest.periode],['Pemeriksaan paket',pkg.report.manifestHash],['Pilihan tarif bunga sesi',rateSourceLabel()]]},
     {name:'Daftar Indeks',rows:list},{name:'Temuan Sementara',rows:findings},{name:'INDUK',rows:main},
-    {name:'Permintaan Dokumen',rows:documentRows(documents)},{name:'SPT Data',rows:source},
-    ...index.groups.map(g=>indexSheets(g,reviewed,notes,documents))];
+    {name:'Permintaan Dokumen',rows:documentRows(documents)},sourceSheet,{name:'Kepatuhan Formal',rows:formal},
+    {name:'Review Sheet',rows:review},{name:'Jejak Audit',rows:audit.length?worksheet(audit):[['Belum ada perubahan tercatat.']]},
+    {name:'Temuan Langsung',rows:findingRows(direct)},
+    ...groupSheets];
 }

@@ -1,4 +1,4 @@
-import {periodFields,receiptNumber,rowsOf,sourceAmount,typeNames,worksheet} from './model.js';
+import {periodFields,receiptFields,rowsOf,sourceAmount,typeNames,worksheet} from './model.js';
 import {box,button,card,dataTable,el,exportSheets,select,showDialog} from './ui.js';
 import {annualRatios,measures,peerBenchmark,ratioEvidence,taxpayerId} from './peer-analysis.js';
 const formKey=f=>f.type+'/'+f.period;
@@ -18,7 +18,7 @@ function source(pkg,kind,period,role){
   else if(induk.cap?.lengkap===false)condition='Berkas induk ditandai belum lengkap';
   const basis={Peran:role,'Nama WP':pkg.manifest.wp?.nama,NPWP:pkg.manifest.wp?.npwp,Paket:pkg.fileName,
     Jenis:typeNames[kind]||kind,Masa:period,Versi:versionName(version),'Berkas induk':induk?.path,
-    BPE:receiptNumber(f?.meta),'Mata uang':currency,'Kondisi sumber':condition,'Integritas paket':pkg.report.valid?'Konsisten':'Ada peringatan'};
+    ...receiptFields(f?.meta),'Mata uang':currency,'Kondisi sumber':condition,'Integritas paket':pkg.report.valid?'Konsisten':'Ada peringatan'};
   return {basis,currency,form:f};
 }
 function comparePackages(active,other,kind,period){

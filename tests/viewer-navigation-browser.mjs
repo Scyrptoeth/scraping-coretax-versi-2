@@ -19,7 +19,8 @@ async function archive(npwp,id,surname,amount){
   const forms=[['2025-01',0,1],['2024-03',0,21],['2024-03',1,amount]];
   const entries=forms.map(([period,version,value],i)=>({path:'spt/PPN/'+period+'/p0'+version+'_'+id+i+'/induk.json',
     cap:{sumber:'sptisi',lengkap:true},pages:[{Payload:{FormData:JSON.stringify({VATUnderOrOverPaid:{VAT:value}})}}]}));
-  const receipts=[{DocumentReceiptNumber:'BPE-'+id+'0'},{BpsNo:'00000000123'},{BpsNo:'BPE-'+id+'2'}];
+  const receipts=[{DocumentReceiptNumber:'BPE-'+id+'0'},{BpsNo:'00000000123',DocumentReceiptNumber:'00000000789'},
+    {BpsNo:'BPE-'+id+'2',DocumentReceiptNumber:'DOC-FIKTIF-'+id}];
   entries.push({path:'spt/daftar.json',cap:{sumber:'sptdaftar'},pages:[{Payload:{Data:forms.map((_,i)=>({RecordId:id+i,...receipts[i]}))}}]},
     {path:'profil/alamat.json',cap:{sumber:'alamat',label:'Registrasi alamat'},pages:[{Payload:{Data:[{Description:'Alamat contoh '+surname}]}}]});
   const blob=await createPackage({meta:{wp:{npwp,nama:'Contoh '+surname}},entries});
@@ -84,13 +85,21 @@ try{
   const list=page.getByRole('table',{name:'Daftar SPT',exact:true});
   assert.equal(await list.locator('tbody tr').count(),1);
   await list.getByRole('cell',{name:'00000000123',exact:true}).waitFor();
+  await list.getByRole('cell',{name:'00000000789',exact:true}).waitFor();
   await list.getByRole('button',{name:'Buka',exact:true}).click();
+  await dialog.getByText('Nomor penerimaan dokumen',{exact:true}).waitFor();
+  await dialog.getByText('00000000789',{exact:true}).waitFor();
   const [download]=await Promise.all([page.waitForEvent('download'),dialog.getByRole('button',{name:'Excel formulir',exact:true}).click()]);
   const wb=await readZip(await readFile(await download.path()));
   const sheet=decodeText(wb.get('xl/worksheets/sheet1.xml').data);
   assert.match(sheet,/<c [^>]*t="inlineStr"><is><t [^>]*>00000000123<\/t>/);
+  assert.match(sheet,/<c [^>]*t="inlineStr"><is><t [^>]*>00000000789<\/t>/);
   await page.keyboard.press('Escape');
   await quick('bpe privat a2');await dialog.getByRole('cell',{name:'55',exact:true}).waitFor();assert.equal(page.url(),link);
+  await dialog.getByText('DOC-FIKTIF-privat-a',{exact:true}).waitFor();
+  await quick('DOC-FIKTIF-privat-a');await dialog.getByRole('cell',{name:'55',exact:true}).waitFor();
+  await quick('00000000789');await dialog.getByRole('cell',{name:'21',exact:true}).waitFor();
+  await quick('00000000123');await dialog.getByRole('cell',{name:'21',exact:true}).waitFor();
   await quick('registrasi alamat','Data mentah · Registrasi alamat');await page.getByRole('heading',{name:'Registrasi alamat'}).waitFor();assert.equal(new URL(page.url()).hash,'#/tabel');
   await page.goto(link);await page.reload();await page.getByRole('heading',{name:'Buka formulir tertaut'}).waitFor();
   await page.locator('#filePkg').setInputFiles(second);await page.getByRole('heading',{name:'Formulir belum tersedia'}).waitFor();

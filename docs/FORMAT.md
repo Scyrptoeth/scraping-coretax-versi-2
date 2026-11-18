@@ -25,6 +25,27 @@ Untuk `.sedotax`, pemutar menerima amplop CAPX1 dan CAPX2 dengan AES-GCM, PBKDF2
 
 Berkas kerja XLSX berisi workbook OOXML dan menyimpan teks sebagai teks, termasuk nomor identitas dengan nol di depan. Nilai numerik yang diberikan sebagai angka tetap numerik. DOCX berisi paragraf dan tabel Word yang dapat disunting. CSV memakai UTF-8 dengan BOM, pemisah koma dan petik ganda. Ekspor CSV memberi awalan petik tunggal pada teks yang dapat dibaca sebagai rumus oleh spreadsheet.
 
+### Rekonsiliasi appportal dalam mode pengembang
+
+Pada **Muat paket**, aktifkan **Mode pengembang**, atau buka pemutar dengan akhiran `#pengembang`. Tab **Impor appportal** terbuka setelah satu paket WP aktif. Pilih tahun, lalu unggah CSV, TXT berpemisah, XLSX, atau tabel HTML termasuk ekspor HTML berekstensi XLS. Untuk XLS biner lama, simpan ulang sebagai XLSX. Data impor tetap berada di sesi paket itu. Memuat ulang tab atau melepas paket menghapus data sesi.
+
+| Data appportal | Lampiran SPT PPN versi terakhir per masa | Kolom identitas pemilik bila ada |
+| --- | --- | --- |
+| PK | A2 | NPWP penjual |
+| PM | B2 dan B3 | NPWP pembeli |
+| PIB | B1 | NPWP importir |
+| PEB | A1 | NPWP eksportir |
+
+Periksa lembar, baris judul dan pemetaan kolom sebelum membaca hasil. Bentuk nomor dokumen dan NPWP sebagai teks di Excel agar nol awal tersimpan. Jika suatu baris tidak menyebut NPWP pemilik, cocokkan berkas dengan paket aktif lalu centang konfirmasi. Berkas dengan identitas pemilik yang berbeda perlu dipisahkan di sumber. Pemetaan kolom appportal dapat disimpan untuk susunan judul yang sama. Penyimpanan itu mencatat posisi kolom dan sidik jari judul.
+
+Kedua sisi mengikuti tahun pilihan. Masa pajak yang tercantum di berkas diutamakan. Tanggal dokumen membantu menentukan masa jika tidak tercantum. Secara bawaan, pembanding memakai masa yang memiliki SPT PPN. Nomor lengkap yang unik dapat cocok walau masa dokumen dan masa pelaporan SPT berbeda. Rincian menyebut kedua masa dan sumber masing-masing. Pengguna dapat menjumlahkan beberapa baris barang untuk satu nomor dalam satu masa appportal. Nomor yang berulang tanpa pengelompokan, nominal yang tidak terbaca, dan pembanding yang belum lengkap diberi status **Perlu diperiksa**. Bila ada dua SPT dengan nomor pembetulan terakhir yang sama dalam satu masa, cakupan menandai masa tersebut. Filter status dan pencarian dalam tabel membantu menemukan selisih.
+
+Untuk PK dan PM, nomor faktur dengan awalan berbeda dapat berstatus **Cocok sebagian** bila 13 digit terakhir hanya menunjuk pada satu kemungkinan di masing-masing sumber dan nominal sesuai. Kedua nomor tetap terlihat. Pencocokan memberi toleransi Rp1 pada setiap nominal yang dibandingkan. Rincian menampilkan selisihnya meskipun masih dalam toleransi.
+
+**Excel rekonsiliasi** memuat lembar Info, Ringkasan, Per masa dan Rincian dengan akhiran PK, PM, PIB, atau PEB. Daftar Isi memberi tautan ke keempat lembar. Lembar Info menyimpan identitas WP, peran pengguna, waktu impor dan ekspor, tahun, cakupan, pemetaan serta sidik jari SHA-256 berkas appportal dan manifest paket. Selisih dihitung dari nominal lampiran SPT dikurangi nominal appportal. Nilai yang tidak tersedia tetap kosong.
+
+Jalankan `node --test tests/appportal.test.mjs` dan `node tests/appportal-browser.mjs` untuk menguji contoh fiktif. Jika distribusi Studio tersedia lokal, arahkan `VERITAX_STUDIO` ke berkas HTML-nya untuk menyertakan pembanding luring. Pengujian ini menggunakan ekspor buatan dengan judul dan nilai terkontrol. Susunan ekspor appportal operasional masih perlu dipastikan dari berkas yang benar-benar diunduh.
+
 ### Bukti uji
 
 Beberapa respons Coretax mengisi `TotalRecords` dengan angka yang sama dengan `Rows` pada permintaan. Pemutar memberi satu catatan informatif bila penarik mencatat berkas lengkap, jumlah baris dan halaman cocok, serta ada respons berisi data dan halaman akhir kosong untuk sumber dan batas permintaan yang sama. Baris yang persis mencapai batas tanpa halaman penutup tetap memunculkan peringatan. Selisih jumlah yang belum terjelaskan bisa diperiksa dengan ekspor independen. Catatan **MASA-KOSONG** berasal dari hasil pencarian SPT per masa.

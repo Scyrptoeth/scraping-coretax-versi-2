@@ -1,10 +1,11 @@
-import {flatten,payloads,receiptNumber,rowsOf,sptDay,submittedDay,typeNames,worksheet} from './model.js';
+import {flatten,payloads,receiptFields,rowsOf,sptDay,submittedDay,typeNames,worksheet} from './model.js';
 import {amendmentSheets,compareSptPart} from './spt-amendment.js';
-import {box,button,card,dataTable,detail,el,exportSheets,select,showDialog} from './ui.js';
+import {box,button,card,dataTable,detail,el,exportSheets,notice,select,showDialog} from './ui.js';
 import {linkedPaymentGroups,packageLedger} from './profile.js';
 import {annualVat} from './annual-vat.js';
 import {monthlyWithholding} from './monthly-withholding.js';
 import {vatCoverage} from './vat-coverage.js';
+import {sourceAmount as formAmount,withholdingForm,withholdingPeriods,withholdingSections,withholdingSheetRows} from './withholding-forms.js';
 
 const fields={
   MainFormData:'Induk',IncomeTaxInAYear:'PPh terutang setahun',NetIncomeBeforeTax:'Laba sebelum pajak',UnderpaymentIncomeTax:'PPh kurang/(lebih) bayar',OverpaymentIncomeTax:'Kode pilihan pengembalian',
@@ -35,11 +36,6 @@ export function indicativeDates(forms,pkg) {
     if(available.size)dates.set(f,[...available].sort().join(', '));
   }
   return dates;
-}
-
-function formAmount(value) {
-  if(typeof value==='string' && /^[+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?$/i.test(value.trim()))return numeric(Number(value));
-  return numeric(value);
 }
 
 function withholdingAmount(data) {
@@ -109,13 +105,17 @@ export function partRows(f,part,raw=false) {
 }
 function header(f,pkg){
   return [['Jenis',typeNames[f.type]||f.type],['Masa / tahun',f.period],['Versi',versionName(f)],
-    ['WP',pkg.manifest.wp?.nama??''],['NPWP',pkg.manifest.wp?.npwp??''],['BPE',receiptNumber(f.meta)],['Tanggal lapor',f.reportDate??submittedDay(f.meta)]];
+    ['WP',pkg.manifest.wp?.nama??''],['NPWP',pkg.manifest.wp?.npwp??''],...Object.entries(receiptFields(f.meta)),['Tanggal lapor',f.reportDate??submittedDay(f.meta)]];
 }
 export function formSheets(forms,pkg,raw=false) {
   const sheets=[];
   for(const f of forms){
     const prefix=f.type+' '+f.period+' P'+f.version;
-    for(const part of sortedParts(f))sheets.push({name:prefix+' '+part,rows:[...header(f,pkg),['Bagian',labelPart(f,part)],['Sumber',f.parts.get(part).path],[],...worksheet(partRows(f,part,raw))]});
+    const potput=raw?null:withholdingForm(f,pkg.manifest.wp);
+    for(const part of sortedParts(f)){
+      const content=potput&&part==='induk'?withholdingSheetRows(potput):worksheet(partRows(f,part,raw));
+      sheets.push({name:prefix+' '+part,rows:[...header(f,pkg),['Bagian',labelPart(f,part)],['Sumber',f.parts.get(part).path],[],...content]});
+    }
   }
   return sheets;
 }
@@ -131,6 +131,10 @@ function printForms(forms,pkg) {
   for(const f of forms){
     view.append(el('h1',(typeNames[f.type]||f.type)+' · '+f.period+' · '+versionName(f)),plainTable(header(f,pkg)));
     for(const part of sortedParts(f)){
+      const potput=part==='induk'?withholdingForm(f,pkg.manifest.wp):null;
+      if(potput){
+        view.append(el('h2',labelPart(f,part)),plainTable(withholdingSheetRows(potput)));continue;
+      }
       const rows=partRows(f,part);
       view.append(el('h2',labelPart(f,part)),rows.length?plainTable(worksheet(rows)):el('p','Bagian ini tidak memuat baris.'));
     }
@@ -149,6 +153,7 @@ export function exportControls(forms,pkg){
 export function openForm(form,pkg,onVersionChange){
   const wp=pkg.manifest.wp;
   const coverageByForm=new Map();
+  const withholdingByForm=new Map();
   const content=box('form-body'),versions=pkg.forms.filter(f=>f.type===form.type&&f.period===form.period).sort((a,b)=>b.version-a.version);
   let part=sortedParts(form)[0],raw=false,locate='';
   function paint(){
@@ -214,6 +219,12 @@ export function openForm(form,pkg,onVersionChange){
     if(search&&locate){search.value=locate;search.dispatchEvent(new Event('input'));}
     const context=[pkg.manifest.wp?.nama,pkg.manifest.wp?.npwp,form.period,versionName(form)].filter(Boolean).join(' · ');
     content.replaceChildren(el('p',context),controls);
+    const numbers=Object.entries(receiptFields(form.meta));
+    if(numbers.length){
+      const details=el('dl');
+      for(const [name,value] of numbers)details.append(el('dt',name),el('dd',value));
+      content.append(details);
+    }
     if(!coverageByForm.has(form))coverageByForm.set(form,vatCoverage(form,pkg));
     const coverage=coverageByForm.get(form);
     if(coverage){
@@ -224,7 +235,19 @@ export function openForm(form,pkg,onVersionChange){
           ['Berkas diterima',coverage.received],['Bagian terverifikasi',coverage.verified],[],...worksheet(coverage.rows)]}],
           'Cakupan-PPN-'+form.period+'-P'+form.version,wp)))));
     }
-    content.append(keyword,hits,el('h3',labelPart(form,part)),el('p',form.parts.get(part).path,'hint'),table);
+    content.append(keyword,hits,el('h3',labelPart(form,part)),el('p',form.parts.get(part).path,'hint'));
+    if(!withholdingByForm.has(form))withholdingByForm.set(form,withholdingForm(form,wp));
+    const potput=withholdingByForm.get(form);
+    if(part==='induk'&&potput&&!raw&&!locate){
+      for(const [name,items] of withholdingSections(potput)){
+        const openRow=items===potput.attachments?r=>{
+          if(!form.parts.has(r.Kode)){notice('Lampiran ini belum tersedia dalam versi yang dipilih.');return;}
+          part=r.Kode;locate='';paint();
+        }:undefined;
+        content.append(el('h4',name),dataTable(items,{wp,name,openRow,incremental:true,filename:name+'-'+form.period+'-P'+form.version}));
+      }
+      content.append(...potput.notes.map(note=>el('p',note,'hint')));
+    }else content.append(table);
   }
   paint();showDialog((typeNames[form.type]||form.type)+' · '+form.period,content);
 }
@@ -244,10 +267,7 @@ export function summaryPanels(forms,year,wp) {
     for(const [label,path] of vatAxes){const [key,sub]=path.split('.');row[label]=numeric(source[key]?.[sub]);}
     return row;
   });
-  const payments=current.filter(f=>['PPH2126','UNIFIKASI'].includes(f.type)).map(f=>{
-    const r=main(f);return {Masa:f.period,Jenis:typeNames[f.type],Versi:versionName(f),'Bruto':numeric(r.Form1A?.GrossIncome),'PPh 21':numeric(r.A21IncomeTaxWithheld),
-      'PPh 26':numeric(r.A26IncomeTaxWithheld),'PPh 21 DTP':numeric(r.A21IncomeTaxBorneByGovernment),'Potong/pungut Unifikasi':numeric(r.TotalWithholding),'Setor Unifikasi':numeric(r.TotalIncomeTaxPaid)};
-  });
+  const payments=withholdingPeriods(forms,year,wp);
   const calendar=forms.map(f=>({Masa:f.period,Jenis:typeNames[f.type]||f.type,Versi:versionName(f),'Batas pada sumber':f.dueDate??sptDay(f.meta.ExpectedReturnDate),
     'Batas setelah akhir pekan':f.filingDueDate,'Tanggal lapor':f.reportDate??submittedDay(f.meta),Ketepatan:f.filingLate==null?'Belum dinilai':f.filingLate?'Lewat batas':'Tepat'}));
   const annual=annualVat(forms,year);
@@ -262,6 +282,8 @@ export function summaryPanels(forms,year,wp) {
     ...withholding.warnings.map(text=>el('p',text,'notice')),
     withholding.columns.length>1?dataTable([...withholding.rows,withholding.total],{wp,name:'Rekap PPh potong/pungut',filename:'Rekap-PPh-'+year}):null,
     withholding.sources.length?detail('Sumber per pasal',dataTable(withholding.sources,{wp,name:'Sumber per pasal'})):null):null;
-  return [annualPanel,card('PPN per masa',dataTable(vats,{wp,name:'PPN per masa'})),withholdingPanel,card('Potong dan pungut per masa',dataTable(payments,{wp,name:'Potong pungut'})),
+  return [annualPanel,card('PPN per masa',dataTable(vats,{wp,name:'PPN per masa'})),withholdingPanel,
+    card('Potong dan pungut per masa',dataTable(payments.rows,{wp,name:'Potong pungut',filename:'Induk-potong-pungut-'+year}),
+      ...payments.notes.map(note=>el('p',note,'hint'))),
     card('Kalender pelaporan',el('p','Untuk SPT normal, batas yang jatuh pada Sabtu atau Minggu digeser ke Senin. Periksa hari libur lain dan relaksasi sebelum menilai kepatuhan.','hint'),dataTable(calendar,{wp,name:'Kalender pelaporan'}))];
 }

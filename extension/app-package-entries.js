@@ -82,7 +82,8 @@ export function packagePath(item) {
         /^[a-z0-9][a-z0-9-]{0,45}$/.test(part)) {
       return 'spt/'+forms[item.spt]+'/'+period+'/p'+String(revision).padStart(2,'0')+'_'+recordId+'/'+part+'.json';
     }
-    return 'sptisi/'+item.id+'.json';
+    const pass=item.proof?.urutan?.id;
+    return 'sptisi/'+(item.detailProof.receipt && /^[a-f0-9-]{36}$/i.test(pass || '')?pass:item.id)+'.json';
   }
   const rows=rowsOf(item.page), period=periodLabel(rows);
   if(['bb','bbtotal'].includes(item.source) && period.length===7) {

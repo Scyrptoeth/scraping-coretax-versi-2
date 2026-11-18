@@ -1,7 +1,7 @@
 import {readPackage,sha256} from '../archive/package.js';
 import {renderCatalog} from '../catalog.js';
 import {renderDashboard,renderEntries,renderSpt} from './analysis-views.js';
-import {indexPackage,count,label,receiptNumber,typeNames} from './model.js';
+import {indexPackage,count,label,receiptFields,typeNames} from './model.js';
 import {indexedProfileSections} from './profile.js';
 import {openForm} from './spt-forms.js';
 import {qualityNotes,renderQuality} from './quality.js';
@@ -12,9 +12,15 @@ import {box,button,card,detail,el,notice,select,showDialog,toggleSet} from './ui
 import {probisRequests,renderWork} from './work.js';
 import {readPref,resetAppearance,setPref} from './preferences.js';
 import {renderTestingPrograms} from './testing-programs.js';
+import {renderAppportal} from './appportal-ui.js';
 
 const tabs=[['muat','Muat paket'],['ringkas','Dasbor'],['probis','Probis'],['profil','Profil WP'],['spt','SPT'],['kerja','Kertas Kerja'],['peraturan','Peraturan'],['tabel','Data mentah'],['bantuan','Bantuan']];
-const needsPackage=new Set(['ringkas','profil','spt','kerja','tabel']);
+const needsPackage=new Set(['ringkas','profil','spt','kerja','tabel','impor']);
+function developerMode(active){
+  const index=tabs.findIndex(([key])=>key==='impor');
+  if(active&&index<0)tabs.push(['impor','Impor appportal']);
+  if(!active&&index>=0)tabs.splice(index,1);
+}
 const formSection=/^form-([a-f0-9]{32})-([1-9]\d*)$/;
 const monthFormatter=new Intl.DateTimeFormat('id',{month:'long',timeZone:'UTC'});
 let openFormHash='';
@@ -42,6 +48,7 @@ function go(tab,section=''){
 }
 function route(){
   const [raw,sub]=location.hash.replace(/^#\/?/,'').split('/');
+  if(raw==='pengembang'){developerMode(true);return ['muat',''];}
   const key=({mutu:'muat',klu:'probis'})[raw]||raw;
   if(!tabs.some(([t])=>t===key)||(!state.pkg&&needsPackage.has(key)))return ['muat',''];
   let section='';try{section=decodeURIComponent(sub||'');}catch{/* Invalid hash can be ignored. */}
@@ -86,7 +93,7 @@ function search(){
       const kind=typeNames[f.type]||f.type,version=f.version?'Pembetulan '+f.version:'Normal';
       const month=Number(f.period.slice(5)),monthName=month>=1&&month<=12?monthFormatter.format(Date.UTC(2020,month-1,1)):'Tahunan';
       routes.push({title:'SPT '+kind+' · '+f.period+' · '+version,
-        aliases:[f.type,'P'+f.version,monthName,receiptNumber(f.meta)].join(' '),
+        aliases:[f.type,'P'+f.version,monthName,...Object.values(receiptFields(f.meta))].join(' '),
         act:()=>go('spt','form-'+pkg.formNamespace+'-'+(i+1))});
     }
     for(const e of pkg.entries.filter(e=>!e.path.startsWith('spt/')))routes.push({title:'Data mentah · '+(e.cap?.label||e.path),aliases:e.path,act:()=>{state.selectedEntry=e.path;go('tabel');}});
@@ -154,6 +161,11 @@ function importView(root){
   drop.ondragover=e=>{e.preventDefault();drop.classList.add('over');};drop.ondragleave=()=>drop.classList.remove('over');
   drop.ondrop=e=>{e.preventDefault();drop.classList.remove('over');addPackages([...e.dataTransfer.files]);};
   root.append(drop,el('p','Muat paket untuk membuka Dasbor, Profil WP, SPT, Kertas Kerja, dan Data mentah. Probis, Peraturan, dan Bantuan tersedia sejak awal.','hint'));
+  const dev=button('Mode pengembang',()=>{
+    if(tabs.some(([key])=>key==='impor')){developerMode(false);go('muat');}
+    else location.hash='pengembang';
+  });
+  dev.setAttribute('aria-pressed',String(tabs.some(([key])=>key==='impor')));root.append(dev);
   if(!state.packages.size)return;
   const list=card('Paket dalam sesi ini');
   for(const p of state.packages.values()){
@@ -208,6 +220,7 @@ function render(){
     if(!state.pkg&&location.hash.startsWith('#/spt/form-'))root.append(card('Buka formulir tertaut',el('p','Pilih paket asal untuk membuka formulir ini.')));
     if(state.section==='mutu' && state.pkg)renderQuality(root,state.pkg,()=>go('muat'));else importView(root);
   }
+  else if(state.tab==='impor')renderAppportal(root,state);
   else if(state.tab==='ringkas')renderDashboard(root,state);
   else if(state.tab==='spt'){
     if(formLink&&!form){root.append(card('Formulir belum tersedia',el('p','Muat paket asal untuk membuka formulir yang ditautkan.')));importView(root);}

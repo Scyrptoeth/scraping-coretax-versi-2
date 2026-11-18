@@ -1,9 +1,24 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
-import {identifyRows,markEdit,mergeWork,planMerge,progressReport,rowIdentity,validateTimes} from '../extension/analisis/team-work.js';
+import {identifyRows,markEdit,mergeWork,planMerge,progressReport,readAudit,rowIdentity,validateTimes,workAuditRows} from '../extension/analisis/team-work.js';
 const id='manual/00000000-0000-4000-8000-000000000001',row=(fact,idValue=id)=>({teamId:idValue,topik:'Penjualan',sumber:'Buku penjualan',fakta:fact,status:'Selesai'});
 const key=JSON.stringify(['rows',id]);
 const then='2026-10-02T11:12:13.000Z',later='2026-10-03T11:12:13.000Z';
+test('edit history retains both sessions and labels legacy last-edit timestamps separately',()=>{
+  const local={rows:[row('sama')],editTimes:{[key]:then}};
+  markEdit(local,'rows',id);
+  const remote=structuredClone(local);
+  markEdit(local,'rows',id);markEdit(remote,'rows',id);
+  const result=mergeWork(planMerge(local,remote));
+  assert.equal(result.auditLog.length,4);
+  const report=workAuditRows(result);assert.equal(report.filter(r=>r.Catatan.includes('berkas lama')).length,1);
+  assert.equal(report[0].Butir,'Penjualan');
+  assert.equal(mergeWork(planMerge(result,remote)).auditLog.length,4);
+  const corrupt=structuredClone(remote);
+  corrupt.auditLog.at(-1).time=later;
+  assert.throws(()=>planMerge(result,corrupt),/penanda perubahan/);
+  assert.throws(()=>readAudit([{...result.auditLog[0],time:'2025-02-30T00:00:00.000Z'}]),/waktu/);
+});
 test('newest dated value wins in either direction and never stamps an unmodified old entry',()=>{
   const local={rows:[row('lokal')],editTimes:{[key]:then}},remote={rows:[row('berkas')],editTimes:{[key]:later}};
   const a=planMerge(local,remote);assert.equal(a.decisions[0].rule,'terbaru');

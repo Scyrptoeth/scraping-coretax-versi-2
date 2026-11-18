@@ -16,7 +16,7 @@ function cellIndex(address) {
 }
 
 // Reading cached values only allows local control sheets to be edited in Excel.
-export async function readXlsx(file) {
+export async function readXlsx(file,{includeLayout=false}={}) {
   const members = await readZip(file);
   function readXml(name) {
     const part = members.get(name);
@@ -37,12 +37,14 @@ export async function readXlsx(file) {
   const strings = sharedRel ? elements(readXml(resolvePart(workbook, sharedRel.getAttribute("Target"))), "si")
     .map(si => elements(si, "t").map(t => t.textContent).join("")) : [];
   const sheets = [];
-  for (const sheet of elements(readXml(workbook), "sheet")) {
+  const book=readXml(workbook);
+  const date1904=["1","true"].includes(elements(book,"workbookPr")[0]?.getAttribute("date1904"));
+  for (const sheet of elements(book, "sheet")) {
     const id = sheet.getAttributeNS(relationshipNs, "id") || sheet.getAttribute("r:id");
     const rel = rels.find(r => r.getAttribute("Id") === id && r.getAttribute("Type")?.endsWith("/worksheet"));
     if (!rel) continue;
     const xml = readXml(resolvePart(workbook, rel.getAttribute("Target")));
-    const rows = [];
+    const rows = [], rowNumbers=[];
     for (const row of elements(xml, "row")) {
       const cells = [];
       for (const cell of elements(row, "c")) {
@@ -57,8 +59,12 @@ export async function readXlsx(file) {
         cells[col] = value;
       }
       rows.push(cells);
+      if(includeLayout){
+        const n=Number(row.getAttribute("r"));
+        rowNumbers.push(Number.isSafeInteger(n)&&n>0?n:(rowNumbers.at(-1)||0)+1);
+      }
     }
-    sheets.push({ name: sheet.getAttribute("name"), rows });
+    sheets.push({ name: sheet.getAttribute("name"), rows,...(includeLayout?{date1904,rowNumbers}:{}) });
   }
   if (!sheets.length) throw new Error("Workbook tidak memiliki lembar yang dapat dibaca.");
   return sheets;

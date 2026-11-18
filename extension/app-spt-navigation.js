@@ -43,15 +43,28 @@ export function readSptView(request = {}) {
   const scopes = containers.filter(a=>!containers.some(b=>a!==b && a.root.contains(b.root)));
   if (scopes.length !== 1) return null;
   const {root,meta} = scopes[0];
-  if (request.expected && JSON.stringify(meta)!==JSON.stringify(request.expected)) return null;
+  if (request.expected && JSON.stringify(meta)!==JSON.stringify(request.expected)) return {identityChanged:true};
   function partName(label) {
     if (/^(?:induk(?: spt)?|spt induk)(?:\s|$)/i.test(label)) return 'induk';
-    const match = /^lampiran\s+([a-z]{0,3}\d{1,3}(?:[-.][a-z0-9]+)*|[a-z]{1,2})(?:\s|:|$)/i.exec(label);
+    if (/^(?:(?:total|jumlah)\s+lampiran\s+c|lampiran\s+c\s*[:–-]\s*(?:total|jumlah))$/i.test(label)) return 'c-total';
+    const match = /^lampiran\s+([a-z]{1,3}\.?\d{1,3}(?:[-.][a-z0-9]+)*|\d{1,3}[a-z]?(?:[-.][a-z0-9]+)*|[a-z]{1,2})(?:\s|:|$)/i.exec(label);
     if (!match) return '';
-    return (/^\d/.test(match[1])?'l':'')+match[1].toLowerCase().replaceAll('.','-');
+    const code=match[1].toLowerCase().replace(/^([a-z]+)\.(\d)/,'$1$2').replaceAll('.','-');
+    return (/^\d/.test(code)?'l':'')+code;
+  }
+  function riskyAction(control) {
+    if (control.hasAttribute('formaction') || control.matches('button[type=submit],button[type=reset]') ||
+        (control.form && control.type!=='button')) return true;
+    return [control,...control.querySelectorAll('[class],[title],[aria-label]')].some(el=>
+      /\b(?:hapus|kirim|simpan|ubah|submit|delete|trash|edit|save|send|pencil)\b/i.test(
+        [el.getAttribute('class'),el.getAttribute('title'),el.getAttribute('aria-label')].join(' ')));
   }
   const tabs = [...root.querySelectorAll('[role=tab][aria-controls]')].filter(visible);
-  const tabParts = tabs.map(tab=>({tab,label:caption(tab) || clean(tab.innerText),target:document.getElementById(tab.getAttribute('aria-controls'))}))
+  const unresolved=new Set();
+  const tabInfo=tabs.map(tab=>({tab,label:caption(tab) || clean(tab.innerText),target:document.getElementById(tab.getAttribute('aria-controls'))}));
+  for(const {label,target} of tabInfo)if(/^lampiran\b/i.test(label) &&
+    (!partName(label) || !target || !root.contains(target) || !target.matches('[role=tabpanel]')))unresolved.add(label.toLowerCase());
+  const tabParts = tabInfo
     .filter(x=>x.target && root.contains(x.target) && x.target.matches('[role=tabpanel]')).map(x=>({...x,part:partName(x.label)})).filter(x=>x.part);
   const sections = [...root.querySelectorAll('section,fieldset,[role=tabpanel],table[aria-label],table:has(> caption)')].filter(visible)
     .map(el=>{const label=caption(el) || tabParts.find(x=>x.target===el)?.label || '';return {el,label,part:partName(label)};})
@@ -61,18 +74,22 @@ export function readSptView(request = {}) {
     const active = sections.filter(x=>x.part===part);
     const inner = active.filter(x=>!active.some(y=>x!==y && x.el.contains(y.el)));
     const linked = tabParts.filter(x=>x.part===part);
-    if (inner.length>1 || linked.length>1) continue;
+    if (inner.length>1 || linked.length>1) {unresolved.add(part);continue;}
     const shown = inner[0];
     if (shown || linked.length) offered.push({part,label:shown?.label || linked[0].label,visible:Boolean(shown)});
   }
-  if (!request.part) return {meta,sections:offered};
+  if (!request.part) return {meta,sections:offered,unresolved:unresolved.size};
   const selection = offered.find(x=>x.part===request.part);
   if (!request.expected || !selection) return null;
   if (!selection.visible) {
     if (request.mode!=='activate') return null;
     const link = tabParts.find(x=>x.part===selection.part)?.tab;
-    if (!link || !link.matches('button[type=button],[role=tab]:not(a):not(button):not(input),button:not([type]):not(form button)') ||
-        link.matches(':disabled,[aria-disabled=true]')) return null;
+    if (!link || link.matches(':disabled,[aria-disabled=true]') || riskyAction(link)) return null;
+    const panelAnchor=link.matches('a[href]:not([download]):not([ping]):not([target])') &&
+      link.getAttribute('href')==='#'+link.getAttribute('aria-controls');
+    if (!panelAnchor && !link.matches('button[type=button],[role=tab]:not(a):not(button):not(input),button:not([type]):not(form button)')) return null;
+    const names=[caption(link),clean(link.innerText),clean(link.title)].filter(Boolean);
+    if(!names.length || names.some(n=>partName(n)!==selection.part || /\b(hapus|kirim|simpan|ubah|submit|delete|edit|save)\b/i.test(n)))return null;
     link.click(); return {activated:true};
   }
   const targets = sections.filter(x=>x.part===selection.part);
@@ -81,30 +98,58 @@ export function readSptView(request = {}) {
   const otherParts=sections.filter(s=>s.part!==selection.part && selected.contains(s.el));
   const belongs=el=>!otherParts.some(s=>s.el.contains(el));
   const grids = selected.matches('table') ? [selected] : [...selected.querySelectorAll('table')].filter(el=>visible(el) && belongs(el));
-  let rows = [];
+  let rows = [],columns=[],paging='none',zero=false;
   if (grids.length === 1) {
     const grid=grids[0],heads=[...grid.querySelectorAll('thead tr')].filter(visible);
+    if(selected.closest('[aria-busy=true]') || grid.closest('[aria-busy=true]') || [...selected.querySelectorAll('[role=progressbar]')].some(visible))return null;
     if (heads.length!==1) return null;
     const labels=[...heads[0].cells].map(c=>clean(c.innerText));
     if (!labels.length || labels.some(k=>!k) || new Set(labels).size!==labels.length) return null;
+    columns=labels;
+    const host=grid.closest('.p-datatable,[data-pc-name=datatable],p-table') || selected;
+    const local=[...host.querySelectorAll('table')].filter(visible).length<=1 && (selected.contains(host) || host.contains(selected));
+    const pagers=local?[...host.querySelectorAll('.p-paginator,[data-pc-name=paginator],p-paginator,nav[aria-label]')].filter(visible):[];
+    const linked=grid.id?[...root.querySelectorAll('button[aria-controls]')].filter(b=>b.getAttribute('aria-controls')===grid.id):[];
+    const candidates=[...new Set([...linked,...pagers.flatMap(el=>[...el.querySelectorAll('button')])])].filter(visible);
+    const nextName=/^(?:(?:ke )?halaman (?:berikut(?:nya)?|selanjutnya)|berikut(?:nya)?|selanjutnya|(?:go to )?next(?: page)?|›|»|→)$/i;
+    const next=candidates.filter(b=>{
+      if(riskyAction(b))return false;
+      if(b.hasAttribute('aria-controls') && b.getAttribute('aria-controls')!==grid.id)return false;
+      const names=[b.getAttribute('aria-label'),b.innerText,b.title,
+        (b.getAttribute('aria-labelledby') || '').split(/\s+/).map(id=>document.getElementById(id)?.innerText || '').join(' ')].map(clean).filter(Boolean);
+      return names.length ? names.every(n=>nextName.test(n)) :
+        b.matches('.p-paginator-next,[data-pc-section=nextpagebutton],[data-pc-section=next]') && pagers.some(p=>p.contains(b));
+    });
+    if(next.length===1)paging=next[0].matches(':disabled,[aria-disabled=true],.p-disabled')?'end':'next';
+    else if(next.length>1 || pagers.length || linked.length)paging='unclear';
+    const zeroLabels=local?[...host.querySelectorAll('.p-paginator-current,[aria-live],[role=status]')].filter(visible):[];
+    const reportedZero=zeroLabels.some(el=>/^(?:(?:menampilkan|showing)\s+)?0\s*(?:-|–|s\.d\.|sampai|to)\s*0\s*(?:dari|of)\s*0(?:\s+(?:baris|data|entri|entries|records))?\.?$/i.test(clean(el.innerText)));
     for (const tr of [...grid.querySelectorAll('tbody > tr')].filter(r=>visible(r) && r.closest('table')===grid)) {
+      if(reportedZero && tr.cells.length===1 && /^(?:tidak ada data|data tidak (?:tersedia|ditemukan)|no (?:data|records)(?: found)?)\.?$/i.test(clean(tr.innerText)))continue;
       if (tr.cells.length!==labels.length || [...tr.cells].some(c=>c.colSpan!==1 || c.rowSpan!==1) ||
           [...tr.querySelectorAll('input,select,textarea,[role=checkbox]')].some(visible)) return null;
       rows.push(Object.fromEntries(labels.map((label,i)=>[label,tr.cells[i].innerText.trim()])));
     }
+    zero=reportedZero && !rows.length && ['end','none'].includes(paging);
+    if(request.mode==='advance'){
+      if(paging!=='next' || JSON.stringify(columns)!==JSON.stringify(request.columns) ||
+          JSON.stringify(rows.map(row=>columns.map(c=>row[c])))!==request.before)return {changed:true};
+      next[0].click();return {advanced:true};
+    }
   } else if (!grids.length) {
     const fields=pairs(selected,belongs).filter(([label])=>label && !accepted.test(label));
     if (new Set(fields.map(([label])=>label)).size!==fields.length) return null;
-    if (fields.length) rows=[Object.fromEntries(fields)];
+    if (fields.length) {rows=[Object.fromEntries(fields)];columns=fields.map(([k])=>k);}
   }
-  if (!rows.length) return null;
-  return {meta,part:selection.part,label:selection.label,rows};
+  if (!rows.length && !zero) return null;
+  return {meta,part:selection.part,label:selection.label,rows,columns,paging,zero};
 }
 
 function matchedDocument(row,wp,period,doc) {
   const item={wp,source:'sptdaftar',page:{Payload:{Data:[row]}}};
   const match=planSptDetails({wp,period,types:[doc.type],items:[item]}).documents[0];
-  if (!match || match.key!==doc.key || (doc.recordId && match.recordId && doc.recordId!==match.recordId)) return null;
+  if (!match || match.key!==doc.key || (doc.recordId && match.recordId && doc.recordId!==match.recordId) ||
+      (doc.receipt && match.receipt && doc.receipt!==match.receipt)) return null;
   return (doc.recordId && match.recordId===doc.recordId) || (doc.receipt && match.receipt===doc.receipt) ? match : null;
 }
 const wait = ms=>new Promise(resolve=>setTimeout(resolve,ms));
@@ -113,7 +158,8 @@ export function sptNavigation({ext,wp,period,doc}) {
   const execute=async (tabId,func,options)=>(await ext.scripting.executeScript({target:{tabId},func,args:[options]}))[0]?.result;
   function verified(view) {
     const meta=view?.meta;
-    if (!meta || normalizeId(meta['npwp wajib pajak'] || meta['npwp wp'])!==wp) return null;
+    const owners=[meta?.['npwp wajib pajak'],meta?.['npwp wp']].filter(Boolean);
+    if (!owners.length || owners.some(owner=>normalizeId(owner)!==wp)) return null;
     return matchedDocument(meta,wp,period,doc);
   }
   async function inspect(tabId) {
@@ -142,22 +188,80 @@ export function sptNavigation({ext,wp,period,doc}) {
     }
     throw Error('Tampilan sudah dibuka. WP, jenis, masa, pembetulan, dan nomor dokumen belum dapat dicocokkan pada satu tampilan.');
   }
-  async function capture(view,part) {
+  const changedIdentity=()=>Object.assign(Error('Identitas WP atau dokumen berubah. Pilih kembali versi SPT.'),{code:'IDENTITY'});
+  async function capture(view,part,checkpoint=()=>{}) {
     const args={part,expected:view.meta};
     const current=await execute(view.tabId,readSptView,{expected:view.meta});
-    if (!verified(current)) throw Error('Identitas WP atau dokumen berubah. Pilih kembali versi SPT.');
+    if (!verified(current)) throw changedIdentity();
     const section=current.sections.find(s=>s.part===part);
     if (!section) throw Error('Bagian SPT sudah berubah.');
     if (!section.visible) {
+      await checkpoint();
       if (!(await execute(view.tabId,readSptView,{...args,mode:'activate'}))?.activated) throw Error('Bagian ini belum dapat dibuka melalui tab formulir.');
     }
     for(let attempt=0;attempt<10;attempt++) {
       const result=await execute(view.tabId,readSptView,args);
+      if(result?.identityChanged)throw changedIdentity();
       const match=verified(result);
       if(match && result.rows) return {...result,recordId:match.recordId || doc.recordId,receipt:match.receipt || doc.receipt};
       await wait(150);
     }
     throw Error('Bagian belum terbaca sebagai satu tabel atau satu formulir yang jelas. Periksa identitas dan tampilan sumber.');
   }
-  return {open,inspect,capture};
+  async function collect(view,{limit,checkpoint,onPage,onIssue}) {
+    if(!Number.isInteger(limit) || limit<1 || limit>100)throw Error('Pilih batas 1–100 halaman per bagian.');
+    const listed=[...view.sections].sort((a,b)=>Number(b.part==='induk')-Number(a.part==='induk'));
+    if(!listed.length)throw Error('Nama induk atau lampiran belum terbaca pada tampilan ini.');
+    const discovered=new Set(listed.map(s=>s.part));
+    let unresolved=view.unresolved || 0;
+    for(const section of listed){
+      await checkpoint();
+      const pass=crypto.randomUUID(),seen=new Set();
+      try {
+        let result=await capture(view,section.part,checkpoint);
+        const shape=JSON.stringify(result.columns);
+        for(let page=1;;page++){
+          await checkpoint();
+          if(!verified(await execute(view.tabId,readSptView,{expected:view.meta})))throw changedIdentity();
+          const fingerprint=JSON.stringify(result.rows.map(row=>result.columns.map(k=>row[k])));
+          if(shape!==JSON.stringify(result.columns) || seen.has(fingerprint))throw Error('Kolom berubah atau halaman berulang.');
+          if(result.zero && page>1)throw Error('Total berubah menjadi nol setelah halaman berisi.');
+          seen.add(fingerprint);
+          await onPage({...result,pass,page});
+          if(result.paging==='unclear')throw Error('Kontrol halaman berikutnya belum dapat dipastikan.');
+          if(result.paging!=='next')break;
+          if(page>=limit)throw Error('Batas halaman tercapai saat masih ada halaman berikutnya.');
+          await checkpoint();
+          const args={part:section.part,expected:view.meta};
+          const clicked=await execute(view.tabId,readSptView,{...args,mode:'advance',columns:result.columns,before:fingerprint});
+          if(clicked?.identityChanged)throw changedIdentity();
+          if(!clicked?.advanced)throw Error('Tabel atau tombol berikutnya berubah sebelum dibuka.');
+          let next;
+          for(let attempt=0;attempt<24;attempt++){
+            await wait(125);await checkpoint();
+            const candidate=await execute(view.tabId,readSptView,args);
+            if(candidate?.identityChanged)throw changedIdentity();
+            if(!candidate?.rows || !verified(candidate))continue;
+            if(JSON.stringify(candidate.columns)!==shape)throw Error('Kolom sumber berubah sesudah pindah halaman.');
+            if(JSON.stringify(candidate.rows.map(row=>candidate.columns.map(k=>row[k])))!==fingerprint){next=candidate;break;}
+          }
+          if(!next)throw Error('Halaman berikut belum berubah atau data berulang.');
+          result={...next,recordId:result.recordId,receipt:result.receipt};
+        }
+      } catch(error){
+        if(error.code==='IDENTITY' || error.code==='STOP' || error.code==='SCOPE')throw error;
+        if(!verified(await execute(view.tabId,readSptView,{expected:view.meta})))throw changedIdentity();
+        onIssue(section,error);
+      }
+      const refreshed=await execute(view.tabId,readSptView,{expected:view.meta});
+      if(!verified(refreshed))throw changedIdentity();
+      unresolved=Math.max(unresolved,refreshed.unresolved);
+      for(const item of refreshed.sections){
+        if(discovered.has(item.part))continue;
+        discovered.add(item.part);listed.push(item);
+      }
+    }
+    if(unresolved)onIssue({label:'Tampilan sumber'},Error(unresolved+' bagian berlabel belum bisa dicocokkan ke satu panel.'));
+  }
+  return {open,inspect,capture,collect};
 }

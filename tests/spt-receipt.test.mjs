@@ -1,16 +1,20 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import {receiptNumber} from '../extension/analisis/model.js';
+import {receiptFields,receiptNumber} from '../extension/analisis/model.js';
 import {linkedPaymentGroups} from '../extension/analisis/profile.js';
 
-test('read the SPT receipt in source order and preserve its digits as text',()=>{
-  const record=Object.freeze({DocumentReceiptNumber:'00012',BpsNo:'00034'});
-  assert.equal(receiptNumber(record),'00012');
-  assert.equal(receiptNumber({DocumentReceiptNumber:' ',BpsNo:'00034'}),'00034');
-  assert.equal(receiptNumber({BpsNo:'BPE-FIKTIF'}),'BPE-FIKTIF');
-  assert.equal(receiptNumber({DocumentReceiptNumber:123}),'123');
-  for(const row of [null,{}, {BpsNo:' '},{BpsNo:null},{RecordId:'not-a-receipt'}])
-    assert.equal(receiptNumber(row),'');
+test('select the source value with a BPE prefix and retain each distinct number under its source label',()=>{
+  const fields=(document,bps)=>receiptFields({DocumentReceiptNumber:document,BpsNo:bps});
+  assert.deepEqual(fields('BPE-UJI-A','bpe/00034'),{BPE:'BPE-UJI-A','Nomor pada BpsNo':'bpe/00034'});
+  assert.deepEqual(fields('00012','bpe/00034'),{BPE:'bpe/00034','Nomor penerimaan dokumen':'00012'});
+  assert.deepEqual(fields('BPE-UJI-A','BPE-UJI-A'),{BPE:'BPE-UJI-A'});
+  assert.deepEqual(fields('BPE-UJI-A',null),{BPE:'BPE-UJI-A'});
+  assert.deepEqual(fields(' ','BPE-FIKTIF'),{BPE:'BPE-FIKTIF'});
+  assert.deepEqual(fields('00012','00034'),{'Nomor penerimaan dokumen':'00012','Nomor pada BpsNo':'00034'});
+  assert.deepEqual(fields(123,'123'),{'Nomor penerimaan dokumen':'123'});
+  for(const raw of ['BPE','BPE123','BPS-34','X-BPE-12','BPE 123',' BPE-123','BPE:123','BPE_123'])
+    assert.equal(receiptNumber({DocumentReceiptNumber:raw}),'');
+  for(const row of [null,{}, {BpsNo:' '},{BpsNo:null},{RecordId:'not-a-receipt'}])assert.deepEqual(receiptFields(row),{});
 });
 
 test('only the selected receipt matches a ledger reference, preserving leading zeros',()=>{

@@ -1,6 +1,6 @@
 # Matriks kesetaraan terhadap VERITAX v1.32.0
 
-Prarilis 0.6.0, 18 November 2026. Kedua aplikasi masih memiliki perbedaan dengan VERITAX. **Terverifikasi** berlaku untuk perilaku dan masukan yang disebutkan. **Berbeda** berarti ada selisih yang telah diketahui. **Belum teruji** berarti bukti pembandingan belum tersedia.
+Prarilis 0.7.0, 18 November 2026. Kedua aplikasi masih memiliki perbedaan dengan VERITAX. **Terverifikasi** berlaku untuk perilaku dan masukan yang disebutkan. **Berbeda** berarti ada selisih yang telah diketahui. **Belum teruji** berarti bukti pembandingan belum tersedia.
 
 ## Hasil sampai prarilis 0.3.0
 
@@ -66,6 +66,21 @@ Pada uji luring lampiran A2 berisi dua faktur, membalik urutan faktur menghasilk
 | Cakupan satu versi SPT Masa PPN | Pada 72 versi dalam dua paket fiktif, pemutar mengenali delapan bagian per versi. Untuk 72 respons total C tanpa isian, layar menjelaskan bahwa C terbukti kosong dan respons total tidak memuat angka. Penghapusan bagian, jumlah baris yang berbeda dan respons gagal diuji terpisah. [Uji cakupan](../tests/vat-coverage.test.mjs) | Kelengkapan berkas yang sudah diterima dapat diperiksa luring. Pembacaan semua bagian langsung dari Coretax serta keluarga SPT lainnya perlu pembuktian tersendiri. |
 | Probis ke KKP | Dalam Studio dan Versi 2, menambahkan dokumen pertama menghasilkan satu permintaan. Pengulangan mempertahankan satu permintaan dan dokumen tercantum pada Excel. Dua WP dan dua tahun fiktif diuji di Versi 2, termasuk pemulihan berkas kerja. [Uji alur](../tests/probis-requests-browser.mjs) | Versi 2 menyediakan sembilan panduan awal dengan dua saran dokumen masing-masing. Cakupan tiap sektor dan dasar hukum per prosedur belum setara. |
 | Bantuan dan program pengujian | Menu dapat dibuka sebelum memuat ZIP. Dari 13 prosedur Versi 2, empat dapat dijalankan dari sumber Coretax yang disebutkan. Pencarian dan saringan juga berlaku pada Excel. [Uji pencarian dan unduhan](../tests/viewer-navigation-browser.mjs) | Studio menampilkan 506 baris. Isi, rujukan hukum dan hubungan ke seluruh indeks masih berbeda. |
+
+## Yang sudah dicocokkan pada 0.7.0
+
+| Alur | Hasil yang dapat diperiksa | Batas bukti |
+| --- | --- | --- |
+| Mengambil satu versi SPT | Di pratinjau, **Ambil induk dan lampiran** menyimpan bagian yang dikenali beserta halaman dan identitas versinya. Lima skenario di Chrome luring mencakup hasil yang dibuka di Analisis, pergantian WP, batas halaman, halaman berulang, lampiran yang muncul belakangan, serta penghentian dan penyimpanan hasil sebagian. [Uji ekstensi](../tests/spt-auto-browser.mjs) | Struktur tab, tombol dan paginasi pada intranet kantor masih perlu diuji dengan satu WP yang ditugaskan. |
+| Formulir PPh 21/26 dan Unifikasi | Empat formulir fiktif dibuka di kedua pemutar. Empat belas angka pembanding cocok di layar dan Excel. Uji mencakup penghasilan bruto dalam kelompok lampiran PPh 21/26 dan rincian pemotongan serta penyetoran per pasal pada Unifikasi. [Uji formulir](../tests/withholding-forms.test.mjs) · [Uji layar dan Excel](../tests/spt-browser.mjs) | Variasi objek, pembatalan serta tata letak cetak masih memerlukan contoh lain. |
+| Rekonsiliasi appportal | Empat dokumen fiktif untuk PK, PM, PIB dan PEB memperoleh status **Cocok** di kedua pemutar. Pencocokan PM juga berhasil ketika masa faktur dan masa SPT berbeda. Angka pembanding mencakup ambang selisih Rp1 dan nomor faktur yang hanya cocok pada 13 digit terakhir. [Uji rekonsiliasi](../tests/appportal.test.mjs) · [Uji dua pemutar](../tests/appportal-browser.mjs) | Versi 2 memakai WP dan tahun aktif. Perlu contoh ekspor operasional untuk memastikan variasi format. |
+| KKP dan kepatuhan formal | Pada satu paket Badan fiktif, tanggal lapor, batas setelah akhir pekan dan jumlah hari terlambat cocok untuk 36 dari 36 SPT normal. Seluruh 15 setoran yang ditampilkan Studio ditemukan dalam 46 baris setoran Versi 2. Setelah angka sumber pada salinan Excel diubah, LibreOffice menghitung ulang selisih yang sama pada lembar indeks, INDUK dan Temuan Sementara. [Uji kepatuhan](../tests/formal-compliance.test.mjs) · [Uji KKP](../tests/kkp-index-browser.mjs) | Pada paket ini, Excel Versi 2 berisi 29 lembar dan Studio 33. Uji rumus mencakup satu koreksi. Pemeriksaan setoran awal dan penetapan keterlambatan memerlukan bukti serta tanggal yang sesuai dengan jenis pembayaran. |
+
+Pada empat pasang Excel appportal, 43 dari 44 sel rincian yang diperiksa memberi hasil sepadan. Satu sel berbeda pada PEB tanpa nominal PPN appportal. Versi 2 mengosongkan sel selisih, sedangkan Studio menampilkan `NaN`. Pada contoh kepatuhan formal, kedua aplikasi memunculkan 14 pembayaran KJS 100 untuk diperiksa tanggalnya. Satu pembayaran KJS 300 yang juga ditandai Studio tetap dapat ditelusuri di buku besar Versi 2.
+
+Pada contoh Badan yang sama, indeks **N.3** Studio merinci DPP penyerahan per masa, sedangkan **N.3.1** memuat PPN. Untuk **G.2.1** dan **K.2.1**, DPP pada Studio dapat ditelusuri ke bukti potong D1-BPU per pasal. Ketiga rincian DPP belum tersedia sebagai indeks tersendiri di Versi 2. Nilai pajak yang dipotong pada induk G dan K dapat dibandingkan untuk 11 masa yang memiliki SPT Unifikasi.
+
+Untuk nomor bukti penerimaan, uji memasangkan dua nomor berbeda, menukar letak BPE, dan mencoba nomor biasa dengan nol di depan. Nomor BPE maupun nomor dokumen kedua dapat dicari dan diekspor; klasifikasinya menggunakan isi kolom sumber. [Uji klasifikasi](../tests/spt-receipt.test.mjs) · [Uji pencarian dan unduhan](../tests/viewer-navigation-browser.mjs)
 
 ## Kemampuan yang masih perlu dibandingkan
 

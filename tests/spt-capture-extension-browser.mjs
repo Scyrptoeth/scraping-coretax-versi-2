@@ -94,7 +94,8 @@ try{
       await capture.getByText('Rincian versi SPT dan bagian yang tersedia',{exact:true}).click();
       const version=capture.getByRole('table',{name:'Versi SPT yang ditemukan',exact:true});
       await version.locator('tbody tr').first().waitFor();
-      assert.deepEqual(await version.locator('tbody tr > *').allInnerTexts(),['Masa PPN','2025-01','1','—','induk','—','Cari tampilan SPT']);
+      assert.deepEqual((await version.locator('tbody tr > *').allInnerTexts()).slice(0,6),['Masa PPN','2025-01','1','—','induk','—']);
+      assert.deepEqual(await version.getByRole('button').allTextContents(),['Cari tampilan SPT','Ambil induk dan lampiran']);
     }
     if(omitted)assert.match(await capture.locator('#status').textContent(),new RegExp(omitted+' baris di luar'));
     await capture.locator('#start').click();

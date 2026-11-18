@@ -1,4 +1,4 @@
-import {compare,count,flatten,issues,label,payloads,periodFacts,receiptNumber,rowsOf,typeNames,worksheet} from './model.js';
+import {compare,count,flatten,issues,label,payloads,periodFacts,receiptFields,rowsOf,typeNames,worksheet} from './model.js';
 import {box,button,card,dataTable,detail,el,exportSheets,select,toggleSet} from './ui.js';
 import {renderProfile} from './profile.js';
 import {renderComparison,renderFinancialRatios} from './comparison.js';
@@ -153,11 +153,11 @@ export function renderSpt(target,state) {
     const shortlist=forms.filter(f=>(!filters.type||f.type===filters.type)&&(!filters.latest||f.latest)&&(!filters.late||f.filingLate)&&(!filters.amended||f.amended)&&(!filters.revised||revised.has(f.type+'/'+f.period))&&(!filters.balance||filters.balance===balances.get(f).status));
     const links=new Map();const rows=shortlist.map(f=>{
       const {status,amount,basis}=balances.get(f);
-      const r={Jenis:typeNames[f.type]||f.type,Masa:f.period,Versi:f.version?'Pembetulan '+f.version:'Normal','Status pelaporan':f.meta.ReturnSheetStatusCode||null,'Status nilai':status,'Nilai pada induk':amount,'Dasar nilai':basis,BPE:receiptNumber(f.meta)||null,'Tanggal lapor':f.reportDate,'Batas pada sumber':f.dueDate,'Batas setelah akhir pekan':f.filingDueDate,Ketepatan:f.filingLate==null?'—':f.filingLate?'Lewat batas':'Tepat',Kanal:f.meta.ChannelCode||null};
+      const r={Jenis:typeNames[f.type]||f.type,Masa:f.period,Versi:f.version?'Pembetulan '+f.version:'Normal','Status pelaporan':f.meta.ReturnSheetStatusCode||null,'Status nilai':status,'Nilai pada induk':amount,'Dasar nilai':basis,...receiptFields(f.meta),'Tanggal lapor':f.reportDate,'Batas pada sumber':f.dueDate,'Batas setelah akhir pekan':f.filingDueDate,Ketepatan:f.filingLate==null?'—':f.filingLate?'Lewat batas':'Tepat',Kanal:f.meta.ChannelCode||null};
       if(dates.has(f))r['Tanggal setoran indikatif']=dates.get(f);
       links.set(r,f);return r;
     });
-    for(const key of ['Kanal','BPE','Tanggal lapor','Batas pada sumber'])if(!rows.some(r=>r[key]))for(const r of rows)delete r[key];
+    for(const key of ['Kanal','Tanggal lapor','Batas pada sumber'])if(!rows.some(r=>r[key]))for(const r of rows)delete r[key];
     results.replaceChildren(exportControls(shortlist,pkg),dataTable(rows,{wp,name:'Daftar SPT',filename:'Daftar-SPT-'+state.year,openRow:row=>openForm(links.get(row),pkg)}));
   };
   const controls=box('toolbar',select(choices,filters.type,v=>{filters.type=v;repaint();},'Jenis'),select([['','Semua nilai'],'Nihil','Kurang bayar','Lebih bayar','Belum tersedia'],filters.balance||'',v=>{filters.balance=v;repaint();},'Status nilai pada induk'));

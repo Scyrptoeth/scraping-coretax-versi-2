@@ -1,4 +1,4 @@
-import {assessLine,completeIndexBook,documentRows,documentStatuses,indexSheets,indexStatus,reviewRefundCode,validateIndexDocuments} from './kkp-index.js';
+import {assessLine,completeIndexBook,documentRows,documentStatuses,indexSheets,indexStatus,reviewDecisions,reviewRefundCode,validateIndexDocuments} from './kkp-index.js';
 import {probisSourceFields} from '../probis-guide.js';
 import {button,box,card,dataTable,el,exportSheets,field,notice,select,showDialog} from './ui.js';
 import {count} from './model.js';
@@ -99,12 +99,14 @@ function editDocument(group,index,work,repaint,existing){
 
 export function renderIndex(target,state,work,index){
   const wp=state.pkg.manifest.wp;
+  const reviewed=new Map(work.rows.filter(r=>r.kkpLine).map(r=>[r.kkpLine,r]));
+  const downloadBook=()=>exportSheets(completeIndexBook(state.pkg,state.year,index,reviewed,work.indexNotes,work.indexDocuments,work.simulation,work),'KKP-Indeks-'+state.year,wp);
   if(!index.groups.length){
     target.append(card('Indeks KKP',el('p','Belum ada isian SPT yang dapat dipetakan ke indeks pada tahun ini.'),
+      button('Excel semua KKP',downloadBook),
       ...index.warnings.map(s=>el('p',s,'hint'))));return;
   }
   const group=index.groups.find(g=>g.key===work.activeIndex)||index.groups[0];
-  const reviewed=new Map(work.rows.filter(r=>r.kkpLine).map(r=>[r.kkpLine,r]));
   const summary=g=>{
     const s=indexStatus(g,reviewed);
     return g.ref+' · '+g.title+' · '+s.state+' ('+s.tested+'/'+g.lines.length+')';
@@ -113,9 +115,16 @@ export function renderIndex(target,state,work,index){
   const meta=work.indexNotes[group.key]||{unit:'',preparer:'',reviewer:'',revision:0};
   const fieldset=box('formgrid');
   for(const [key,title] of [['unit','Unit pemeriksaan (UP2)'],['preparer','Dibuat oleh'],['reviewer','Ditelaah oleh']]){
-    const input=el('input');input.value=meta[key];input.oninput=()=>{meta[key]=input.value;work.indexNotes[group.key]=meta;markEdit(work,'indexNotes',group.key);};
+    const input=el('input');input.value=meta[key];input.oninput=()=>{meta[key]=input.value;work.indexNotes[group.key]=meta;};
+    input.onchange=()=>markEdit(work,'indexNotes',group.key);
     fieldset.append(field(title,input));
   }
+  const reviewNote=el('textarea');reviewNote.value=meta.reviewNote||'';
+  reviewNote.oninput=()=>{meta.reviewNote=reviewNote.value;work.indexNotes[group.key]=meta;};
+  reviewNote.onchange=()=>markEdit(work,'indexNotes',group.key);
+  fieldset.append(field('Catatan penelaah',reviewNote),select(reviewDecisions.map(d=>[d,d||'Belum diputuskan']),meta.decision||'',value=>{
+    meta.decision=value;work.indexNotes[group.key]=meta;markEdit(work,'indexNotes',group.key);
+  },'Keputusan penelaah'));
   const rev=button('Buat revisi P'+(meta.revision+1),()=>{
     if(!meta.reviewer.trim()){notice('Isi nama penelaah sebelum menandai revisi.',true);return;}
     meta.revision++;work.indexNotes[group.key]=meta;markEdit(work,'indexNotes',group.key);state.repaint();
@@ -135,7 +144,7 @@ export function renderIndex(target,state,work,index){
     ...group.lines.filter(l=>l.withoutReturn).flatMap(l=>[el('p',l.explanation),...l.coverage.map(s=>el('p',s,'hint')),
       dataTable(l.details,{wp,name:'Rincian bukti potong untuk '+l.ref,incremental:true})]),
     fieldset,box('toolbar',rev,button('Excel KKP ini',()=>exportSheets([indexSheets(group,reviewed,work.indexNotes,work.indexDocuments)],'KKP-'+group.ref+'-'+state.year,wp)),
-      button('Excel semua KKP',()=>exportSheets(completeIndexBook(state.pkg,state.year,index,reviewed,work.indexNotes,work.indexDocuments,work.simulation),'KKP-Indeks-'+state.year,wp))),
+      button('Excel semua KKP',downloadBook)),
     el('h3','Dokumen pendukung'),button('Tambah permintaan dokumen',()=>editDocument(group,index,work,state.repaint)),
     button('Excel daftar dokumen',()=>exportSheets([{name:'Permintaan Dokumen',rows:documentRows(work.indexDocuments)}],'Daftar-Dokumen-'+state.year,wp)),
     dataTable(docRows,{wp,name:'Dokumen indeks terpilih',empty:'Belum ada permintaan dokumen untuk indeks ini.',

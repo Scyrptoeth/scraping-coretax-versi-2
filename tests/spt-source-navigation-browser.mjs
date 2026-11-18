@@ -82,7 +82,9 @@ try {
   await save.click();await ui.getByText(/Isi bagian berubah/).waitFor();
   await tbody.locator('tr').last().evaluate(el=>el.remove());
   await tbody.locator('td').last().evaluate(el=>el.textContent='99');
+  const expectedQueueSize=await ui.locator('#queue .item').count()+1;
   await save.click();await ui.getByText(/Isi bagian berubah/).waitFor();
+  await ui.waitForFunction(size=>document.querySelectorAll('#queue .item').length===size,expectedQueueSize);
   await detailTab.locator('dd').first().evaluate(el=>el.innerText='0000000000000002');
   await save.click();await ui.getByText(/Identitas WP atau dokumen berubah/).waitFor();
   await detailTab.close();

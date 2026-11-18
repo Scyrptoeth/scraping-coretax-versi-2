@@ -54,6 +54,8 @@ test('annual Excel carries source, signs, explicit zero, reviewed corrections an
   const sheet=decodeText(zip.get('xl/worksheets/sheet'+(sheets.findIndex(s=>s.name.startsWith('N.3.1 '))+1)+'.xml').data);
   assert.match(sheet,/N\.3\.1 \(P1\)/);assert.match(sheet,/E7-D7/);assert.match(sheet,/<v>25<\/v>/);assert.match(sheet,/OutputTaxMustBeSelfCollected.VAT/);
   const ts=decodeText(zip.get('xl/worksheets/sheet3.xml').data);
+  assert.match(sheet,/<f>IF\(ISNUMBER\('SPT Data'!F\d+\)/);
+  assert.match(ts,/<f>IF\(ISNUMBER\('N\.3\.1 [^']+'!E7\)/);
   assert.match(ts,/E2-D2/);assert.match(ts,/Bukti sintetik 001/);assert.equal((ts.match(/<row /g)||[]).length,2);
 });
 

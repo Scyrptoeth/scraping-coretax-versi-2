@@ -1,4 +1,4 @@
-import {flatten, receiptNumber, rowsOf, sptDay, submittedDay, typeNames, worksheet} from './model.js';
+import {flatten, ledgerDocumentReference, receiptFields, rowsOf, sptDay, submittedDay, typeNames, worksheet} from './model.js';
 import {box, button, card, dataTable, detail, el, exportSheets} from './ui.js';
 
 const first = rows => rows[0] || {};
@@ -105,7 +105,7 @@ function timeline(groups) {
   return rows.sort((a,b)=>b.Tanggal.localeCompare(a.Tanggal));
 }
 export function linkedPaymentGroups(f, ledger) {
-    const refs=new Set([f.id,receiptNumber(f.meta),'SPT-'+f.id].filter(Boolean).map(String));
+    const refs=new Set([f.id,ledgerDocumentReference(f.meta),'SPT-'+f.id].filter(Boolean).map(String));
     const liabilities=ledger.filter(r=>r.AccountingTypeCode==='TaxReturn' && refs.has(String(r.ReferenceNumber)) &&
       number(r.Amount)!==null && r.Amount<0 && r.PeriodCode && r.RevenueCode);
     const grouped=new Map();
@@ -200,7 +200,7 @@ export function profileSections(pkg) {
   const filed=sourceRows(pkg.entries.filter(e=>e.cap?.sumber==='sptdaftar'||e.path==='spt/daftar.json'));
   const dates=filed.map(row=>{
     const reported=submittedDay(row), deadline=sptDay(row.ExpectedReturnDate);
-    return {Jenis:row.ReturnSheetTypeCode,Masa:row.TaxPeriodCode,Model:row.ReturnSheetModel,BPE:receiptNumber(row),'Tanggal lapor':reported,'Batas pada sumber':deadline,
+    return {Jenis:row.ReturnSheetTypeCode,Masa:row.TaxPeriodCode,Model:row.ReturnSheetModel,...receiptFields(row),'Tanggal lapor':reported,'Batas pada sumber':deadline,
       'Posisi tanggal':row.ReturnSheetModel!=='Normal'?'Pembetulan / model lain':!reported||!deadline?'Belum dapat dibandingkan':reported>deadline?'Lewat tanggal pada sumber':'Dalam tanggal pada sumber','Berkas sumber':row['Berkas sumber']};
   });
   add('lapor',obligations,'Pemenuhan pelaporan',dates,'Perbandingan memakai tanggal yang disimpan dalam paket. Masa tanpa data memerlukan pemeriksaan ketersediaan sumber.');
@@ -235,7 +235,7 @@ export function profileSections(pkg) {
       ...rowsOf(f.parts.get('keluarga')).flatMap(x=>list(x.FamilyMembers)).map(member=>({'Tahun SPT':f.year,...member,'Berkas sumber':f.parts.get('keluarga').path})),
       ...list(r.PitrL1Form?.ListDependantsFamilyMembers).map(member=>({'Tahun SPT':f.year,...member,'Berkas sumber':f.parts.get('induk')?.path}))
     ]));
-    add('op-riwayat',group,'Riwayat SPT Tahunan OP',forms.filter(f=>f.type==='OP').map(f=>({Jenis:typeNames.OP,Tahun:f.year,Versi:f.version,'Tanggal lapor':f.reportDate ?? submittedDay(f.meta),BPE:receiptNumber(f.meta),Sumber:f.key})));
+    add('op-riwayat',group,'Riwayat SPT Tahunan OP',forms.filter(f=>f.type==='OP').map(f=>({Jenis:typeNames.OP,Tahun:f.year,Versi:f.version,'Tanggal lapor':f.reportDate ?? submittedDay(f.meta),...receiptFields(f.meta),Sumber:f.key})));
   }
   return sections;
 }

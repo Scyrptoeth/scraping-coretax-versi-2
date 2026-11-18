@@ -1,5 +1,13 @@
 # Riwayat Scraping Coretax Versi 2
 
+## 18 November 2026 · Prarilis 0.7.0
+
+Pilih **Ambil induk dan lampiran** di pratinjau untuk membaca beberapa bagian dari satu versi SPT. Penarik memeriksa identitas WP dan dokumen saat berpindah bagian atau halaman, serta menyimpan catatan jika pembacaan berhenti di tengah. [Penarik](SCRAPING.md)
+
+Pada pemutar, formulir PPh 21/26 dan Unifikasi menampilkan rincian penghitungan dan sumbernya. Di mode pengembang, empat jenis impor appportal dapat dicocokkan dengan lampiran PPN untuk WP dan tahun aktif. [Formulir dan kertas kerja](ANALISIS.md) · [Impor appportal](FORMAT.md)
+
+Excel gabungan KKP memuat lembar kepatuhan, hasil penelaahan dan jejak audit. Tautan pada daftar isi menghubungkan semua lembar. Nilai SPT dan koreksi yang sudah diuji dapat ditelusuri melalui rumus lintas lembar. [Bukti pengujian dan selisih](KESETARAAN.md)
+
 ## 18 November 2026 · Prarilis 0.6.0
 
 Jika beberapa ekspor memuat lampiran yang sama pada satu pembetulan, penarik menyimpan satu sumber untuk analisis dan menampilkan ekspor lain sebagai pembanding. Urutan halaman dari satu proses paginasi tetap dipertahankan. [Penanganan cuplikan SPT](SCRAPING.md)

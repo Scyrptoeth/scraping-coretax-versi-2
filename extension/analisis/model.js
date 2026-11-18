@@ -64,12 +64,25 @@ export function sptDay(value) {
 export function submittedDay(row) {
   return sptDay(row?.ReturnDate) || sptDay(row?.ReceiptDate) || sptDay(row?.EnteredDate) || sptDay(row?.DateOfSubmit);
 }
+function numberText(value) {
+  if(typeof value==='string')return value.trim();
+  return Number.isSafeInteger(value) && value>=0 ? String(value) : '';
+}
 export function receiptNumber(row) {
-  for (const value of [row?.DocumentReceiptNumber, row?.BpsNo]) {
-    if (typeof value === 'string' && value.trim()) return value.trim();
-    if (Number.isSafeInteger(value) && value >= 0) return String(value);
-  }
-  return '';
+  const value=[row?.DocumentReceiptNumber,row?.BpsNo].find(v=>typeof v==='string' && /^BPE[-/]/i.test(v));
+  return numberText(value);
+}
+export function receiptFields(row) {
+  const bpe=receiptNumber(row),document=numberText(row?.DocumentReceiptNumber),bps=numberText(row?.BpsNo);
+  const fields={};
+  if(bpe)fields.BPE=bpe;
+  if(document && document!==bpe)fields['Nomor penerimaan dokumen']=document;
+  if(bps && bps!==bpe && bps!==document)fields['Nomor pada BpsNo']=bps;
+  return fields;
+}
+// Ledger references historically use the document number first, regardless of whether it is a BPE.
+export function ledgerDocumentReference(row) {
+  return numberText(row?.DocumentReceiptNumber) || numberText(row?.BpsNo);
 }
 function afterWeekend(day) {
   if (!day) return '';

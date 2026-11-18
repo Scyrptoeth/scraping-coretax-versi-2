@@ -7,7 +7,7 @@ import {buildIndex,restoreIndexedRows,restoreNotes,validateIndexDocuments} from 
 import {outputFilename} from './preferences.js';
 import {probisRequestKey,publicGuide} from '../probis-guide.js';
 import {editIndexLine,renderIndex} from './kkp-index-ui.js';
-import {identifyRows,markEdit,planMerge,progressReport,rowIdentity,showMergePreview,validateTimes} from './team-work.js';
+import {identifyRows,markEdit,planMerge,progressReport,readAudit,rowIdentity,showMergePreview,validateTimes,workAuditRows} from './team-work.js';
 import {analysisFields,findingKey,potentialSummary,reviewOptions,scopeDefaults,scopeOptions,workpaper} from './findings.js';
 import {box,button,card,dataTable,download,el,exportSheets,field,notice,select,showDialog,toggleSet} from './ui.js';
 
@@ -111,7 +111,8 @@ export function renderWork(target,state) {
   const mode=modes.some(([k])=>k===state.section)?state.section:(state.role==='Pemeriksa'?'kkp':'kka');
   const setYear=select(pkg.years,state.year,v=>{state.year=v;state.repaint();},'Tahun pajak');
   const save=()=>download(new Blob([JSON.stringify({format:'SCV2-KERJA',versi:1,paket:pkg.report.manifestHash,tahun:state.year,rows:work.rows,drafts:work.drafts,
-    scopes:work.scopes,analysis:work.analysis,dispositions:work.dispositions,simulation:work.simulation,indexNotes:work.indexNotes,indexDocuments:work.indexDocuments,editTimes:work.editTimes},null,2)],{type:'application/json'}),outputFilename('Berkas-kerja-'+state.year,'json',wp));
+    scopes:work.scopes,analysis:work.analysis,dispositions:work.dispositions,simulation:work.simulation,indexNotes:work.indexNotes,indexDocuments:work.indexDocuments,
+    editTimes:work.editTimes,auditLog:readAudit(work.auditLog,work.editTimes)},null,2)],{type:'application/json'}),outputFilename('Berkas-kerja-'+state.year,'json',wp));
   const picker=el('input');picker.type='file';picker.accept='.json';picker.className='hidden-file';
   picker.onchange=async()=>{
     const file=picker.files?.[0],expectedYear=state.year;if(!file)return;
@@ -134,6 +135,7 @@ export function renderWork(target,state) {
       if(v.drafts.some(d=>d.npwp!==pkg.manifest.wp?.npwp||d.year!==state.year))throw Error('Berita acara menggunakan WP atau tahun lain.');
       const data={rows:incoming,drafts:v.drafts,scopes,analysis,dispositions,simulation,indexNotes,indexDocuments};
       data.editTimes=validateTimes(v.editTimes,data);
+      data.auditLog=readAudit(v.auditLog,data.editTimes);
       const apply=(result,merged=false)=>{
         if(merged){
           try{result.indexDocuments=validateIndexDocuments(result.indexDocuments,index(),state.year);}
@@ -151,9 +153,11 @@ export function renderWork(target,state) {
   target.append(card('Kertas Kerja',box('toolbar',setYear,button('Unduh berkas kerja',save),button('Buka berkas kerja',()=>picker.click()),picker),toggleSet(modes,mode,s=>state.go('kerja',s))));
   if(!pkg.report.valid){target.append(card('Integritas paket perlu diperiksa',el('p','Buka rincian pada Muat paket sebelum menyusun kertas kerja.')));return;}
   const progress=progressReport(pkg,state.year,work,index());
+  const showAudit=()=>showDialog('Jejak audit berkas kerja',dataTable(workAuditRows(work),{wp,name:'Riwayat perubahan',empty:'Belum ada perubahan tercatat.'}));
   target.append(card('Kemajuan pekerjaan '+state.year,el('p',progress.total?progress.done+' dari '+progress.total+' butir dan baris telah dikerjakan ('+progress.percent+'%).':'Belum ada butir atau baris KKP untuk tahun ini.'),
     el('p',progress.counts.map(([name,n,all])=>name+' '+n+'/'+all).join(' · '),'hint'),
-    button('Excel laporan progres',()=>exportSheets(progress.sheets,'Kemajuan-WP-'+state.year,wp))));
+    button('Excel laporan progres',()=>exportSheets(progress.sheets,'Kemajuan-WP-'+state.year,wp)),
+    button('Lihat jejak audit',showAudit)));
   if(mode==='ba'){renderDrafts(target,state,pkg,work);return;}
   if(mode==='sim'){renderSanksi(target,state,work);return;}
   if(mode==='kkp')renderIndex(target,state,work,index());
@@ -162,7 +166,7 @@ export function renderWork(target,state) {
   const doc=output();
   const title=doc.title;
   const controls=box('toolbar',button('Tambah butir',()=>edit(target,work,{},null,state.repaint),''),
-    button('Excel kertas kerja',()=>exportSheets(output().sheets,mode.toUpperCase()+'-'+state.year,wp)),button('Word',async()=>{
+    button('Excel kertas kerja',()=>exportSheets(output().sheets,mode.toUpperCase()+'-'+state.year,wp,mode==='kka'?'L-0':undefined)),button('Word',async()=>{
     const name=outputFilename(mode.toUpperCase()+'-'+state.year,'docx',wp);
     try{download(await createDocx(output()),name);}catch(e){notice(e.message,true);}
   }),button('Cetak / PDF',()=>printOutput(output())));
@@ -175,7 +179,7 @@ export function renderWork(target,state) {
   if(mode==='kka'){
     const grid=box('formgrid');
     for(const [key,title] of Object.entries(analysisFields)){
-      const input=el('textarea');input.value=work.analysis[key]??'';input.oninput=()=>{work.analysis[key]=input.value;markEdit(work,'analysis',key);};
+      const input=el('textarea');input.value=work.analysis[key]??'';input.oninput=()=>{work.analysis[key]=input.value;};input.onchange=()=>markEdit(work,'analysis',key);
       grid.append(field(title,input));
     }
     target.append(card('Kriteria dan usulan KKA',grid));

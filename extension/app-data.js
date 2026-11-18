@@ -29,9 +29,9 @@ export function readCaptureId(input) {
   }
   return owner;
 }
-export function parseDelimited(input) {
+export function delimitedRows(input, headerLine, keepEmpty=false) {
   const text = input.replace(/^\uFEFF/,'');
-  const first = text.split(/\r?\n/,1)[0];
+  const first = headerLine ?? text.split(/\r?\n/,1)[0];
   const delimiters = [',',';','\t'];
   const counts = delimiters.map(delimiter => {
     let quoted=false, count=0;
@@ -55,7 +55,7 @@ export function parseDelimited(input) {
     else if (!quoted && (c === '\r' || c === '\n')) {
       if (c === '\r' && text[i+1] === '\n') i++;
       cells.push(field);
-      if (cells.some(v => v.trim())) rows.push(cells);
+      if (keepEmpty||cells.some(v => v.trim())) rows.push(cells);
       field = ''; cells = [];
     } else field += c;
   }
@@ -63,6 +63,10 @@ export function parseDelimited(input) {
   cells.push(field);
   if (cells.some(v => v.trim())) rows.push(cells);
   if (!rows.length) throw new Error('CSV kosong.');
+  return rows;
+}
+export function parseDelimited(input) {
+  const rows = delimitedRows(input);
   const [declaredHeader,...data] = rows;
   const caseExportFields=['CaseNumber','MainTaxpayerTIN','MainTaxpayerName','CaseTypeName','CaseStatus','CaseSource',
     'CreatedDate','CreatedByUser','IsSuspended','WorkflowStep','TopDueDate','EndDate','TaxRegion','TaxOffice'];

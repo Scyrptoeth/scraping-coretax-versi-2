@@ -5,7 +5,7 @@ import {createRequire} from 'node:module';
 import {resolve} from 'node:path';
 import {createPackage,readPackage} from '../extension/archive/package.js';
 import {decodeText,readZip} from '../extension/archive/zip.js';
-import {indexPackage} from '../extension/analisis/model.js';
+import {indexPackage,rowsOf} from '../extension/analisis/model.js';
 
 const dir=process.env.VERITAX_FIXTURES;
 if(!dir)throw Error('Set VERITAX_FIXTURES to the directory containing the four fictitious packages.');
@@ -46,6 +46,23 @@ try{
         .filter({has:page.getByRole('cell',{name:form.version?'Pembetulan '+form.version:'Normal',exact:true})}).getByRole('button',{name:'Buka'}).click();
       const dialog=page.getByRole('dialog');await dialog.getByRole('heading',{name:'Induk',exact:true}).waitFor();
       const part=dialog.getByRole('combobox',{name:'Induk / lampiran'});assert.equal(await part.locator('option').count(),form.parts.size);
+      if(kind==='PPH2126'||kind==='UNIFIKASI'){
+        const parent=rowsOf(form.parts.get('induk'))[0],unified=kind==='UNIFIKASI';
+        const main=dialog.getByRole('table',{name:'Ringkasan induk',exact:true});
+        const key=unified?'TotalWithholding':'A21IncomeTaxWithheld';
+        const amount=main.getByRole('row').filter({has:page.getByRole('cell',{name:key,exact:true})});
+        await amount.getByRole('cell',{name:parent[key].toLocaleString('id-ID'),exact:true}).waitFor();
+        const name=unified?'PPh per pasal dan rincian objek':'Bruto dan PPh menurut lampiran pada induk';
+        const detail=dialog.getByRole('table',{name,exact:true});
+        const value=unified?parent.IncomeTaxes[0].data.TotalIncomeTaxPaid:parent.Form1A.GrossIncome;
+        await detail.getByRole('cell',{name:value.toLocaleString('id-ID'),exact:true}).first().waitFor();
+        const annex=unified?'d1-bpu':'l1a',evidence=dialog.getByRole('table',{name:'Bukti pada lampiran versi ini'});
+        await evidence.getByRole('row').filter({has:page.getByRole('cell',{name:annex,exact:true})}).getByRole('button',{name:'Buka'}).click();
+        assert.equal(await part.inputValue(),annex);await part.selectOption('induk');
+        const [download]=await Promise.all([page.waitForEvent('download'),dialog.getByRole('button',{name:'Excel formulir',exact:true}).click()]);
+        const workbook=await readZip(await readFile(await download.path())),sheet=decodeText(workbook.get('xl/worksheets/sheet1.xml').data);
+        assert.ok(sheet.includes(name));assert.ok(sheet.includes('<v>'+value+'</v>'));assert.ok(sheet.includes('<v>'+parent[key]+'</v>'));
+      }
       const keyword={PPN:'VATUnderOrOverPaid',PPH2126:'A21IncomeTaxWithheld',UNIFIKASI:'TotalWithholding',BADAN:'MainFormData',OP:'UnderOrOverPaymentTax'}[kind];
       await dialog.getByRole('searchbox',{name:'Cari di seluruh bagian SPT'}).fill(keyword);
       const hits=dialog.getByRole('table',{name:'Hasil pencarian formulir'});await hits.getByRole('button',{name:'Buka'}).first().click();
@@ -57,7 +74,7 @@ try{
       const selected=page.waitForEvent('download');await dialog.getByRole('button',{name:'Excel data mentah'}).click();
       const download=await selected;const wb=await readZip(await readFile(await download.path()));
       const sheets=decodeText(wb.get('xl/workbook.xml').data);
-      assert.equal((sheets.match(/<sheet /g)||[]).length,form.parts.size);
+      assert.equal((sheets.match(/<sheet name="(?!Daftar Isi")/g)||[]).length,form.parts.size);
       assert.ok(decodeText(wb.get('xl/worksheets/sheet1.xml').data).includes(form.parts.get('induk').path));
       if(form.amended && pkg.forms.filter(f=>f.type===kind&&f.period===form.period).length>1){
         await dialog.getByRole('button',{name:'Bandingkan versi'}).click();await dialog.getByRole('combobox',{name:'Versi pembanding'}).waitFor();
@@ -140,5 +157,40 @@ try{
     await drawer.getByRole('button',{name:'Tutup',exact:true}).click();
   }
   await coveragePage.close();assert.deepEqual(errors,[]);
+  const withholdingPage=await browser.newPage({acceptDownloads:true});
+  withholdingPage.on('pageerror',e=>errors.push(e.message));
+  const nested='TotalGrossIncomeAndIncomeTaxBorneByGovernmentAndIncomeTaxWithheld';
+  const revisions=[];
+  for(const [i,gross,tax] of [[0,140,14],[1,110,11]]){
+    const path='spt/PPH2126/2025-02/p0'+i+'_pphuji'+i+'/';
+    const parent={Form1A:{[nested]:{GrossIncome:gross,IncomeTax:tax}},A21IncomeTaxWithheld:tax};
+    if(i)parent.A21IncomeTaxUnderpaidOverpaidDueToAmendment=-3;
+    revisions.push({path:path+'induk.json',cap:{sumber:'sptisi',lengkap:true},pages:[{Payload:{FormData:JSON.stringify(parent)}}]},
+      {path:path+'l1a.json',cap:{sumber:'sptisi',lengkap:true},pages:[{Payload:{Data:[{WithholdingSlipsNumber:'BUKTI-UJI',GrossIncome:gross,IncomeTax:tax}],TotalRecords:1}}]});
+  }
+  const demo=await createPackage({meta:{wp:{npwp:'0000000000000092',nama:'WP fiktif bukti potong'}},entries:revisions});
+  await withholdingPage.goto('http://127.0.0.1:'+server.address().port+'/analisis/index.html');
+  await withholdingPage.locator('#filePkg').setInputFiles({name:'uji-pembetulan-potong.zip',mimeType:'application/zip',buffer:Buffer.from(await demo.arrayBuffer())});
+  await withholdingPage.getByText('Konsisten · Seluruh sidik jari yang diperiksa cocok.').waitFor();
+  await withholdingPage.getByRole('navigation').getByRole('button',{name:'SPT',exact:true}).click();
+  await withholdingPage.getByRole('table',{name:'Daftar SPT',exact:true}).getByRole('button',{name:'Buka'}).first().click();
+  const drawer=withholdingPage.getByRole('dialog'),root=drawer.getByRole('table',{name:'Ringkasan induk',exact:true});
+  await root.getByRole('cell',{name:'-3',exact:true}).waitFor();
+  const slips=drawer.getByRole('table',{name:'Bukti pada lampiran versi ini'});
+  await slips.getByRole('row').filter({has:withholdingPage.getByRole('cell',{name:'l1a',exact:true})}).getByRole('cell',{name:'110',exact:true}).waitFor();
+  await drawer.getByRole('combobox',{name:'Versi',exact:true}).selectOption({label:'Normal'});
+  await slips.getByRole('row').filter({has:withholdingPage.getByRole('cell',{name:'l1a',exact:true})}).getByRole('cell',{name:'140',exact:true}).waitFor();
+  await drawer.getByRole('button',{name:'Tutup',exact:true}).click();
+  await withholdingPage.getByRole('button',{name:'Ringkasan SPT',exact:true}).click();
+  const monthly=withholdingPage.getByRole('table',{name:'Potong pungut',exact:true});
+  await monthly.waitFor();
+  assert.equal(await monthly.locator('tbody tr').count(),1);await monthly.getByRole('cell',{name:'110',exact:true}).waitFor();
+  await monthly.getByRole('cell',{name:'Pembetulan 1',exact:true}).waitFor();
+  const downloads=withholdingPage.waitForEvent('download');
+  await monthly.locator('xpath=ancestor::*[contains(@class,"table-panel")][1]').getByRole('button',{name:'Excel bagian ini'}).click();
+  const exportFile=await downloads,exportBook=await readZip(await readFile(await exportFile.path()));
+  const financialSheet=decodeText(exportBook.get('xl/worksheets/sheet1.xml').data);
+  assert.match(financialSheet,/<v>110<\/v>/);assert.doesNotMatch(financialSheet,/<v>140<\/v>/);assert.ok(financialSheet.includes(nested));
+  await withholdingPage.close();assert.deepEqual(errors,[]);
   console.log('SPT UI passed: 4 fictitious archives, 5 form types, annexes, content search, selected and combined export, print, revisions, reporting calendar and 16 VAT columns.');
 }finally{await browser.close();await new Promise(resolve=>server.close(resolve));}

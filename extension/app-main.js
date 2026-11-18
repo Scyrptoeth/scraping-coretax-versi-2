@@ -13,7 +13,7 @@ const coretax = 'https://coretax.intranet.pajak.go.id';
 const ext = globalThis.chrome?.runtime?.id ? globalThis.chrome : null;
 const queue = [], messages = [];
 let tables = [], tabUrl = '', stored = [], busy = false, paused = false, stop = false, noticeTimer;
-let paging=false,pagingPaused=false,pagingStopped=false,batch;
+let paging=false,pagingPaused=false,pagingStopped=false,batch,autoSpt=false;
 const sleep = ms => new Promise(resolve => setTimeout(resolve,ms));
 const checked = id => [...$(id).querySelectorAll('input:checked')].map(el => el.value);
 const val = id => $(id).value.trim();
@@ -139,7 +139,8 @@ function addEntry(info,page,name,origin) {
   if(busy) throw Error('Selesaikan tarikan aktif sebelum menambahkan sumber.');
   if (info.wp !== captureOwner() || queue.some(entry => entry.wp !== info.wp)) throw Error('NPWP berubah saat membaca sumber. Periksa kembali WP dan ulangi pembacaan.');
   const rows = rowsOf(page);
-  if(!rows.length) throw Error('Tabel kosong. Belum ada baris yang dapat ditambahkan.');
+  if(!rows.length && !(info.detailProof && info.proof?.nolPadaSumber && page.Payload?.TotalRecords===0))
+    throw Error('Tabel kosong. Belum ada baris yang dapat ditambahkan.');
   checkIdentity(rows,info.wp);
   if(info.period===null && rows.some(row=>row && typeof row==='object' && Object.entries(row).some(([key,value])=>
     ['masapajak','periodepajak','taxperiod','taxperiodcode','tahunpajak','taxyear'].includes(key.toLowerCase().replace(/[^a-z]/g,'')) && value!=null && String(value).trim()!==''))) {
@@ -185,7 +186,7 @@ function pageOptions() {
   $('pagination-options').hidden=!entry?.canAdvance;
 }
 async function addTable() {
-  if (busy || paging || batch.active) throw new Error('Selesaikan tarikan aktif terlebih dahulu.');
+  if (busy || paging || autoSpt || batch.active) throw new Error('Selesaikan tarikan aktif terlebih dahulu.');
   const info = scope(), tab = await tabNow(), entry = tables.find(x => String(x.index) === val('table'));
   if (!entry) throw new Error('Pilih tabel terlebih dahulu.');
   if (!entry.rows) throw new Error('Tabel kosong. Belum ada baris yang dapat ditambahkan.');
@@ -199,7 +200,7 @@ async function addTable() {
   $('scope-ok').checked = false; scopeChanged(); message('Tabel ditambahkan ke antrean.');
 }
 async function collectPages() {
-  if (busy || paging || batch.active) throw new Error('Selesaikan tarikan aktif terlebih dahulu.');
+  if (busy || paging || autoSpt || batch.active) throw new Error('Selesaikan tarikan aktif terlebih dahulu.');
   const limit=Number(val('page-limit'));
   if(!Number.isInteger(limit) || limit<1 || limit>100) throw new Error('Pilih batas antara 1 dan 100 halaman.');
   const info=scope(),tab=await tabNow(),entry=tables.find(t=>String(t.index)===val('table'));
@@ -254,7 +255,7 @@ async function collectPages() {
 async function importFiles() {
   const files = [...$('source-files').files]; $('source-files').value = '';
   if (!files.length) return;
-  if (busy || paging || batch.active) throw new Error('Selesaikan tarikan aktif terlebih dahulu.');
+  if (busy || paging || autoSpt || batch.active) throw new Error('Selesaikan tarikan aktif terlebih dahulu.');
   const info = scope();
   for (const file of files) {
     try { addEntry(info,filePage(file.name,await file.text()),file.name,'Ekspor lokal'); }
@@ -326,6 +327,14 @@ function showSptPlan(box,{counts,documents}) {
     hint.textContent='Setiap versi memerlukan induk. Lampiran ikut dihitung jika namanya tersedia di sumber yang ditambahkan.';
     panel.append(hint);
     const navigate=Boolean(ext && checked('sources').includes('sptisi'));
+    const pageLimit=document.createElement('input');
+    if(navigate){
+      pageLimit.type='number';pageLimit.min='1';pageLimit.max='100';pageLimit.value='100';
+      const label=document.createElement('label');label.append('Halaman maksimal per bagian SPT',pageLimit);panel.append(label);
+      const pagingHint=document.createElement('p');
+      pagingHint.textContent='Pembacaan dimulai dari halaman yang sedang tampil pada setiap bagian.';
+      panel.append(pagingHint);
+    }
     if(ext && !navigate){
       const instructions=document.createElement('p');
       instructions.textContent='Untuk mencari induk atau lampiran di Coretax, centang Induk dan lampiran SPT lalu buka kembali pratinjau.';
@@ -341,7 +350,7 @@ function showSptPlan(box,{counts,documents}) {
         const doc=documents[cursor];
         const parts=status=>doc.parts.filter(part=>part.status===status).map(part=>part.name).join(', ') || '—';
         captureRow(body,[labels.get(doc.type) || doc.type,doc.period,doc.revision,parts('ready'),parts('pending'),parts('retry'),
-          ...(navigate?[sptViewControls(doc)]:[])]);
+          ...(navigate?[sptViewControls(doc,pageLimit)]:[])]);
       }
       more.hidden=cursor===documents.length;
     }
@@ -349,7 +358,7 @@ function showSptPlan(box,{counts,documents}) {
     appendRows();
   });
 }
-function sptViewControls(doc) {
+function sptViewControls(doc,pageLimit) {
   const block=document.createElement('div'),actions=document.createElement('div'),status=document.createElement('span');
   status.setAttribute('role','status');
   const wp=captureOwner(),range=period(),periodStart={y:Number(val('year-start')),m:Number(val('month-start'))},
@@ -360,32 +369,41 @@ function sptViewControls(doc) {
   function check() {
     if (!block.isConnected || busy || paging || batch.active || wp!==captureOwner() || range!==period() ||
         !checked('forms').includes(doc.type) || !checked('sources').includes('sptisi') || !$('consent').checked)
-      throw Error('Cakupan berubah. Buka kembali pratinjau WP.');
+      throw Object.assign(Error('Cakupan berubah. Buka kembali pratinjau WP.'),{code:'SCOPE'});
   }
+  const proofFor=result=>({recordId:result.recordId,receipt:result.receipt,period:doc.period,revision:doc.revision,
+    part:result.part,label:result.label,docKey:doc.key});
+  const withSptLock=run=>navigator.locks.request('scv2-spt-navigation',{ifAvailable:true},lock=>{
+    if(!lock)throw Error('Tunggu sampai pembacaan SPT yang sedang berjalan selesai.');
+    check();return run();
+  });
   const open=button('Cari tampilan SPT',async()=>{
+    if(autoSpt)throw Error('Tunggu sampai pembacaan SPT selesai.');
     check();open.disabled=true;actions.replaceChildren();status.textContent='Mencocokkan daftar dan tampilan SPT…';
     try {
-      const tab=await tabNow();
-      const view=await navigation.inspect(tab.id) || await navigation.open(tab.id);
+      const view=await withSptLock(async()=>{
+        const tab=await tabNow();
+        return await navigation.inspect(tab.id) || await navigation.open(tab.id);
+      });
       check();
       if(!view.sections.length){status.textContent='Identitas SPT cocok. Nama induk atau lampiran belum terbaca pada tampilan ini.';return;}
       status.textContent='Identitas SPT cocok. Pilih bagian yang ingin disimpan dari halaman ini.';
       const select=document.createElement('select');select.setAttribute('aria-label','Bagian SPT pada sumber');
       choices(select,view.sections.map(s=>[s.part,s.label]));
       const save=button('Tambahkan bagian tampak',async()=>{
-        check(); save.disabled=true;
+        if(autoSpt)throw Error('Tunggu sampai pembacaan SPT selesai.');
+        check(); save.disabled=true;status.textContent='Membaca bagian SPT…';
         try {
-          const result=await navigation.capture(view,select.value);
+          const result=await withSptLock(()=>navigation.capture(view,select.value));
           check();
-          const proof={recordId:result.recordId,receipt:result.receipt,period:doc.period,revision:doc.revision,
-            part:result.part,label:result.label,docKey:doc.key};
-          const page={Payload:{Data:result.rows}};
+          const proof=proofFor(result);
+          const page={Payload:{Data:result.rows,...(result.zero?{TotalRecords:0}:{})}};
           const existing=queue.filter(e=>e.detailProof?.docKey===doc.key && e.detailProof.part===result.part &&
             (e.detailProof.recordId && proof.recordId ? e.detailProof.recordId===proof.recordId : e.detailProof.receipt && e.detailProof.receipt===proof.receipt));
           if(existing.some(e=>JSON.stringify(e.page)===JSON.stringify(page))) {
             status.textContent='Cuplikan yang sama sudah ada dalam antrean.';return;
           }
-          addEntry({wp,source:'sptisi',spt:doc.type,period:range,detailProof:proof},page,result.label,'Satu halaman tampilan SPT');
+          addEntry({wp,source:'sptisi',spt:doc.type,period:range,detailProof:proof,...(result.zero?{proof:{nolPadaSumber:true}}:{})},page,result.label,'Satu halaman tampilan SPT');
           renderQueue();status.textContent=existing.length?'Isi bagian berubah. Cuplikan baru dan cuplikan sebelumnya disimpan terpisah untuk dibandingkan.':
             result.rows.length+' baris ditambahkan sebagai cuplikan satu halaman.';
         } catch(error){status.textContent=errorText(error);} finally {save.disabled=false;}
@@ -395,11 +413,59 @@ function sptViewControls(doc) {
       status.textContent=errorText(error);
     } finally {open.disabled=false;}
   });
-  block.append(open,status,actions);
+  const auto=button('Ambil induk dan lampiran',async()=>{
+    check();
+    const limit=Number(pageLimit.value);
+    if(!Number.isInteger(limit) || limit<1 || limit>100)throw Error('Pilih batas 1–100 halaman per bagian.');
+    if(autoSpt)throw Error('Pembacaan SPT masih berjalan.');
+    await withSptLock(async()=>{
+      autoSpt=true;auto.disabled=open.disabled=true;jobButtons();actions.replaceChildren();
+      let paused=false,stopped=false,pages=0,previous=null,first=null;
+      const observed=new Set(),issues=[],startTab=val('tab');
+      const pause=button('Jeda pembacaan SPT',()=>{paused=!paused;pause.textContent=paused?'Lanjutkan pembacaan SPT':'Jeda pembacaan SPT';
+        status.textContent=paused?'Pembacaan dijeda pada batas langkah.':'Pembacaan dilanjutkan.';});
+      const halt=button('Hentikan pembacaan SPT',()=>{stopped=true;halt.disabled=true;});
+      actions.append(pause,halt);
+      const checkpoint=async()=>{
+        do {
+          check();
+          if(val('tab')!==startTab)throw Object.assign(Error('Tab sumber yang dipilih berubah.'),{code:'SCOPE'});
+          if(stopped)throw Object.assign(Error('Pembacaan dihentikan.'),{code:'STOP'});
+          if(paused)await sleep(100);
+        } while(paused);
+      };
+      try {
+        status.textContent='Mencocokkan WP dan versi SPT…';
+        const tab=await tabNow(),view=await navigation.inspect(tab.id) || await navigation.open(tab.id);
+        await navigation.collect(view,{limit,checkpoint,onPage(result){
+          const proof={urutan:{id:result.pass,halaman:result.page},columns:result.columns,
+            morePagesAvailable:result.paging==='next',...(result.zero?{nolPadaSumber:true}:{})};
+          const info={wp,source:'sptisi',spt:doc.type,period:range,detailProof:proofFor(result),proof};
+          const page={Payload:{Data:result.rows,...(result.zero?{TotalRecords:0}:{})}};
+          addEntry(info,page,result.label+' · halaman pengambilan '+result.page,'Tabel tampak');
+          const entry=queue.at(-1);first ||= entry;
+          if(previous?.proof.urutan.id===result.pass)delete previous.proof.morePagesAvailable;
+          previous=entry;pages++;observed.add(result.part);renderQueue();
+          status.textContent=result.label+' · halaman '+result.page+' tersimpan.';
+        },onIssue(section,error){issues.push(section.label+' · '+errorText(error));}});
+      } catch(error){issues.push(errorText(error));}
+      finally {
+        const note=observed.size+' bagian dan '+pages+' halaman terbaca.';
+        status.textContent=[note,...issues].join(' ');
+        if(issues.length){
+          const source=first || queue.find(e=>isSptList(e.source) && e.wp===wp && e.period===range);
+          if(source)(source.sptAutoChecks ||= []).push({type:doc.type,pesan:doc.period+' · pembetulan '+doc.revision+' · '+status.textContent});
+          message(status.textContent,true);
+        }
+        actions.replaceChildren();autoSpt=false;auto.disabled=open.disabled=false;jobButtons();
+      }
+    });
+  });
+  block.append(open,auto,status,actions);
   return block;
 }
 function jobButtons() {
-  const disabled=busy || !$('consent').checked || !val('ids') || !$('ids').validity.valid;
+  const disabled=busy || autoSpt || !$('consent').checked || !val('ids') || !$('ids').validity.valid;
   $('start').disabled = disabled; $('preview').disabled = disabled;
   $('pause').hidden = !busy; $('pause').textContent = paused ? 'Lanjutkan' : 'Jeda';
   $('stop').hidden = !busy; $('progress').hidden = !busy;
@@ -410,10 +476,10 @@ function pendingPlans(record) {
   return record.plan ? [record.plan] : record.plans.slice(record.cursor);
 }
 async function run(resume) {
-  if (busy || paging || batch.active) return;
+  if (busy || paging || autoSpt || batch.active) return;
   await navigator.locks.request('scv2-capture-job',{ifAvailable:true},async lock => {
     if (!lock) throw new Error('Tarikan sedang berjalan pada tab penarik lainnya.');
-    if (busy || paging || batch.active) return;
+    if (busy || paging || autoSpt || batch.active) return;
     busy = true; paused = false; stop = false;
     try {
       renderQueue();
@@ -439,6 +505,8 @@ async function run(resume) {
         if(stop) break;
         if(queued.wp!==plan.wp) throw Error('Antrean tersimpan memuat sumber untuk WP yang berbeda.');
         const source=selectSptListRows(queued,queued.spt?[queued.spt]:job.meta.opsi.jenisSpt || forms.map(([code])=>code));
+        for(const note of queued.sptAutoChecks || [])if(job.meta.opsi.jenisSpt?.includes(note.type))
+          checks.push({tingkat:'SEDANG',kode:'SPT-TAMPILAN',pesan:note.pesan});
         progress.value++;
         if(!source) continue;
         checkIdentity(rowsOf(source.page),plan.wp);
@@ -630,7 +698,7 @@ function init() {
     try{requireSourceConfirmation();}
     catch(error){event.preventDefault();message(error.message,true);}
   });
-  batch=batchCollector({ext,origin:coretax,isBusy:()=>Boolean(busy || paging),enqueue:addEntry,refresh:scopeChanged,log:message,context:()=>{
+  batch=batchCollector({ext,origin:coretax,isBusy:()=>Boolean(busy || paging || autoSpt),enqueue:addEntry,refresh:scopeChanged,log:message,context:()=>{
     const wp=captureOwner(), range=period();
     requireSourceConfirmation();
     const [from,to]=range.split(' s.d. ');

@@ -3,7 +3,7 @@ import { readFile, readdir } from "node:fs/promises";
 import { test } from "node:test";
 import { createPackage, readPackage, sha256 } from "../extension/archive/package.js";
 import { readZip, writeZip, decodeText, utf8 } from "../extension/archive/zip.js";
-import { createCsv, createXlsx } from "../extension/archive/table.js";
+import { createCsv, createXlsx, numericReference, sheetLink } from "../extension/archive/table.js";
 
 const meta = {
   wp: { npwp: "0000000000000001", nama: "Contoh uji" },
@@ -80,6 +80,24 @@ test("worksheet and CSV exports preserve Unicode, text identifiers and numeric t
   assert.match(first, /<c r="C2"><v>-25<\/v><\/c>/);
   assert.ok(!first.includes("<f>"));
   assert.match(decodeText(zip.get("xl/workbook.xml").data), /\(2\)/);
+});
+
+test("multisheet navigation and numeric references resolve the actual sanitized sheet names", async () => {
+  const source={name:"Lembar O'Brien / sumber",rows:[['Nilai'],[0]]};
+  const duplicate={name:source.name,rows:[['Nilai'],[14]]};
+  const index={name:'Daftar Isi',rows:[[sheetLink(duplicate,'Buka sumber kedua',2),numericReference(duplicate,2,1,14)]]};
+  const fourth={name:'Lainnya',rows:[]};
+  const book=await readZip(await createXlsx({sheets:[source,duplicate,index,fourth]}));
+  const part=n=>decodeText(book.get('xl/worksheets/sheet'+n+'.xml').data);
+  assert.match(decodeText(book.get('xl/workbook.xml').data),/<sheets><sheet name="Daftar Isi" sheetId="5"/);
+  assert.match(part(3),/location="'Lembar O''Brien   sumber \(2\)'!A2"/);
+  assert.match(part(3),/IF\(ISNUMBER\('Lembar O''Brien   sumber \(2\)'!A2\)/);
+  assert.match(part(3),/<v>14<\/v>/);
+  assert.match(part(3),/location="'Daftar Isi'!A1"/);
+  assert.match(part(5),/location="'Daftar Isi \(2\)'!A1"/);
+  assert.equal((part(5).match(/<hyperlink /g)||[]).length,4);
+  assert.ok(!index.rows[0].includes('Kembali ke daftar isi'));
+  await assert.rejects(createXlsx({sheets:[index]}),/Lembar tujuan/);
 });
 
 test("all available local reference fixtures load with valid integrity", async context => {
