@@ -38,6 +38,16 @@ try {
   }
   await page.locator('#ids').fill('0000000000000001\n0000000000000002');
   await page.locator('#officer').fill('Petugas Fiktif');
+  await page.locator('#consent').check();
+  await page.locator('#id-status').getByText(/hanya untuk satu NPWP/).waitFor();
+  assert.equal(await page.locator('#start').isDisabled(),true);
+  assert.equal(await page.locator('#preview').isDisabled(),true);
+  const idFile=text=>({name:'penugasan.txt',mimeType:'text/plain',buffer:Buffer.from(text)});
+  await page.locator('#id-file').setInputFiles(idFile('0000000000000001;0000000000000002'));
+  await page.waitForFunction(()=>document.querySelector('#ids').value==='' && document.querySelector('#start').disabled);
+  await page.locator('#id-file').setInputFiles(idFile('000000000000001\n0000000000000001'));
+  await page.waitForFunction(()=>document.querySelector('#ids').value==='0000000000000001');
+  await page.locator('#consent').uncheck();
   await page.locator('#scope-ok').check();
   await page.locator('#source-files').setInputFiles({name:'keliru.csv',mimeType:'text/csv',buffer:Buffer.from('NPWP,Nilai\n0000000000000002,25')});
   await page.locator('#notice').filter({hasText:'NPWP pada sumber berbeda'}).waitFor();
@@ -45,12 +55,26 @@ try {
   await page.locator('#scope-ok').check();
   await page.locator('#source-files').setInputFiles([input,{...input,name:'duplikat.csv'}]);
   await page.locator('#queue .item').nth(1).waitFor();
+  assert.equal(await page.locator('#ids').getAttribute('readonly'),'');
+  assert.equal(await page.locator('#id-file').isDisabled(),true);
   assert.equal(await page.locator('#start').isEnabled(),false);
   await page.locator('#consent').check(); await page.locator('#preview').click();
-  assert.equal(await page.locator('#preview-box input:checked').count(),1);
-  assert.equal(await page.locator('#preview-box input:disabled').count(),1);
+  const preview=page.getByRole('table',{name:'Pratinjau penarikan',exact:true});
+  const previewValues=await preview.locator('tbody tr > *').allInnerTexts();
+  assert.deepEqual([previewValues[0],previewValues[1],...previewValues.slice(-2)],['0000000000000001','Belum tercantum','2','2']);
+  await page.locator('#preview-box summary').click();
+  assert.equal(await page.getByRole('table',{name:'Sumber yang akan dirakit'}).locator('tbody tr').count(),2);
+  assert.equal(await page.locator('#preview-box input').count(),0);
   await page.locator('#start').click();
   await page.locator('#results button').first().waitFor();
+  await page.setViewportSize({width:390,height:860});
+  const resultRegion=page.getByRole('region',{name:'Tarikan terakhir per WP',exact:true});
+  await resultRegion.focus();
+  assert.ok(await resultRegion.evaluate(region=>{region.scrollLeft=130;return region.scrollWidth>region.clientWidth && region.scrollLeft>0;}));
+  assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
+  const stored=await page.getByRole('table',{name:'Tarikan terakhir per WP',exact:true}).locator('tbody tr > *').allInnerTexts();
+  assert.deepEqual(stored.slice(4,7),['1','1','Tidak ada catatan']);
+  await page.setViewportSize({width:1000,height:770});
   await page.locator('#results').getByText('Unduh paket').click();
   const getDownload=page.waitForEvent('download');
   await page.locator('#package-dialog button[value="ok"]').click();
@@ -75,7 +99,7 @@ try {
   await page.locator('#unlock-pass').fill('wrong'); await page.locator('#unlock-form button').click();
   await page.locator('#notice').filter({hasText:'Kata sandi tidak cocok'}).waitFor();
   await page.locator('#unlock-pass').fill('Password fiktif'); await page.locator('#unlock-form button').click();
-  await page.locator('#results .item').waitFor();
+  await page.getByRole('table',{name:'Tarikan terakhir per WP',exact:true}).waitFor();
   await page.locator('#audit').evaluate(el=>el.closest('details').open=true);
   const auditDownload=page.waitForEvent('download');
   await page.locator('#audit').click();
@@ -134,5 +158,38 @@ try {
   assert.equal(await client.locator('#queue .item').count(),5);
   await client.close(); await fixture.close();
   assert.deepEqual(errors,[]);
-  console.log('Scraper browser passed: responsive form, mixed WP refusal, upload, preview, isolated WP, deduplication, ZIP, vault migration and lock, audit, encrypted handoff, visible DOM, scoped pagination and cross-WP interruption.');
+  const legacy=await browser.newPage();
+  await legacy.goto(origin+'/app.html');
+  await legacy.getByText('Belum ada hasil penarikan.').waitFor();
+  const owners=['0000000000000001','0000000000000002','0000000000000003','0000000000000004'];
+  await legacy.evaluate(async ids=>{
+    const vault=await import('./app-vault.js');
+    const createPlan=wp=>({wp,entries:[{wp,source:'info',spt:'',id:'entry-'+wp,name:'Profil',origin:'Tabel tampak',rows:1,total:wp===ids[1]?2:1,period:'2026-01 s.d. 2026-01',page:{Payload:{Data:[{NPWP:wp,Nilai:'01'}]}}}]});
+    const meta={penarik:{nama:'Penguji sintetis'},penugasan:{nomor:'TEST-0'},periode:'2026-01 s.d. 2026-01',opsi:{lewatiDuplikat:true}};
+    await vault.save([
+      {id:'result-A',value:{kind:'result',meta:{...meta,wp:{npwp:ids[0]}},entries:[]}},
+      {id:'pending-job',value:{id:'pending-job',kind:'job',runId:'legacy',plans:ids.slice(0,3).map(createPlan),cursor:1,meta}},
+      {id:'pending-D',value:{id:'pending-D',kind:'job',runId:'single',plan:createPlan(ids[3]),meta}}
+    ],'Uji migrasi');
+  },owners);
+  await legacy.reload();
+  await legacy.getByRole('button',{name:'Lanjutkan NPWP '+owners[2]}).waitFor();
+  assert.equal(await legacy.locator('#pending-jobs button').count(),3);
+  for(const [index,remaining] of [[2,2],[3,1],[1,0]]) {
+    await legacy.getByRole('button',{name:'Lanjutkan NPWP '+owners[index]}).click();
+    await legacy.waitForFunction(n=>document.querySelectorAll('#pending-jobs button').length===n,remaining);
+    const records=await legacy.evaluate(async()=>(await (await import('./app-vault.js')).items()).filter(r=>r.kind==='result'));
+    assert.equal(records.length,4-remaining);
+    const result=records.find(r=>r.meta.wp.npwp===owners[index]);
+    assert.equal(result.entries.length,1);
+    assert.equal(result.entries[0].pages[0].Payload.Data[0].NPWP,owners[index]);
+    await legacy.reload();await legacy.getByRole('table',{name:'Tarikan terakhir per WP',exact:true}).waitFor();
+  }
+  const latestTable=legacy.getByRole('table',{name:'Tarikan terakhir per WP',exact:true});
+  assert.equal(await latestTable.locator('tbody tr').count(),4);
+  const flagged=latestTable.getByRole('row').filter({hasText:owners[1]});
+  await flagged.locator('summary').getByText('1 catatan').click();
+  await flagged.getByText(/TINGGI.*melaporkan 2 baris.*diterima 1/).waitFor();
+  await latestTable.getByText('Belum tercatat',{exact:true}).waitFor();
+  console.log('Scraper browser passed: one NPWP per capture, rejected multi-owner input and files, scoped pagination, archive and viewer handoff, legacy and current resumes one WP at a time.');
 } finally {await browser.close();await new Promise(resolve => server.close(resolve));}

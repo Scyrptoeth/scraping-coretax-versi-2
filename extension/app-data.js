@@ -19,14 +19,15 @@ export function normalizeId(text) {
   if (!/^\d{15,16}$/.test(stripped)) return null;
   return stripped.padStart(16,'0');
 }
-export function readIds(input) {
-  const result = new Set();
-  for (const token of input.split(/[\n,;]+/).map(s => s.trim()).filter(Boolean)) {
+export function readCaptureId(input) {
+  let owner = '';
+  for (const token of input.split(/[\r\n,;\t]+/).map(s => s.trim()).filter(Boolean)) {
     const id = normalizeId(token);
-    if (!id) throw new Error('Periksa daftar NPWP. Setiap nomor harus berisi 15 atau 16 digit.');
-    result.add(id);
+    if (!id) throw new Error('Masukkan NPWP yang terdiri dari 15 atau 16 digit.');
+    if (owner && owner !== id) throw new Error('Satu tarikan hanya untuk satu NPWP. Masukkan satu NPWP sesuai penugasan.');
+    owner = id;
   }
-  return [...result];
+  return owner;
 }
 export function parseDelimited(input) {
   const text = input.replace(/^\uFEFF/,'');
@@ -124,6 +125,11 @@ export function csvCell(value) {
   let raw = String(value ?? '');
   if (/^[\s]*[=+@-]/.test(raw)) raw = "'" + raw;
   return '"' + raw.replaceAll('"','""') + '"';
+}
+
+// Chrome may reorder dictionary keys when transferring executeScript results.
+export function rowsInColumnOrder(rows,columns) {
+  return rows.map(row=>Object.fromEntries(columns.map(column=>[column,row[column]])));
 }
 
 // This function runs in the tab's isolated world and must remain self-contained.

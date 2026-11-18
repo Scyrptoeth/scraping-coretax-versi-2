@@ -1,8 +1,8 @@
 # Scraping Coretax Versi 2
 
-**Prarilis 0.2.0.** Ekstensi Chrome untuk mengumpulkan tabel yang terlihat pada halaman Coretax atau membaca ekspor JSON/CSV, lalu menelusuri hasilnya di pemutar lokal. Pengguna dapat memilih beberapa tabel di tab yang sudah terbuka, membandingkan SPT dan memilih temuan untuk kertas kerja. Data WP diproses di perangkat pengguna.
+**Prarilis 0.3.0.** Setiap tarikan memakai satu NPWP. Pilih satu atau beberapa tabel untuk WP itu di tab Coretax yang sudah terbuka, atau tambahkan ekspor JSON/CSV. Pemutar lokal membantu mencocokkan baris, membandingkan SPT dan memilih temuan untuk kertas kerja. Beberapa paket yang sudah disimpan dapat dibuka untuk perbandingan.
 
-[Unduh dan pasang melalui GitHub Pages](https://scyrptoeth.github.io/scraping-coretax-versi-2/) · [Situs Vercel](https://scraping-coretax-versi-2.vercel.app/) · [Paket prarilis GitHub](https://github.com/Scyrptoeth/scraping-coretax-versi-2/releases/tag/v0.2.0)
+[Unduh dan pasang melalui GitHub Pages](https://scyrptoeth.github.io/scraping-coretax-versi-2/) · [Situs Vercel](https://scraping-coretax-versi-2.vercel.app/) · [Paket prarilis GitHub](https://github.com/Scyrptoeth/scraping-coretax-versi-2/releases/tag/v0.3.0)
 
 ## Mencoba ekstensi
 

@@ -4,7 +4,9 @@ import {renderDashboard,renderEntries,renderSpt} from './analysis-views.js';
 import {indexPackage,count,label,typeNames} from './model.js';
 import {indexedProfileSections} from './profile.js';
 import {openForm} from './spt-forms.js';
-import {box,button,card,dataTable,detail,el,notice,select,showDialog} from './ui.js';
+import {qualityNotes,renderQuality} from './quality.js';
+import {buildIndex} from './kkp-index.js';
+import {box,button,card,detail,el,notice,select,showDialog} from './ui.js';
 import {renderWork} from './work.js';
 
 const tabs=[['muat','Muat paket'],['ringkas','Dasbor'],['probis','Probis'],['profil','Profil WP'],['spt','SPT'],['kerja','Kertas Kerja'],['peraturan','Peraturan'],['tabel','Data mentah'],['bantuan','Bantuan']];
@@ -33,7 +35,7 @@ function applyTheme(){
 applyTheme();matchMedia('(prefers-color-scheme:dark)').addEventListener('change',applyTheme);matchMedia('(max-width:1600px)').addEventListener('change',applyTheme);
 function go(tab,section=''){
   if(!tabs.some(([key])=>key===tab))return;
-  const hash='#/'+tab+(section?'/'+encodeURIComponent(section):'');
+  const hash=tab==='muat' && section==='mutu'?'#/mutu':'#/'+tab+(section?'/'+encodeURIComponent(section):'');
   if(location.hash===hash)render();else location.hash=hash;
 }
 function route(){
@@ -41,7 +43,7 @@ function route(){
   const key=({mutu:'muat',klu:'probis'})[raw]||raw;
   if(!tabs.some(([t])=>t===key)||(!state.pkg&&needsPackage.has(key)))return ['muat',''];
   let section='';try{section=decodeURIComponent(sub||'');}catch{/* Invalid hash can be ignored. */}
-  return [key,section];
+  return [key,raw==='mutu'?'mutu':raw==='klu'?'klu':section];
 }
 window.addEventListener('hashchange',()=>{openFormHash='';if($('dialog').open)$('dialog').close();render();});
 function preferences(){
@@ -56,6 +58,15 @@ function search(){
   const inp=el('input');inp.type='search';inp.placeholder='Menu, bagian profil, jenis dan masa SPT, atau berkas';inp.setAttribute('aria-label','Kata kunci pencarian cepat');const results=box('quick');let hits=[],index=0,limit=12;
   const routes=tabs.filter(([k])=>state.pkg||!needsPackage.has(k)).map(([k,title])=>({title,act:()=>go(k)}));
   if(state.pkg){
+    routes.push({title:'Rincian mutu data',aliases:'pencocokan baris CSV dan isi tabel',act:()=>go('muat','mutu')});
+    if(state.pkg.report.valid && state.year){
+      const workKey=JSON.stringify([state.pkg.report.manifestHash||state.pkg.fileKey,state.year]);
+      const work=state.work.get(workKey)||{rows:[],drafts:[]};
+      state.work.set(workKey,work);
+      work.indexData??=buildIndex(state.pkg,state.year);
+      for(const group of work.indexData.groups)routes.push({title:'KKP '+group.ref+' · '+group.title,aliases:group.tax,
+        act:()=>{work.activeIndex=group.key;go('kerja','kkp');}});
+    }
     for(const [sec,text] of [['ringkasan','Ringkasan dasbor'],['butir','Semua butir'],['keuangan','Keuangan'],['ppn','PPN & lawan'],['grafik','Laporan grafik'],['potput','PPh potput & buku besar'],['banding','Perbandingan antar-WP']])routes.push({title:text,act:()=>go('ringkas',sec)});
     for(const [tab,section,title] of [['spt','daftar','Daftar dan isi SPT'],['spt','ringkasan','Ringkasan SPT'],['kerja','kkp','Kertas Kerja Pemeriksaan (KKP)'],['kerja','kka','Kertas Kerja Analisis (KKA)'],['kerja','sim','Simulasi sanksi'],['kerja','ba','Berita acara']]){
       routes.push({title,act:()=>go(tab,section)});
@@ -149,7 +160,9 @@ function importView(root){
   const quality=card('Mutu data · paket aktif',status,summary,detail('SHA-256 manifest',hash),detail('Berita acara',el('pre',p.minutes||'Belum tersedia.')));
   if(p.report.issues.length){const ul=el('ul');for(const message of p.report.issues)ul.append(el('li',message));quality.append(ul);}
   const partial=p.entries.filter(e=>e.cap?.lengkap===false);quality.append(el('p',partial.length+' berkas ditandai belum lengkap oleh sumber.'));
-  if(partial.length)quality.append(dataTable(partial.map(e=>({Berkas:e.path,Keterangan:(e.cap.catatan||[]).join(' ')})),{name:'Berkas belum lengkap'}));
+  const notes=qualityNotes(p);
+  quality.append(el('p',['Kritis','Peringatan','Info'].map(level=>level+' '+notes.filter(n=>n.Tingkat===level).length).join(' · '),'hint'),
+    button('Rincian mutu data',()=>go('muat','mutu')));
   root.append(quality);
 }
 function help(root){
@@ -175,7 +188,7 @@ function render(){
   const title=tabs.find(t=>t[0]===state.tab)[1];$('crumb').textContent=title+(formLink?' › Formulir':state.section?' › '+label(state.section):'');
   if(state.tab==='muat'){
     if(!state.pkg&&location.hash.startsWith('#/spt/form-'))root.append(card('Buka formulir tertaut',el('p','Pilih paket asal untuk membuka formulir ini.')));
-    importView(root);
+    if(state.section==='mutu' && state.pkg)renderQuality(root,state.pkg,()=>go('muat'));else importView(root);
   }
   else if(state.tab==='ringkas')renderDashboard(root,state);
   else if(state.tab==='spt'){
@@ -193,7 +206,7 @@ function render(){
   }
   else if(['profil','tabel'].includes(state.tab))renderEntries(root,state,state.tab==='profil');
   else if(state.tab==='kerja')renderWork(root,state);
-  else if(['probis','peraturan'].includes(state.tab))renderCatalog(root,state.tab,{manifest:state.pkg?.manifest,entries:state.pkg?.entries,query:state.query});
+  else if(['probis','peraturan'].includes(state.tab))renderCatalog(root,state.tab,{manifest:state.pkg?.manifest,entries:state.pkg?.entries,query:state.query,openBusinessSearch:state.section==='klu'});
   else help(root);
 }
 render();

@@ -1,0 +1,61 @@
+import assert from 'node:assert/strict';
+import {createServer} from 'node:http';
+import {readFile} from 'node:fs/promises';
+import {createRequire} from 'node:module';
+import {readZip,decodeText} from '../extension/archive/zip.js';
+import {createPackage} from '../extension/archive/package.js';
+
+const {chromium}=createRequire(import.meta.url)(process.env.PLAYWRIGHT_MODULE||'playwright');
+const base=new URL('../extension/',import.meta.url);
+const server=createServer(async(req,res)=>{
+  try{
+    const file=new URL('.'+new URL(req.url,'http://localhost').pathname,base);
+    if(!file.href.startsWith(base.href))throw Error('Invalid path');
+    res.setHeader('Content-Type',file.pathname.endsWith('.js')?'text/javascript':file.pathname.endsWith('.css')?'text/css':'text/html');
+    res.end(await readFile(file));
+  }catch{res.writeHead(404);res.end();}
+});
+await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
+const browser=await chromium.launch({executablePath:process.env.CHROMIUM_PATH||undefined});
+try{
+  const page=await browser.newPage({acceptDownloads:true}),errors=[];
+  page.on('pageerror',e=>errors.push(e.message));page.setDefaultTimeout(6000);
+  const url='http://127.0.0.1:'+server.address().port+'/analisis/index.html';
+  await page.goto(url+'#/peraturan');
+  const number=page.getByRole('searchbox',{name:'Nomor peraturan'}),table=page.getByRole('table',{name:'Daftar peraturan'});
+  await page.getByText('92 hasil',{exact:true}).waitFor();
+  const type=page.getByRole('combobox',{name:'Jenis',exact:true});
+  assert.match(await type.locator('option').filter({hasText:'Peraturan Menteri Keuangan'}).textContent(),/PMK.*\(\d+\)/);
+  await type.selectOption('SDSN');await page.getByText('0 hasil',{exact:true}).waitFor();await type.selectOption('');
+  await page.getByRole('combobox',{name:'Urutan'}).selectOption('oldest');
+  const first=await table.locator('tbody tr').first().locator('td').nth(3).innerText();assert.match(first,/^2003/);
+  await page.getByRole('combobox',{name:'Urutan'}).selectOption('type');
+  assert.equal(await table.locator('tbody tr').first().locator('td').nth(2).innerText(),'UU');
+  const download=async(label,source=page)=>{const pending=page.waitForEvent('download');await source.getByRole('button',{name:label,exact:true}).click();return readZip(await readFile(await (await pending).path()));};
+  const all=await download('Excel');
+  assert.equal((decodeText(all.get('xl/worksheets/sheet1.xml').data).match(/<row\b/g)||[]).length,93);
+  await number.fill('PER-11/PJ/2025');await page.getByLabel('Tanggal peraturan dari').fill('2025-05-22');await page.getByLabel('Tanggal peraturan sampai').fill('2025-05-22');
+  await type.selectOption('Peraturan Dirjen Pajak');await page.getByRole('combobox',{name:'Status pada sumber'}).selectOption('active');
+  await page.getByText('1 hasil',{exact:true}).waitFor();
+  await page.getByText('Saringan tersimpan',{exact:true}).first().click();await page.getByPlaceholder('Nama saringan').fill('Pelaporan 2025');await page.getByRole('button',{name:'Simpan atau perbarui'}).click();
+  await page.reload();await page.getByText('1 hasil',{exact:true}).waitFor();assert.equal(await number.inputValue(),'PER-11/PJ/2025');
+  await table.getByRole('button',{name:'PER-11/PJ/2025',exact:true}).click();
+  const dialog=page.getByRole('dialog');await dialog.getByRole('button',{name:/Diubah oleh.*PER-12\/PJ\/2026/}).click();
+  await dialog.getByRole('heading',{name:'PER-12/PJ/2026'}).waitFor();
+  const word=await download('Word',dialog);const xml=decodeText(word.get('word/document.xml').data);
+  assert.match(xml,/PER-12\/PJ\/2026/);assert.match(xml,/https:\/\/www.pajak.go.id\/id\/peraturan/);
+  await page.evaluate(()=>{window.print=()=>{window.printed=document.querySelector('.print-catalog').textContent;};});
+  await dialog.getByRole('button',{name:'Cetak / PDF'}).click();assert.match(await page.evaluate(()=>window.printed),/PER-12\/PJ\/2026/);await dialog.waitFor();
+  await dialog.getByRole('button',{name:'Tutup'}).click();
+  await page.getByLabel('Tanggal peraturan sampai').fill('2024-01-01');await page.getByText(/Tanggal akhir mendahului/).waitFor();
+  await page.getByRole('button',{name:'Atur ulang'}).click();await page.getByText('92 hasil',{exact:true}).waitFor();
+  await page.getByText('Saringan tersimpan',{exact:true}).first().click();await page.getByRole('combobox',{name:'Saringan tersimpan'}).selectOption('Pelaporan 2025');
+  await page.getByRole('button',{name:'Hapus saringan'}).click();assert.equal(await page.getByRole('combobox',{name:'Saringan tersimpan'}).locator('option').count(),1);
+  await page.getByRole('navigation').getByRole('button',{name:'Muat paket'}).click();
+  const bundle=await createPackage({meta:{wp:{npwp:'0000000000000001',nama:'Uji'}},entries:[{path:'profil/klu.json',cap:{sumber:'klu'},pages:[{Payload:{Data:[{TradeClassificationCode:'01111'}]}}]}]});
+  await page.locator('#filePkg').setInputFiles({name:'uji.zip',mimeType:'application/zip',buffer:Buffer.from(await bundle.arrayBuffer())});
+  await page.getByRole('navigation').getByRole('button',{name:'Probis'}).click();
+  await page.getByRole('button',{name:'Untuk WP ini',exact:true}).click();await page.getByRole('heading',{name:'KLU di paket'}).waitFor();
+  await page.evaluate(()=>{location.hash='#/klu';});await page.getByPlaceholder('Kode atau nama kegiatan').waitFor();
+  assert.deepEqual(errors,[]);console.log('Regulations browser passed: filters, sorts, counts, local presets, 92-row XLSX, source links, document history, single Word and print; KLU deep link works with an active package.');
+}finally{await browser.close();await new Promise(resolve=>server.close(resolve));}

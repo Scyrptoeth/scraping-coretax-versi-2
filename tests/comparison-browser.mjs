@@ -62,6 +62,46 @@ try{
   assert.deepEqual(await row('Penyerahan').getByRole('cell').allTextContents(),['Penyerahan','—','200','—','—','TotalDeliveryOfGoodsAndServices.SellingPrice']);
   const gamma=await peer.locator('option').filter({hasText:'Gamma'}).getAttribute('value');await peer.selectOption(gamma);await page.getByText('Kedua paket belum memuat jenis dan masa SPT yang sama pada tahun yang dipilih.').waitFor();
   assert.equal(new URL(page.url()).hash,'#/ringkas/banding');
+  await page.goto(origin);
+  async function corporate(name,id,code,gross){
+    const main={MainFormData:{IncomeTaxInAYear:5},L1cFormData:{
+      L1cTreeData:[{Data:{AccountCode:'4020',Amount:100}},{Data:{AccountCode:'4300',Amount:gross}}],
+      L1cTreeTotalRow:{Amount:10},L1cAssets:{AC1500:200},L1cLiabilitiesAndEquity:{AC2229:50}}};
+    return archive(name,id,[{path:'profil/informasi-umum.json',cap:{lengkap:true},pages:[{Payload:{MainEconomicCode:{TradeClassificationCode:code},GeneralInformation:{RegistrationDate:'2015-01-01'}}}]},
+      {path:'profil/pihak-terkait.json',cap:{lengkap:true},pages:[{Payload:{Data:[{PersonName:'Pihak contoh',PersonNIKTIN:'P1'}]}}]},
+      entry('BADAN','2025',1,'annual',main)]);
+  }
+  await page.locator('#filePkg').setInputFiles(await Promise.all([
+    corporate('Utama','0000000000000021','01111',60),corporate('Sektor Satu','0000000000000022','01111',10),
+    corporate('Sektor Dua','0000000000000023','01111',30),corporate('Sektor Lain','0000000000000024','99999',100)]));
+  await page.getByRole('status').filter({hasText:'4 paket dibuka.'}).waitFor();
+  await page.locator('#taxpayer').selectOption({label:'Utama · 0000000000000021'});
+  await nav('Dasbor').click();await page.getByRole('button',{name:'Perbandingan antar-WP',exact:true}).click();
+  await page.getByText('Kelompok tahun 2025 mencakup 2 WP pembanding · KLU 01111.').waitFor();
+  const group=page.getByRole('table',{name:'Median dan rentang kelompok'}),gross=group.getByRole('row').filter({hasText:'Margin laba kotor'});
+  assert.deepEqual((await gross.getByRole('cell').allTextContents()).slice(2,9),['%','60','20','10','30','2','200']);
+  const books=page.waitForEvent('download');await page.getByRole('button',{name:'Excel pembanding lintas paket'}).click();
+  const groupXlsx=await readZip(await readFile(await (await books).path()));
+  assert.match(decodeText(groupXlsx.get('xl/workbook.xml').data),/Sumber dan komponen/);
+  assert.match(decodeText(groupXlsx.get('xl/worksheets/sheet3.xml').data),/4020/);
+  await gross.getByRole('button',{name:'Buka'}).click();const dialog=page.getByRole('dialog');
+  await dialog.getByRole('table',{name:'Komponen rasio per WP'}).waitFor();
+  assert.equal(await dialog.getByRole('table').getByRole('row').count(),4);
+  await dialog.getByRole('button',{name:'Buka induk · Sektor Dua'}).click();
+  await page.getByRole('dialog').getByRole('heading',{name:'PPh Badan · 2025'}).waitFor();
+  assert.match(await page.locator('#taxpayer').locator('option:checked').textContent(),/Sektor Dua/);
+  await page.getByRole('button',{name:'Tutup',exact:true}).click();await nav('Dasbor').click();
+  await page.getByRole('button',{name:'Keuangan',exact:true}).click();
+  await page.getByRole('table',{name:'Rasio keuangan WP aktif'}).waitFor();
+  await page.getByRole('button',{name:'Lanjutan',exact:true}).click();
+  await page.getByRole('table',{name:'Kronologi peristiwa'}).getByText('2015-01-01').waitFor();
+  await page.getByRole('group',{name:'Garis waktu per tahun'}).getByRole('button',{name:'2015 · 1 peristiwa'}).press('Enter');
+  await page.getByRole('group',{name:'Garis waktu per bulan'}).getByRole('button',{name:'2015-01 · 1 peristiwa'}).press('Enter');
+  await page.getByText('Peristiwa bulan 2015-01',{exact:true}).waitFor();
+  await page.getByRole('group',{name:'Diagram hubungan WP'}).getByRole('button',{name:'Rincian Pihak contoh'}).press('Enter');
+  await page.getByRole('dialog').getByRole('button',{name:'Buka profil/pihak-terkait.json'}).click();
+  await page.getByRole('dialog').getByRole('table',{name:'Tabel sumber'}).getByText('Pihak contoh').waitFor();
+  await page.getByRole('button',{name:'Tutup',exact:true}).click();
   if(process.env.VERITAX_FIXTURES){
     await page.goto(origin);const dir=process.env.VERITAX_FIXTURES;
     await page.locator('#filePkg').setInputFiles(['','-BADAN-MIGRASI'].map(s=>resolve(dir,'CONTOH-paket-DEMO-FIKTIF'+s+'.zip')));
@@ -72,6 +112,16 @@ try{
     assert.equal(await period.inputValue(),'2025');await row('PPh terutang').waitFor();
     assert.equal((await row('PPh terutang').getByRole('cell').allTextContents()).slice(1,3).every(v=>v!=='—'),true);
     assert.equal(await basis.getByRole('row').count(),3);
+    await nav('Muat paket').click();await page.locator('#filePkg').setInputFiles(['-OP','-OP-PEKERJAAN-BEBAS'].map(s=>resolve(dir,'CONTOH-paket-DEMO-FIKTIF'+s+'.zip')));
+    await page.getByRole('status').filter({hasText:'2 paket dibuka.'}).waitFor();
+    const taxpayer=page.locator('#taxpayer');const packages=await taxpayer.locator('option').evaluateAll(opts=>opts.map(o=>o.value).filter(Boolean));
+    assert.equal(packages.length,4);
+    await nav('Dasbor').click();await page.getByRole('button',{name:'Lanjutan',exact:true}).click();
+    for(const key of packages){
+      await taxpayer.selectOption(key);await page.getByRole('table',{name:'Kronologi peristiwa'}).waitFor();
+      await page.getByRole('group',{name:'Diagram hubungan WP'}).waitFor();
+      assert.ok(await page.getByRole('table',{name:'Hubungan dan sumber'}).getByRole('row').count()>1);
+    }
   }
-  assert.deepEqual(errors,[]);console.log('Taxpayer comparison passed: exact type/period, distinct identities, revisions and ambiguous versions, missing or zero amounts, currency, traceable XLSX and optional corporate fixtures.');
+  assert.deepEqual(errors,[]);console.log('Taxpayer comparison and advanced dashboard passed: KLU cohort, annual ratios, medians, timelines, relationship map, evidence links, traceable XLSX and optional four fictitious packages.');
 }finally{await browser.close();await new Promise(resolve=>server.close(resolve));}

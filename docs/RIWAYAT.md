@@ -1,5 +1,11 @@
 # Riwayat Scraping Coretax Versi 2
 
+## 18 November 2026 · Prarilis 0.3.0
+
+Setiap tarikan memakai satu NPWP. Ketika satu tabel memuat beberapa jenis SPT, penarik mengenali jenis pada setiap baris, menerapkan pilihan pengguna dan mempertahankan urutan kolom sumber. Antrean lama dapat dilanjutkan per WP. Pemutar menambah rincian mutu, pencocokan CSV, buku besar gabungan, rasio pembanding, garis waktu dan peta hubungan. KKP per indeks terhubung ke KKA dan SP2DK. Penggabungan berkas kerja memakai pratinjau dan menampilkan konflik sebelum isian digabung.
+
+Uji profil Chrome terisolasi menggunakan ekstensi terpasang. Lima baris dan 17 kolom dari tabel SPT fiktif cocok saat dibaca dari ZIP dan ditampilkan di pemutar. Pengujian ini dilakukan terpisah dari pengamatan tabel produksi. [Bukti per fitur dan selisih](KESETARAAN.md)
+
 ## 18 November 2026 · Prarilis 0.2.0
 
 Penarik dapat mengambil beberapa tabel dari tab yang terbuka dan membaca CSV asli Daftar Kasus Aktif. Penarik membedakan judul kolom dari kotak filter serta pesan tabel kosong. Jika tabel administratif tidak mencantumkan masa pajak, pengguna dapat mempertahankan keterangan tersebut di paket.

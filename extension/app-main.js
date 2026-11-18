@@ -1,15 +1,15 @@
-import {forms,catalogue,sources,readIds,filePage,rowsOf,checkIdentity,reportSource,taxpayerName,visibleTables,csvCell} from './app-data.js';
+import {forms,catalogue,sources,readCaptureId,filePage,rowsOf,rowsInColumnOrder,checkIdentity,reportSource,taxpayerName,visibleTables,csvCell} from './app-data.js';
 import * as vault from './app-vault.js';
 import {putHandoff, removeExpiredHandoffs} from './app-handoff.js';
 import {createPackage,sha256} from './archive/package.js';
 import {batchCollector} from './app-batch.js';
-import {appendPackageEntry,metaForSelection} from './app-package-entries.js';
+import {appendPackageEntry,isSptList,metaForSelection,selectSptListRows} from './app-package-entries.js';
 
 const $ = id => document.getElementById(id);
 const coretax = 'https://coretax.intranet.pajak.go.id';
 const ext = globalThis.chrome?.runtime?.id ? globalThis.chrome : null;
 const queue = [], messages = [];
-let tables = [], tabUrl = '', job, stored = [], busy = false, paused = false, stop = false, noticeTimer;
+let tables = [], tabUrl = '', stored = [], busy = false, paused = false, stop = false, noticeTimer;
 let paging=false,pagingPaused=false,pagingStopped=false,batch;
 const sleep = ms => new Promise(resolve => setTimeout(resolve,ms));
 const checked = id => [...$(id).querySelectorAll('input:checked')].map(el => el.value);
@@ -50,6 +50,28 @@ function line(parent,text,buttons = []) {
   row.className = 'item'; actions.className = 'actions'; caption.textContent = text;
   actions.append(...buttons); row.append(caption,actions); parent.append(row); return row;
 }
+function captureTable(parent,title,columns) {
+  const region=document.createElement('div'),table=document.createElement('table');
+  region.className='capture-table';region.tabIndex=0;region.setAttribute('role','region');region.setAttribute('aria-label',title);
+  table.createCaption().textContent=title;
+  const head=table.createTHead().insertRow();
+  for(const label of columns){const th=document.createElement('th');th.scope='col';th.textContent=label;head.append(th);}
+  const body=table.createTBody();
+  region.append(table);parent.append(region);return body;
+}
+function captureRow(body,values) {
+  const row=body.insertRow();
+  values.forEach((value,index)=>{
+    const cell=document.createElement(index===0?'th':'td');
+    if(index===0)cell.scope='row';
+    if(value instanceof Node)cell.append(value);else cell.textContent=value ?? 'Belum tercantum';
+    row.append(cell);
+  });
+}
+function disclosure(title) {
+  const panel=document.createElement('details'),label=document.createElement('summary');
+  label.textContent=title;panel.append(label);return panel;
+}
 function choices(select,values) {
   const before = select.value;
   select.replaceChildren(...values.map(([value,label]) => new Option(label,value)));
@@ -61,18 +83,25 @@ function period() {
   return from+' s.d. '+to;
 }
 function idsChanged() {
-  let ids = [];
+  const field = $('ids');
+  field.setCustomValidity('');
   try {
-    ids = readIds(val('ids'));
-    $('id-status').textContent = ids.length ? ids.length+' NPWP unik.' : 'Masukkan satu NPWP per baris.';
-  } catch (e) { $('id-status').textContent = e.message; }
-  choices($('owner'),ids.map(id => [id,id])); $('scope-ok').checked = false; scopeChanged();
+    const wp = readCaptureId(val('ids'));
+    $('id-status').textContent = wp ? 'NPWP untuk tarikan ini · '+wp : 'Satu NPWP untuk setiap tarikan. NPWP 15 digit memperoleh awalan nol.';
+  } catch (e) { field.setCustomValidity(e.message); $('id-status').textContent = e.message; }
+  $('scope-ok').checked = false; scopeChanged();
+}
+function captureOwner() {
+  const wp = readCaptureId(val('ids'));
+  if (!wp) throw Error('Isi NPWP yang ditarik pada bagian Penugasan.');
+  return wp;
 }
 function sourceChanged() {
   const allowed = checked('sources');
   choices($('source'),Object.entries(sources).filter(([id]) => allowed.includes(id)));
   choices($('spt'),forms.filter(([id]) => checked('forms').includes(id)));
-  $('spt-field').hidden = !val('source').startsWith('spt');
+  $('spt-field').hidden = val('source')!=='sptisi';
+  $('list-types-hint').hidden=!isSptList(val('source'));
   $('undated-field').hidden = val('source')!=='tabelumum';
   $('undated-general').checked=false;
   $('scope-ok').checked = false; scopeChanged();
@@ -82,22 +111,22 @@ function scopeChanged() {
     'Tabel umum yang ditambahkan akan disimpan tanpa masa pajak.' : 'Periode terpilih · '+period(); }
   catch(e) { $('period-info').textContent = e.message; }
   $('preview-box').replaceChildren();
-  $('preview-box').dataset.key = '';
   renderQueue();
-  $('start').disabled = !$('consent').checked || !!job || busy;
-  $('preview').disabled = !$('consent').checked || !!job || busy;
+  jobButtons();
 }
 function scope() {
-  const wp = val('owner'), source = val('source');
-  if (!wp || !readIds(val('ids')).includes(wp)) throw new Error('Pilih WP dari daftar penugasan.');
+  const wp = captureOwner(), source = val('source');
   if (!source) throw new Error('Pilih sumber data terlebih dahulu.');
-  const spt = source.startsWith('spt') ? val('spt') : '';
-  if (source.startsWith('spt') && !spt) throw new Error('Pilih jenis SPT untuk sumber ini.');
+  const spt = source==='sptisi' ? val('spt') : '';
+  if (source==='sptisi' && !spt) throw new Error('Pilih jenis SPT untuk induk atau lampiran.');
+  if (isSptList(source) && !checked('forms').length) throw Error('Pilih sedikitnya satu jenis SPT pada bagian Data yang ditarik.');
   if (!$('scope-ok').checked) throw new Error('Cocokkan dan centang pernyataan WP serta periode pada sumber.');
   const undated=source==='tabelumum' && $('undated-general').checked;
   return {wp,source,spt,period:undated?null:period()};
 }
 function addEntry(info,page,name,origin) {
+  if(busy) throw Error('Selesaikan tarikan aktif sebelum menambahkan sumber.');
+  if (info.wp !== captureOwner() || queue.some(entry => entry.wp !== info.wp)) throw Error('NPWP berubah saat membaca sumber. Periksa kembali WP dan ulangi pembacaan.');
   const rows = rowsOf(page);
   if(!rows.length) throw Error('Tabel kosong. Belum ada baris yang dapat ditambahkan.');
   checkIdentity(rows,info.wp);
@@ -108,10 +137,15 @@ function addEntry(info,page,name,origin) {
   queue.push({...info,page,name,origin,...reportSource(page),id:crypto.randomUUID()});
 }
 function renderQueue() {
+  $('ids').readOnly = queue.length>0 || busy;
+  $('id-file').disabled = queue.length>0 || busy;
   const box = $('queue'); box.replaceChildren();
   queue.forEach(entry => line(box,entry.wp+' · '+sources[entry.source]+' · '+entry.name+' · '+entry.rows+' baris'+(entry.period===null?' · Masa tidak tercantum':''),[
-    button('Keluarkan',() => { if (busy || job) throw new Error('Selesaikan tarikan aktif terlebih dahulu.'); queue.splice(queue.indexOf(entry),1); scopeChanged(); })
+    button('Keluarkan',() => { if (busy) throw new Error('Selesaikan tarikan aktif terlebih dahulu.'); queue.splice(queue.indexOf(entry),1); scopeChanged(); })
   ]));
+  if(queue.length) {
+    const hint=document.createElement('small');hint.textContent='Untuk mengganti NPWP, selesaikan tarikan atau keluarkan semua sumber dari antrean.';box.append(hint);
+  }
 }
 async function checkTabs() {
   $('table-pick').hidden = true; tables = [];
@@ -140,17 +174,17 @@ function pageOptions() {
   $('pagination-options').hidden=!entry?.canAdvance;
 }
 async function addTable() {
-  if (busy || job || paging || batch.active) throw new Error('Selesaikan tarikan aktif terlebih dahulu.');
+  if (busy || paging || batch.active) throw new Error('Selesaikan tarikan aktif terlebih dahulu.');
   const info = scope(), tab = await tabNow(), entry = tables.find(x => String(x.index) === val('table'));
   if (!entry) throw new Error('Pilih tabel terlebih dahulu.');
   if (!entry.rows) throw new Error('Tabel kosong. Belum ada baris yang dapat ditambahkan.');
   const [frame] = await ext.scripting.executeScript({target:{tabId:tab.id},func:visibleTables,args:[{...entry,url:tabUrl}]});
   if (!Array.isArray(frame?.result)) throw new Error('Tabel tidak dapat dibaca. Periksa ulang halaman.');
-  addEntry(info,{Payload:{Data:frame.result}},entry.title,'Tabel tampak');
+  addEntry({...info,proof:{columns:entry.labels}},{Payload:{Data:rowsInColumnOrder(frame.result,entry.labels)}},entry.title,'Tabel tampak');
   $('scope-ok').checked = false; scopeChanged(); message('Tabel ditambahkan ke antrean.');
 }
 async function collectPages() {
-  if (busy || job || paging || batch.active) throw new Error('Selesaikan tarikan aktif terlebih dahulu.');
+  if (busy || paging || batch.active) throw new Error('Selesaikan tarikan aktif terlebih dahulu.');
   const limit=Number(val('page-limit'));
   if(!Number.isInteger(limit) || limit<1 || limit>100) throw new Error('Pilih batas antara 1 dan 100 halaman.');
   const info=scope(),tab=await tabNow(),entry=tables.find(t=>String(t.index)===val('table'));
@@ -169,10 +203,11 @@ async function collectPages() {
     let page=await read(selector);
     if(!Array.isArray(page) || !page.length) throw new Error('Tabel kosong atau halaman pertama tidak tersedia.');
     while(added<limit && !pagingStopped) {
+      page=rowsInColumnOrder(page,entry.labels);
       const serialized=JSON.stringify(page),hash=await vault.digest(serialized);
       if(seen.has(hash)) throw new Error('Halaman berulang. Periksa paginator Coretax sebelum melanjutkan.');
       seen.add(hash);
-      addEntry(info,{Payload:{Data:page}},entry.title+' · halaman pengambilan '+(added+1),'Tabel tampak');
+      addEntry({...info,proof:{columns:entry.labels}},{Payload:{Data:page}},entry.title+' · halaman pengambilan '+(added+1),'Tabel tampak');
       added++;renderQueue();$('page-status').textContent=added+' halaman masuk antrean.';
       if(added>=limit) break;
       await sleep(150);
@@ -194,7 +229,7 @@ async function collectPages() {
 async function importFiles() {
   const files = [...$('source-files').files]; $('source-files').value = '';
   if (!files.length) return;
-  if (busy || job || batch.active) throw new Error('Selesaikan tarikan aktif terlebih dahulu.');
+  if (busy || paging || batch.active) throw new Error('Selesaikan tarikan aktif terlebih dahulu.');
   const info = scope();
   for (const file of files) {
     try { addEntry(info,filePage(file.name,await file.text()),file.name,'Ekspor lokal'); }
@@ -203,87 +238,113 @@ async function importFiles() {
   $('scope-ok').checked = false; scopeChanged();
 }
 function prepare() {
-  const ids = readIds(val('ids')), allowed = checked('sources'), types = checked('forms');
-  if (!ids.length || !val('officer')) throw new Error('Isi daftar NPWP dan nama penarik.');
+  const wp = captureOwner(), allowed = checked('sources'), types = checked('forms');
+  if (!val('officer')) throw new Error('Isi nama penarik pada bagian Penugasan.');
   if (val('letter') && val('basis') !== 'RUTIN' && (val('letter').length < 6 || !/\d/.test(val('letter')))) throw new Error('Nomor dasar penugasan harus memuat angka dan sedikitnya 6 karakter.');
   if (!$('consent').checked) throw new Error('Centang pernyataan kerahasiaan terlebih dahulu.');
-  const matching = queue.filter(e => ids.includes(e.wp) && allowed.includes(e.source) && (!e.spt || types.includes(e.spt)));
+  if (queue.some(e => e.wp !== wp)) throw new Error('Antrean berisi sumber untuk WP lain. Keluarkan sumber itu sebelum menarik data.');
+  const matching = queue.filter(e => allowed.includes(e.source) && (!e.spt || types.includes(e.spt)));
   const range=matching.some(e=>e.period!==null)?period():null;
-  const relevant=matching.filter(e=>e.period===range || (e.source==='tabelumum' && e.period===null));
+  const inPeriod=matching.filter(e=>e.period===range || (e.source==='tabelumum' && e.period===null));
+  const relevant=inPeriod.map(e=>selectSptListRows(e,types)).filter(Boolean);
+  if(inPeriod.length && !relevant.length) throw Error('Tidak ada baris untuk jenis SPT terpilih. Pilih semua jenis untuk menyertakan baris yang belum dikenali.');
   if (!relevant.length) throw new Error('Tambahkan tabel atau berkas yang sesuai dengan WP, periode, dan sumber terpilih.');
-  const plans = ids.map(wp => ({wp, entries:relevant.filter(e => e.wp === wp)}));
   const meta = {penugasan:{peran:val('role'),jenis:val('basis'),nomor:val('letter'),tanggal:val('date')},penarik:{nama:val('officer'),nip:val('nip')},periode:range,
     opsi:{metode:'Tabel yang terlihat atau ekspor lokal',jenisSpt:types,sumber:allowed,lewatiDuplikat:$('dedupe').checked,
       periode:{from:{y:Number(val('year-start')),m:Number(val('month-start'))},to:{y:Number(val('year-end')),m:Number(val('month-end'))}}}};
-  return {plans,meta,excluded:queue.length-relevant.length};
+  const omittedRows=inPeriod.reduce((sum,e)=>sum+e.rows,0)-relevant.reduce((sum,e)=>sum+e.rows,0);
+  return {plan:{wp,entries:relevant},meta:metaForSelection(meta,relevant),excluded:queue.length-relevant.length,omittedRows};
 }
 function showPreview() {
-  const {plans,excluded} = prepare(), box = $('preview-box');
+  const {plan,meta,excluded,omittedRows}=prepare(), box=$('preview-box');
   box.replaceChildren();
-  for (const wp of plans) {
-    const name=taxpayerName(wp.entries);
-    checkbox(box,wp.wp,wp.wp+(name?' · '+name:'')+' · '+wp.entries.length+' sumber · '+wp.entries.reduce((sum,e) => sum+e.rows,0)+' baris',!!wp.entries.length);
-    if (!wp.entries.length) box.lastChild.querySelector('input').disabled = true;
+  const rows=plan.entries.reduce((sum,entry)=>sum+entry.rows,0);
+  const body=captureTable(box,'Pratinjau penarikan',['NPWP','Nama WP','Periode','Sumber dalam antrean','Baris terpilih']);
+  captureRow(body,[plan.wp,taxpayerName(plan.entries) || null,meta.periode,plan.entries.length,rows]);
+  const details=disclosure('Rincian sumber terpilih');
+  const sourceBody=captureTable(details,'Sumber yang akan dirakit',['Sumber','Tabel atau berkas','Cara pengambilan','Baris']);
+  for(const entry of plan.entries)captureRow(sourceBody,[sources[entry.source],entry.name,entry.origin,entry.rows]);
+  if(meta.opsi.lewatiDuplikat){
+    const hint=document.createElement('p');hint.className='hint';hint.textContent='Jumlah pada pratinjau dihitung sebelum salinan identik dilewati.';details.append(hint);
   }
-  box.dataset.key = 'current';
-  $('status').textContent = excluded+' item antrean di luar pilihan WP, periode, atau sumber.';
+  box.append(details);
+  const summary=excluded ? excluded+' sumber di luar pilihan.' : 'Semua sumber dalam antrean masuk dalam tarikan.';
+  $('status').textContent=summary+(omittedRows?' '+omittedRows+' baris di luar pilihan jenis SPT.':'');
 }
 function jobButtons() {
-  const active = busy && !!job;
-  $('start').disabled = !$('consent').checked || !!job || busy;
-  $('preview').disabled = !$('consent').checked || !!job || busy;
-  $('pause').hidden = !active; $('pause').textContent = paused ? 'Lanjutkan' : 'Jeda';
-  $('stop').hidden = !active; $('resume').hidden = !job || active;
-  $('progress').hidden = !job;
-  if (job) { $('progress').max = job.plans.length; $('progress').value = job.cursor; }
+  const disabled=busy || !$('consent').checked || !val('ids') || !$('ids').validity.valid;
+  $('start').disabled = disabled; $('preview').disabled = disabled;
+  $('pause').hidden = !busy; $('pause').textContent = paused ? 'Lanjutkan' : 'Jeda';
+  $('stop').hidden = !busy; $('progress').hidden = !busy;
+  for (const b of $('pending-jobs').querySelectorAll('button')) b.disabled=busy;
 }
-async function run(fresh) {
+// Earlier versions kept one plan per WP and advanced a cursor after saving each result.
+function pendingPlans(record) {
+  return record.plan ? [record.plan] : record.plans.slice(record.cursor);
+}
+async function run(resume) {
   if (busy || paging || batch.active) return;
   await navigator.locks.request('scv2-capture-job',{ifAvailable:true},async lock => {
     if (!lock) throw new Error('Tarikan sedang berjalan pada tab penarik lainnya.');
-    if (busy) return;
+    if (busy || paging || batch.active) return;
     busy = true; paused = false; stop = false;
     try {
+      renderQueue();
       await refresh();
-      if (fresh) {
-        if (job) throw new Error('Lanjutkan atau hapus antrean yang masih tersimpan.');
+      let job,plan;
+      if (resume) {
+        job=stored.find(r=>r.kind==='job' && r.id===resume.id && r.runId===resume.runId);
+        plan=job && pendingPlans(job).find(p=>p.wp===resume.wp);
+        if(!plan) throw Error('Tarikan ini sudah diselesaikan atau dihapus pada tab lain.');
+      } else {
         const prepared = prepare();
-        const selected = $('preview-box').dataset.key ? checked('preview-box') : prepared.plans.map(p => p.wp);
-        const plans = prepared.plans.filter(p => p.entries.length && selected.includes(p.wp));
-        if (!plans.length) throw new Error('Pilih setidaknya satu WP yang memiliki data.');
-        const draft = {id:'pending-job',kind:'job',plans,meta:metaForSelection(prepared.meta,plans.flatMap(p=>p.entries)),cursor:0,runId:crypto.randomUUID()};
-        await vault.save([{id:draft.id,value:draft}],'Mulai tarik',{jumlahWP:plans.length,penarik:draft.meta.penarik.nama,dasar:draft.meta.penugasan.nomor});
-        job = draft;
+        plan=prepared.plan;
+        if(stored.some(r=>r.kind==='job' && pendingPlans(r).some(p=>p.wp===plan.wp))) throw Error('Ada tarikan tersimpan untuk NPWP ini. Pilih Lanjutkan pada tarikan tersebut.');
+        const id=crypto.randomUUID();
+        job={id,runId:id,kind:'job',plan,meta:prepared.meta};
+        await vault.save([{id,value:job}],'Mulai tarik',{jumlahWP:1,penarik:job.meta.penarik.nama,dasar:job.meta.penugasan.nomor,npwp:plan.wp});
       }
-      if (!job) throw new Error('Antrean belum tersedia.');
       jobButtons();
-      while (job.cursor < job.plans.length) {
+      const seen = new Set(), grouped = new Map(), checks=[];
+      const progress=$('progress'); progress.max=plan.entries.length; progress.value=0;
+      for (const queued of plan.entries) {
         while (paused && !stop) await sleep(100);
-        if (stop) break;
-        const plan = job.plans[job.cursor], seen = new Set(), grouped = new Map(), checks=[];
-        for (const source of plan.entries) {
-          const key = await vault.digest(JSON.stringify([source.source,source.spt,source.page]));
-          if (seen.has(key) && job.meta.opsi.lewatiDuplikat) continue;
-          seen.add(key);
-          if(source.total!=null && source.total!==source.rows) {
-            const issue={tingkat:'TINGGI',pesan:sources[source.source]+' melaporkan '+source.total+' baris. Yang tersimpan '+source.rows+'.'};
-            checks.push(issue); message(plan.wp+' · '+issue.pesan,true);
-          }
-          appendPackageEntry(grouped,source,plan.wp);
+        if(stop) break;
+        if(queued.wp!==plan.wp) throw Error('Antrean tersimpan memuat sumber untuk WP yang berbeda.');
+        const source=selectSptListRows(queued,queued.spt?[queued.spt]:job.meta.opsi.jenisSpt || forms.map(([code])=>code));
+        progress.value++;
+        if(!source) continue;
+        checkIdentity(rowsOf(source.page),plan.wp);
+        const key=await vault.digest(JSON.stringify([source.source,source.spt,source.page]));
+        if(seen.has(key) && job.meta.opsi.lewatiDuplikat) continue;
+        seen.add(key);
+        const reported=source.sptSelection?.totalDilaporkanSumber ?? source.total;
+        const received=source.sptSelection?.barisSumber ?? source.rows;
+        if(reported!=null && reported!==received) {
+          const issue={tingkat:'TINGGI',pesan:sources[source.source]+' melaporkan '+reported+' baris. Yang diterima '+received+'.'};
+          checks.push(issue); message(plan.wp+' · '+issue.pesan,true);
         }
-        const entries=[...grouped.values()];
-        const id = crypto.randomUUID(), name=taxpayerName(plan.entries), meta = {...metaForSelection(job.meta,plan.entries),wp:{npwp:plan.wp,...(name?{nama:name}:{})},dibuat:new Date().toISOString(),cek:checks};
-        const next = {...job,cursor:job.cursor+1};
-        await vault.save([{id,value:{kind:'result',meta,entries}},{id:job.id,value:next}],'Tarikan WP',{npwp:plan.wp,berkas:entries.length,dasar:meta.penugasan.nomor,penarik:meta.penarik.nama});
-        job = next; jobButtons(); message(plan.wp+' · '+entries.length+' sumber tersimpan.');
-        $('status').textContent = job.cursor+' dari '+job.plans.length+' WP tersimpan.';
+        appendPackageEntry(grouped,source,plan.wp);
         await sleep(0);
       }
-      if (job.cursor === job.plans.length) {
-        await vault.save([{id:job.id,remove:true}],'Selesai tarik',{jumlahWP:job.cursor});
-        job = null; queue.length = 0; renderQueue(); $('preview-box').replaceChildren();
-      } else { await vault.save([],'Tarikan dihentikan',{selesai:job.cursor}); $('status').textContent += ' Antrean tersimpan dan dapat dilanjutkan.'; }
-    } finally { busy = false; await refresh(); jobButtons(); }
+      if(stop) {
+        await vault.save([],'Tarikan dihentikan',{npwp:plan.wp});
+        $('status').textContent='Antrean NPWP '+plan.wp+' tersimpan dan dapat dilanjutkan.'; return;
+      }
+      if(!grouped.size)throw Error('Antrean ini tidak memuat baris untuk jenis SPT yang dipilih. Ambil kembali daftar dengan pilihan jenis yang sesuai.');
+      const entries=[...grouped.values()], name=taxpayerName(plan.entries);
+      const meta={...metaForSelection(job.meta,plan.entries),wp:{npwp:plan.wp,...(name?{nama:name}:{})},dibuat:new Date().toISOString(),cek:checks};
+      const remaining=pendingPlans(job).filter(p=>p!==plan);
+      const pendingUpdate=remaining.length ? {id:job.id,value:{...job,plans:remaining,cursor:0}} : {id:job.id,remove:true};
+      await vault.save([{id:crypto.randomUUID(),value:{kind:'result',meta,entries}},pendingUpdate],'Tarikan WP',{npwp:plan.wp,berkas:entries.length,dasar:meta.penugasan.nomor,penarik:meta.penarik.nama});
+      const completed=new Set(plan.entries.map(e=>e.id));
+      for(let index=queue.length-1;index>=0;index--) {
+        if(completed.has(queue[index].id)) queue.splice(index,1);
+      }
+      $('preview-box').replaceChildren();
+      $('status').textContent='Tarikan selesai untuk NPWP '+plan.wp+' · '+entries.length+' sumber tersimpan.';
+      message($('status').textContent);
+    } finally { busy = false; renderQueue(); await refresh(); }
   });
 }
 function download(blob,name) {
@@ -320,30 +381,55 @@ async function openAnalysis(rec) {
     else location.assign(target);
   } catch (e) { await putHandoff(id,null); throw e; }
 }
+const resultColumns=['NPWP','Nama WP','Periode','Waktu simpan','Berkas data','Baris tersimpan','Catatan pemeriksaan','Tindakan'];
+function resultRow(body,rec,remove) {
+  const controls=document.createElement('div');controls.className='result-actions';
+  controls.append(button('Unduh paket',()=>chooseExport(rec)),button('Buka di Analisis',()=>openAnalysis(rec)));
+  if(remove)controls.append(remove);
+  let notes=Array.isArray(rec.meta.cek)?'Tidak ada catatan':'Belum tercatat';
+  if(rec.meta.cek?.length){
+    notes=disclosure(rec.meta.cek.length+' catatan');
+    const list=document.createElement('ul');
+    for(const check of rec.meta.cek){
+      const item=document.createElement('li');item.textContent=[check.tingkat,check.pesan].filter(Boolean).join(' · ');list.append(item);
+    }
+    notes.append(list);
+  }
+  const count=rec.entries.every(e=>Number.isSafeInteger(e.cap?.baris) && e.cap.baris>=0)
+    ? rec.entries.reduce((sum,e)=>sum+e.cap.baris,0) : null;
+  captureRow(body,[rec.meta.wp.npwp,rec.meta.wp.nama || null,rec.meta.periode,formatDate(rec.when),rec.entries.length,count,notes,controls]);
+}
 async function refresh() {
   stored = await vault.items();
-  job = stored.find(x => x.kind === 'job') || null;
+  const pending=$('pending-jobs');
+  pending.replaceChildren();
+  for(const record of stored.filter(r=>r.kind==='job')) {
+    for(const plan of pendingPlans(record)) {
+      line(pending,'Tarikan tersimpan · NPWP '+plan.wp+' · '+plan.entries.length+' sumber',[
+        button('Lanjutkan NPWP '+plan.wp,()=>run({id:record.id,runId:record.runId,wp:plan.wp}))
+      ]);
+    }
+  }
   const results = stored.filter(x => x.kind === 'result').sort((a,b) => b.when-a.when);
   const box = $('results'); box.replaceChildren();
-  if (!results.length) box.textContent = 'Belum ada hasil penarikan.';
+  if (!results.length) {box.textContent='Belum ada hasil penarikan.';jobButtons();return;}
   const groups=new Map();
   for(const record of results) {
     const id=record.meta.wp.npwp;
     if(!groups.has(id)) groups.set(id,[]);
     groups.get(id).push(record);
   }
+  const latest=captureTable(box,'Tarikan terakhir per WP',resultColumns);
   for (const [wp,group] of groups) {
     const [rec,...history]=group;
-    line(box,rec.meta.wp.npwp+' · '+rec.meta.periode+' · '+rec.entries.length+' sumber · '+formatDate(rec.when),[
-      button('Unduh paket',() => chooseExport(rec)),button('Buka di Analisis',() => openAnalysis(rec)),button('Hapus',async () => {
-        if (busy || !confirm('Hapus seluruh '+group.length+' tarikan tersimpan untuk '+wp+'?')) return;
-        await vault.save(group.map(r=>({id:r.id,remove:true})),'Hapus WP',{npwp:wp,jumlah:group.length}); await refresh();
-      })]);
-    for (const check of rec.meta.cek || []) line(box,check.tingkat+' · '+check.pesan);
+    resultRow(latest,rec,button(history.length?'Hapus riwayat WP':'Hapus',async()=>{
+      if(busy || !confirm('Hapus seluruh '+group.length+' tarikan tersimpan untuk '+wp+'?'))return;
+      await vault.save(group.map(r=>({id:r.id,remove:true})),'Hapus WP',{npwp:wp,jumlah:group.length});await refresh();
+    }));
     if(history.length) {
-      const detail=document.createElement('details'), summary=document.createElement('summary');
-      summary.textContent='Tarikan sebelumnya ('+history.length+')';detail.append(summary);box.append(detail);
-      for(const old of history) line(detail,old.meta.periode+' · '+formatDate(old.when),[button('Unduh paket',()=>chooseExport(old)),button('Buka di Analisis',()=>openAnalysis(old))]);
+      const detail=disclosure('Tarikan sebelumnya · '+wp+' ('+history.length+')');box.append(detail);
+      const prior=captureTable(detail,'Riwayat untuk NPWP '+wp,resultColumns);
+      for(const old of history)resultRow(prior,old);
     }
   }
   jobButtons();
@@ -385,17 +471,28 @@ function init() {
   }
   for(const id of [...preferenceFields,'sources','forms','dedupe']) action(id,savePreferences,'change');
   action('ids',idsChanged,'input');
-  action('id-file',async () => { const [file]=$('id-file').files; if(file){const ids=readIds(await file.text()); $('ids').value=ids.join('\n'); idsChanged();} $('id-file').value=''; },'change');
+  action('id-file',async () => {
+    const [file]=$('id-file').files; $('id-file').value='';
+    if(!file) return;
+    const text=await file.text();
+    if(queue.length || busy) throw Error('Selesaikan tarikan atau keluarkan semua sumber untuk mengganti NPWP.');
+    try {
+      const id=readCaptureId(text);
+      if(!id) throw Error('Berkas belum memuat NPWP.');
+      $('ids').value=id; idsChanged();
+    } catch(error) {
+      $('ids').value=''; idsChanged(); $('id-status').textContent=error.message; throw error;
+    }
+  },'change');
   for (const id of ['sources','forms','source']) action(id,sourceChanged,'change');
-  for (const id of ['owner','spt','month-start','month-end','year-start','year-end']) action(id,() => {$('scope-ok').checked=false; scopeChanged();},'change');
+  for (const id of ['spt','month-start','month-end','year-start','year-end']) action(id,() => {$('scope-ok').checked=false; scopeChanged();},'change');
   action('undated-general',()=>{$('scope-ok').checked=false;scopeChanged();},'change');
   for (const id of ['consent','dedupe']) action(id,scopeChanged,'change');
   action('tab',() => {tables=[]; $('table-pick').hidden=true; $('scope-ok').checked=false;},'change');
   action('recheck',checkTabs); action('open-coretax',() => ext.tabs.create({url:coretax+'/'}));
   action('list-tables',tableList); action('add-table',addTable); action('source-files',importFiles,'change');
-  batch=batchCollector({ext,origin:coretax,isBusy:()=>Boolean(busy || job || paging),enqueue:addEntry,refresh:scopeChanged,log:message,context:()=>{
-    const wp=val('owner'), range=period();
-    if(!wp || !readIds(val('ids')).includes(wp)) throw Error('Pilih WP dari daftar penugasan terlebih dahulu.');
+  batch=batchCollector({ext,origin:coretax,isBusy:()=>Boolean(busy || paging),enqueue:addEntry,refresh:scopeChanged,log:message,context:()=>{
+    const wp=captureOwner(), range=period();
     if(!$('scope-ok').checked) throw Error('Cocokkan dan centang pernyataan WP serta periode pada sumber.');
     const [from,to]=range.split(' s.d. ');
     return {wp,period:range,from,to,allowed:checked('sources'),types:checked('forms')};
@@ -403,8 +500,8 @@ function init() {
   action('table',pageOptions,'change'); action('collect-pages',collectPages);
   action('pause-pages',()=>{pagingPaused=!pagingPaused;$('pause-pages').textContent=pagingPaused?'Lanjutkan pembacaan':'Jeda pembacaan';});
   action('stop-pages',()=>{pagingStopped=true;pagingPaused=false;});
-  action('preview',showPreview); action('start',() => run(true)); action('resume',() => run(false));
-  action('pause',() => {paused=!paused; jobButtons(); $('status').textContent=paused ? 'Tarikan dijeda setelah WP berjalan.' : 'Tarikan dilanjutkan.';});
+  action('preview',showPreview); action('start',() => run());
+  action('pause',() => {paused=!paused; jobButtons(); $('status').textContent=paused ? 'Tarikan dijeda setelah sumber yang sedang dibaca.' : 'Tarikan dilanjutkan.';});
   action('stop',() => {stop=true; paused=false;}); action('problems',renderLog,'change');
   action('encrypt',async () => {
     if (busy) throw new Error('Tunggu tarikan selesai.');

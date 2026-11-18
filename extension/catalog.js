@@ -2,6 +2,8 @@ import {kbli} from './catalog-data.js';
 import {kluAttachment,kluZ} from './klu-z.js';
 import {codeTitle,hierarchicalKlu,percentage} from './klu-calculator.js';
 import {regulations} from './regulation-data.js';
+import {regulationDetails} from './regulation-details.js';
+import {emptyFilters,filterRegulations,prepareRegulations,regulationCells,regulationColumns,regulationTypes} from './regulation-filters.js';
 import {rowsOf} from './analisis/model.js';
 import {el, box, button, field, select, card, download, showDialog, toggleSet, notice} from './analisis/ui.js';
 import {createXlsx} from './archive/table.js';
@@ -37,8 +39,10 @@ function exportBar(title, headings, items) {
         table.append(tr);
       }
       const body=box('print-catalog',el('h1',title),table);
+      const dialog=document.getElementById('dialog'),wasOpen=dialog?.open;
+      if(wasOpen)dialog.close();
       document.body.append(body); document.body.classList.add('print-catalog-active');
-      try { window.print(); } finally { body.remove();document.body.classList.remove('print-catalog-active'); }
+      try { window.print(); } finally { body.remove();document.body.classList.remove('print-catalog-active');if(wasOpen)dialog.showModal(); }
     }));
 }
 
@@ -86,7 +90,7 @@ const zEdition='KLU Z';
 const zRecords=Object.fromEntries(Object.values(kluZ).map(r=>[r.code,{...r,year:zEdition,
   cells:[r.code,r.title,zEdition,levels[r.code.length]],lookup:normalize(r.code+' '+r.title+' '+zEdition+' PER-12/PJ/2022')}]));
 const businessCodes=[...allCodes,...Object.values(zRecords)];
-const allRegs=regulations.map(cells=>({cells:cells.slice(0,5),url:cells[5],lookup:normalize(cells.slice(0,5).join(' '))}));
+const allRegs=prepareRegulations(regulations,regulationDetails);
 
 export function activityResult(activities, taxpayerKind) {
   if(taxpayerKind==='Instansi pemerintah') return 'Gunakan kategori administrasi pemerintahan, pertahanan, dan jaminan sosial wajib sesuai kegiatan instansi.';
@@ -161,7 +165,10 @@ function publicGuide(code) {
 }
 
 function business(container, options) {
-  let mode=options.manifest && !options.query?'wp':'search';
+  const preferenceKey=options.manifest?'scv2-probis-package-mode':'scv2-probis-catalog-mode';
+  let preference='';try{preference=localStorage.getItem(preferenceKey);}catch{}
+  let mode=options.openBusinessSearch || options.query?'search':['wp','search'].includes(preference)?preference:options.manifest?'wp':'search';
+  function switchMode(next){mode=next;try{localStorage.setItem(preferenceKey,mode);}catch{}draw();}
   function showRecord(row) {
     const isZ=row.year===zEdition;
     const rows=[[isZ?'Acuan':'Edisi KBLI',isZ?'PER-12/PJ/2022, Lampiran bagian A':row.year],['Kode',row.code],['Nama',row.title]];
@@ -177,7 +184,7 @@ function business(container, options) {
       content.append(card('Panduan penelusuran awal',el('p',flow),el('p',check),el('small','Sesuaikan langkah ini dengan kegiatan dan bukti yang benar-benar tersedia.')));
     }
     if(options.manifest && row.code.length===5) content.append(button('Jadikan acuan WP pada sesi ini',()=>{
-      assigned.set(options.manifest,row);document.getElementById('dialog').close();mode='wp';draw();
+      assigned.set(options.manifest,row);document.getElementById('dialog').close();switchMode('wp');
     }));
     content.append(exportBar(isZ?'Rincian KLU Z':'Rincian KBLI',['Keterangan','Nilai'],rows),
       isZ?link('Buka lampiran resmi DJP',kluAttachment+'#page='+row.first):link('Kamus klasifikasi BPS',sourceKBLI));
@@ -185,7 +192,7 @@ function business(container, options) {
   }
   function draw(){
     const panel=box('');container.replaceChildren(el('h1','Proses bisnis dan KLU'),
-      toggleSet([['wp','Untuk WP ini'],['search','Cari KLU/KBLI']],mode,m=>{mode=m;draw();}),panel);
+      toggleSet([['wp','Untuk WP ini'],['search','Cari KLU/KBLI']],mode,switchMode),panel);
     if(mode==='search') {
       registryList(panel,{title:'Hasil pencarian KLU dan KBLI',placeholder:'Kode atau nama kegiatan',query:options.query,rows:businessCodes,
         columns:['Kode','Nama kegiatan','Acuan','Tingkat'],filters:[
@@ -204,7 +211,7 @@ function business(container, options) {
       if(z)detail.append(button('Lihat '+z.code+' di katalog DJP',()=>showRecord(z)));
     }
     if(picked)detail.append(button('Acuan sesi ini · '+picked.code+' '+picked.title,()=>showRecord(picked)));
-    detail.append(button('Pilih acuan dari katalog',()=>{mode='search';draw();}));
+    detail.append(button('Pilih acuan dari katalog',()=>switchMode('search')));
     panel.append(detail,calculator());
   }
   draw();
@@ -213,12 +220,102 @@ function business(container, options) {
 export function renderCatalog(container, kind, options={}) {
   if(kind==='probis'){ business(container,options);return; }
   container.replaceChildren(el('h1','Peraturan'),el('p','Cari metadata yang tersimpan di perangkat. Buka naskah resmi untuk memeriksa isi dan riwayat aturan.'));
-  const distinct=i=>[['','Semua'],...[...new Set(allRegs.map(r=>r.cells[i]).filter(Boolean))].sort()];
-  registryList(container,{title:'Hasil pencarian peraturan',placeholder:'Nomor, judul, atau kata kunci',query:options.query,
-    rows:allRegs,columns:['Nomor','Judul','Jenis','Tanggal','Status pada sumber'],
-    filters:[{key:'type',label:'Jenis',options:distinct(2)},{key:'state',label:'Status',options:distinct(4)}],
-    dates:[{key:'start',label:'Tanggal awal'},{key:'end',label:'Tanggal akhir'}],
-    filter:(r,v)=>(!v.type||r.cells[2]===v.type)&&(!v.state||v.state===r.cells[4])&&(!v.start||r.cells[3]>=v.start)&&(!v.end||r.cells[3]<=v.end),
-    open:r=>showDialog(r.cells[0],box('stack',el('h3',r.cells[1]),el('p',r.cells.slice(2).join(' · ')),
-      link('Buka naskah di situs DJP',r.url),exportBar('Rincian peraturan',['Nomor','Judul','Jenis','Tanggal','Status','Sumber'],[[...r.cells,r.url]])))});
+  regulationSearch(container,options.query);
+}
+
+const savedRegulationsKey='scv2-regulation-presets';
+function regulationSearch(container,query) {
+  let saved=[],active='';
+  try{
+    const stored=JSON.parse(localStorage.getItem(savedRegulationsKey)||'{}');
+    if(Array.isArray(stored.presets))saved=stored.presets.filter(p=>typeof p?.name==='string' && p.name && p.filters && typeof p.filters==='object');
+    if(!query && typeof stored.active==='string')active=stored.active;
+  }catch{}
+  const controls={},results=card('Hasil pencarian'),filters=box('toolbar');
+  const initial=(saved.find(p=>p.name===active)?.filters)||{};
+  const values={...emptyFilters};let page=0;
+  for(const k of Object.keys(values))if(typeof initial[k]==='string')values[k]=initial[k];
+  if(query)values.keyword=query;
+  function changed(key,value){values[key]=value;page=0;render();}
+  function input(key,label,type,placeholder='') {
+    const control=el('input');control.type=type;control.value=values[key];control.placeholder=placeholder;
+    control.oninput=()=>changed(key,control.value);
+    controls[key]=control;filters.append(field(label,control));
+  }
+  function choice(key,label,items) {
+    const item=select(items,values[key],v=>changed(key,v),label),control=item.querySelector('select');
+    if(control.selectedIndex<0){control.selectedIndex=0;values[key]=control.value;}
+    controls[key]=control;filters.append(item);
+  }
+  input('keyword','Kata kunci','search','Nomor, judul, atau kata kunci');
+  input('number','Nomor peraturan','search','Misalnya 168/2023 atau PER-11');
+  choice('type','Jenis',[['','Semua jenis ('+allRegs.length+')'],...regulationTypes(allRegs)]);
+  choice('status','Status pada sumber',[['','Semua status'],['active','Aktif atau berlaku'],['changed','Diubah atau dicabut sebagian'],['ended','Dicabut, diganti, atau berakhir'],['other','Lainnya atau belum tercantum']]);
+  input('start','Tanggal peraturan dari','date');input('end','Tanggal peraturan sampai','date');
+  choice('sort','Urutan',[['newest','Terbaru'],['oldest','Terlama'],['type','Menurut jenis']]);
+
+  function apply(next) {
+    for(const [k,control] of Object.entries(controls)){
+      control.value=typeof next[k]==='string'?next[k]:emptyFilters[k];
+      if(control.tagName==='SELECT'&&control.selectedIndex<0)control.selectedIndex=0;
+      values[k]=control.value;
+    }
+    page=0;render();
+  }
+  const presetName=el('input');presetName.maxLength=80;presetName.placeholder='Nama saringan';
+  const presetSelect=el('select');presetSelect.setAttribute('aria-label','Saringan tersimpan');
+  const info=el('p','','hint');info.setAttribute('role','status');
+  function picker(){
+    presetSelect.replaceChildren(new Option('Pilih saringan',''),...saved.map(p=>new Option(p.name,p.name)));
+    presetSelect.value=active;presetName.value=active;
+  }
+  function store(){try{localStorage.setItem(savedRegulationsKey,JSON.stringify({presets:saved,active}));return true;}catch{info.textContent='Penyimpanan lokal tidak tersedia. Saringan hanya digunakan di tab ini.';return false;}}
+  presetSelect.onchange=()=>{
+    active=presetSelect.value;presetName.value=active;const item=saved.find(p=>p.name===active);
+    if(item){apply(item.filters);if(store())info.textContent='Saringan '+active+' diterapkan.';}
+    else {apply(emptyFilters);store();}
+  };
+  const presets=el('details');presets.append(el('summary','Saringan tersimpan'),box('toolbar',field('Buka saringan',presetSelect),field('Nama saringan',presetName),
+    button('Simpan atau perbarui',()=>{
+      const name=presetName.value.trim();if(!name){info.textContent='Isi nama saringan terlebih dahulu.';return;}
+      saved=saved.filter(p=>p.name!==name).concat({name,filters:{...values}});active=name;picker();
+      if(store())info.textContent='Saringan '+name+' tersimpan di perangkat ini.';
+    }),button('Hapus saringan',()=>{
+      if(!active)return;
+      saved=saved.filter(p=>p.name!==active);active='';picker();if(store())info.textContent='Saringan terpilih sudah dihapus.';
+    })),info);
+  function details(r){
+    const body=box('stack',el('h3',r.title),el('p',[r.type,r.date,r.status].join(' · ')),el('h4','Isi pokok'),
+      el('p',r.summary||'Ringkasan isi belum tersedia untuk peraturan ini.'),link('Buka naskah di situs DJP',r.url));
+    if(r.topics.length)body.append(el('p','Topik · '+r.topics.join(', ')));
+    if(r.related.length){
+      body.append(el('h4','Peraturan terkait'));
+      for(const ref of r.related){
+        const other=allRegs.find(item=>item.url===ref.url);
+        body.append(other?button(ref.label,()=>details(other)):link(ref.label,ref.url));
+      }
+    }
+    body.append(exportBar('Rincian peraturan',regulationColumns,[regulationCells(r)]));
+    showDialog(r.number,body);
+  }
+  function render(){
+    const rows=filterRegulations(allRegs,values),size=30,pages=Math.max(1,Math.ceil(rows.length/size));
+    page=Math.min(page,pages-1);
+    if(values.start&&values.end&&values.start>values.end){results.replaceChildren(el('p','Tanggal akhir mendahului tanggal awal. Periksa kembali rentang tanggal.'));return;}
+    results.replaceChildren(el('p',rows.length+' hasil'));
+    if(!rows.length){results.append(el('p','Coba kata kunci lain atau longgarkan saringan.'));return;}
+    const table=el('table'),thead=el('thead'),tr=el('tr'),body=el('tbody');table.setAttribute('aria-label','Daftar peraturan');
+    for(const col of ['Nomor','Tentang','Jenis','Tanggal peraturan','Status pada sumber','Isi pokok','Naskah'])tr.append(el('th',col));
+    thead.append(tr);table.append(thead,body);
+    for(const r of rows.slice(page*size,(page+1)*size)){
+      const record=el('tr'),first=el('td'),source=el('td');first.append(button(r.number,()=>details(r)));
+      source.append(link('Buka naskah',r.url));record.append(first,...[r.title,r.short,r.date,r.status,r.summary||'—'].map(t=>el('td',t)),source);
+      record.onclick=e=>{if(!e.target.closest('a,button'))details(r);};body.append(record);
+    }
+    const prev=button('Sebelumnya',()=>{page--;render();}),next=button('Berikutnya',()=>{page++;render();});
+    prev.disabled=page===0;next.disabled=page>=pages-1;
+    results.append(exportBar('Hasil pencarian peraturan',regulationColumns,rows.map(regulationCells)),box('scroll',table),box('pager',prev,el('span','Halaman '+(page+1)+' dari '+pages),next));
+  }
+  picker();filters.append(button('Atur ulang',()=>{active='';picker();apply(emptyFilters);store();}));
+  container.append(filters,presets,results);render();
 }

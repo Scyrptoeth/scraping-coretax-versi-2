@@ -1,8 +1,44 @@
-import {rowsOf, sources} from './app-data.js';
+import {forms as selectableForms, rowsOf, sources} from './app-data.js';
 
 const profiles={info:'informasi-umum',pihak:'pihak-terkait',bank:'rekening-bank',flag:'flag-wp',jenispajak:'jenis-pajak',
   alamat:'alamat',klu:'klu',nomorlain:'nomor-identitas-lain',sertel:'sertifikat-elektronik',pbb:'tanah-bangunan',login:'login-terakhir',dokumen:'dokumen'};
 const lists={sptdaftar:'daftar',sptbelum:'belum-dilaporkan',sptarsip:'arsip'};
+const typeFields=new Set(['jenisspt','jenissuratpemberitahuanpajak','returnsheettypecode','taxreturntypecode']);
+const typeText=value=>String(value).trim().toLowerCase().replace(/\s+/g,' ');
+const typeLabels=new Map();
+for(const [code,label] of selectableForms) {
+  for(const value of [code,label,'SPT '+label]) typeLabels.set(typeText(value),code);
+}
+typeLabels.set('spt pph badan rupiah','ICT_RCITR');
+export const isSptList=source=>Object.hasOwn(lists,source);
+
+function listRowType(row) {
+  const matched=new Set();
+  for(const [key,value] of Object.entries(row || {})) {
+    if(!typeFields.has(key.toLowerCase().replace(/[^a-z]/g,'')) || value==null || value==='')continue;
+    matched.add(typeLabels.get(typeText(value)) || '');
+  }
+  return matched.size===1 ? [...matched][0] : '';
+}
+export function selectSptListRows(item,types) {
+  if(!isSptList(item.source) || item.sptSelection) return item;
+  const selected=new Set(types),all=selectableForms.every(([id])=>selected.has(id));
+  const rows=rowsOf(item.page),included=[],byType={};
+  let unknown=0;
+  for(const row of rows) {
+    const type=listRowType(row);
+    if(type) byType[type]=(byType[type] || 0)+1;
+    else unknown++;
+    if(all || selected.has(type)) included.push(row);
+  }
+  if(!included.length) return null;
+  const omitted=rows.length-included.length;
+  const sptSelection={perJenisPadaSumber:byType,jenisBelumDikenali:unknown,barisSumber:rows.length,
+    totalDilaporkanSumber:item.total ?? null,barisDilewati:omitted};
+  // Preserve the native response verbatim when all its rows are in scope.
+  return {...item,spt:'',sptSelection,rows:included.length,total:omitted?null:item.total,
+    page:omitted?{Payload:{Data:included}}:item.page};
+}
 const forms={VAT_VATR:'PPN',VAT_VATTRNTEVATC:'PPN-PEMUNGUT',ICT_WITR:'PPH2126',ICT_WTR:'UNIFIKASI',ICT_RCITR:'BADAN',ICT_PITR:'OP'};
 const collectorParts={induk:'Induk SPT PPN Pemungut',l1:'Lampiran 1',l2:'Lampiran 2','l2-total':'Lampiran 2: Jumlah'};
 const monthNames=['januari','februari','maret','april','mei','juni','juli','agustus','september','oktober','november','desember'];
@@ -67,7 +103,9 @@ export function appendPackageEntry(groups,item,wp) {
   entry.cap.baris+=item.rows;
   // A reported total may cover other pages, so adding totals would double count.
   entry.cap.total=entry.pages.length===1 ? item.total : null;
-  entry.cap.halamanSumber.push({asal:item.name,metode:item.origin,baris:item.rows,total:item.total,jenisSpt:item.spt || '',...(item.proof?{pencocokan:item.proof}:{})});
-  if(entry.pages.length===1 && item.spt) entry.cap.konteks.jenisSpt=item.spt;
-  else if(entry.cap.konteks.jenisSpt!==item.spt) delete entry.cap.konteks.jenisSpt;
+  const type=isSptList(item.source)?'':item.spt;
+  entry.cap.halamanSumber.push({asal:item.name,metode:item.origin,baris:item.rows,total:item.total,jenisSpt:type || '',
+    ...(item.sptSelection?{klasifikasiSpt:item.sptSelection}:{}),...(item.proof?{pencocokan:item.proof}:{})});
+  if(entry.pages.length===1 && type) entry.cap.konteks.jenisSpt=type;
+  else if(entry.cap.konteks.jenisSpt!==type) delete entry.cap.konteks.jenisSpt;
 }

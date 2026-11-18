@@ -1,6 +1,6 @@
 # Pemutar paket dan kertas kerja
 
-Pada prarilis 0.2.0, pilih **Buka di Analisis** sesudah penarikan atau buka beberapa paket ZIP lokal dari tab **Muat paket**. Pilih **WP aktif**, periksa periode dan hasil pemeriksaan integritas, lalu pilih tahun pada bagian yang akan digunakan. Paket dan isian kerja berada di memori tab. Unduh berkas kerja jika isian perlu dibuka kembali bersama paket yang sama. [Format dan pemeriksaan integritas](FORMAT.md)
+Pada prarilis 0.3.0, pilih **Buka di Analisis** sesudah penarikan atau buka beberapa paket ZIP lokal dari tab **Muat paket**. Pilih **WP aktif**, periksa periode dan hasil pemeriksaan integritas, lalu pilih tahun pada bagian yang akan digunakan. Paket dan isian kerja berada di memori tab. Unduh berkas kerja jika isian perlu dibuka kembali bersama paket yang sama. [Format dan pemeriksaan integritas](FORMAT.md)
 
 ## Profil, SPT dan data mentah
 
@@ -21,11 +21,27 @@ Pada tab **Probis**, katalog menyediakan KBLI 2020 dan 2025 serta 60 kode KLU ka
 
 ## Kertas kerja
 
+**Indeks KKP.** Pilih tahun pajak dan buka **Kertas Kerja → KKP → Pilih indeks KKP**. Daftar disusun dari bagian SPT yang tersedia pada paket. Untuk Badan, misalnya, B.1–B.5 merujuk akun peredaran, HPP, biaya usaha serta penghasilan dan biaya di luar usaha. Untuk OP, indeks B-7 s.d. B-17 tersedia sesuai isian yang didukung. Indeks N mencakup PPN, C mencakup PPh 21, G dan K membaca baris Pasal 23 dan Pasal 4 ayat (2) yang tertera di SPT Unifikasi. Tiap baris menunjukkan masa, pembetulan terakhir, lokasi sumber dan status pengujian. Dua rekaman dengan nomor pembetulan tertinggi yang sama ditandai agar diperiksa.
+
+Buka satu baris, isi rujukan dokumen dan nama penguji. Pilih **Konfirmasi sesuai SPT (sudah diuji)** jika bukti cocok. Jika angkanya berbeda, isi nilai setelah pengujian dan penjelasannya. Koreksi dihitung sebagai nilai petugas dikurangi nilai SPT. Nilai pokok hasil pengujian diisi terpisah. KKA dan draf SP2DK baru memakai lingkup temuan yang dipilih serta mempertahankan masa dan rujukan bukti. Hasil konfirmasi yang sama dengan SPT tetap tercatat di indeks.
+
+Pada **Dokumen pendukung**, catat jenis dokumen, status, tanggal dan tenggat menurut surat. DOK.1, DOK.2 dan nomor berikutnya berlaku untuk seluruh indeks tahun aktif. Dokumen yang sudah diterima sebagian atau seluruhnya dapat dipilih sebagai rujukan saat mencatat hasil uji.
+
+Isi UP2, pembuat dan penelaah untuk indeks yang dipilih. Setelah telaah, **Buat revisi** menambahkan penanda P1, P2 dan seterusnya pada kertas kerja. **Excel KKP ini** mengunduh indeks terpilih beserta dokumen pendukungnya. **Excel semua KKP** memuat identitas, daftar indeks, temuan sementara, INDUK berisi baris yang sudah diuji dan simulasi yang telah diisi, permintaan dokumen, data SPT serta satu lembar per indeks dengan rumus koreksi. Gunakan **Unduh berkas kerja** untuk membawa isian serta penanda revisi ke sesi lain. Pembentukan kertas kerja tanpa SPT, penghitungan ulang seluruh pos induk dan kesetaraan tata letak workbook resmi masih memerlukan pengembangan.
+
 1. Di **KKP** atau **KKA**, pilih **Tambah butir**. Catat fakta, sumber, nilai menurut WP dan petugas, simpulan, klasifikasi serta status penelaahan. Pokok hasil pengujian mempunyai isian tersendiri. Klasifikasi berbukti memerlukan fakta dan rujukan.
 2. Periksa **Rincian dan penelaahan temuan**. Tanggal lapor dan sisa tagihan menunjukkan fakta sumber. Faktur dengan nomor, pemasok dan tanggal yang sama di B2 versi terakhir pada beberapa masa merupakan petunjuk untuk pengujian hak pengkreditan. Butir yang ditandai terjelaskan atau tidak relevan dikeluarkan dari keluaran.
 3. Tentukan **Temuan yang dimasukkan**. KKP dimulai dengan **Berbukti saja**. KKA dan konsep SP2DK baru dimulai dengan **Berbukti + indikatif**. Setiap dokumen memiliki pilihannya sendiri.
 4. Gunakan **Excel kertas kerja**, **Word**, atau **Cetak / PDF**. Excel KKP memuat rumus selisih untuk dua nilai pembanding yang terisi. KKA memuat profil, kriteria pemilihan WP, perbandingan SPT dua tahun pada Tabel 4.1, potensi per jenis dan rinciannya pada Tabel 5 dan 5.1, serta usulan petugas. Pilihan indikatif menambahkan Lampiran L-9. [Konsep surat dan berita acara](KONSEP.md)
 5. Gunakan **Unduh berkas kerja** untuk menyimpan pilihan, catatan, draf dan simulasi. **Buka berkas kerja** mencocokkan paket dan tahun. Berkas lama dapat dibuka dengan pilihan awal untuk bidang yang belum ada pada versi sebelumnya.
+
+### Menggabungkan hasil kerja tim
+
+Muat paket dan tahun yang sama, lalu pilih **Buka berkas kerja**. Jika sesi sudah berisi isian, pratinjau menampilkan jumlah entri baru, sama, lebih baru dan bertentangan. **Gabungkan isian** mempertahankan pekerjaan yang hanya ada di sesi lokal. **Ganti isi sesi ini** menggunakan seluruh isi berkas yang dibuka.
+
+Butir manual baru memiliki ID tetap. Baris KKP menggunakan lokasi isian sumber pada paket. Aplikasi mencatat waktu sunting berdasarkan jam perangkat dalam UTC. Untuk dua versi berbeda yang keduanya memiliki waktu sunting, versi terbaru digunakan. Jika waktunya sama atau salah satunya kosong, periksa kedua versi dan tentukan pilihan. Untuk berkas lama, nama butir dan sumber yang cocok membantu menemukan pasangannya. Ambiguitas identitas pada berkas lama perlu diperiksa petugas. Isi draf, simulasi dan DOK yang berbenturan selalu ditampilkan untuk dipilih. Simulasi dipilih sebagai satu kesatuan agar tanggal dan masa perhitungannya tetap selaras.
+
+**Kemajuan pekerjaan** menghitung status butir dari paket, pengujian baris KKP dan butir manual untuk paket serta tahun aktif. **Excel laporan progres** memuat pembilang dan penyebut tiap kelompok, status tiap butir sumber, serta status dan waktu sunting isian kerja yang tersedia.
 
 ## Simulasi SKPKB
 

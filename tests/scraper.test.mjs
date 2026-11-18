@@ -1,10 +1,12 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import {checkIdentity, csvCell, filePage, parseDelimited, readIds, rowsOf} from '../extension/app-data.js';
+import {checkIdentity, csvCell, filePage, parseDelimited, readCaptureId, rowsOf} from '../extension/app-data.js';
 
 test('normalizes WP identifiers as text, deduplicates and rejects partial matches', () => {
-  assert.deepEqual(readIds('123456789012345\n01.234.567.890.123-45\n0000000000000001'),['0123456789012345','0000000000000001']);
-  assert.throws(() => readIds('abc0123456789012345'));
+  assert.equal(readCaptureId('123456789012345\n01.234.567.890.123-45'),'0123456789012345');
+  for(const sep of [',','\n',';','\r','\t']) assert.throws(()=>readCaptureId('0123456789012345'+sep+'0000000000000001'),/satu NPWP/);
+  assert.equal(readCaptureId(' \n'),'');
+  assert.throws(() => readCaptureId('abc0123456789012345'));
 });
 test('delimited exports preserve newlines, delimiters, escaped quotes, and NPWP zeroes', () => {
   const rows=parseDelimited('\uFEFFNPWP;Keterangan\r\n0000000000000001;"a; b\n""c"""\r\n');

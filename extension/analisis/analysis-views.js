@@ -1,7 +1,9 @@
 import {compare,count,flatten,issues,label,payloads,periodFacts,rowsOf,typeNames,worksheet} from './model.js';
 import {box,button,card,dataTable,detail,el,exportSheets,select,toggleSet} from './ui.js';
 import {renderProfile} from './profile.js';
-import {renderComparison} from './comparison.js';
+import {renderComparison,renderFinancialRatios} from './comparison.js';
+import {renderAdvanced} from './advanced-dashboard.js';
+import {combinedLedger} from './ledger-table.js';
 import {exportControls,financialPosition,indicativeDates,openForm,summaryPanels} from './spt-forms.js';
 
 function yearPicker(state,show) {
@@ -46,12 +48,13 @@ function counterparties(pkg,year) {
 }
 export function renderDashboard(target,state) {
   const pkg=state.pkg;
-  const modes=[['ringkasan','Ringkasan'],['butir','Semua butir'],['grafik','Laporan grafik'],['keuangan','Keuangan'],['ppn','PPN & lawan'],['potput','PPh potput & buku besar'],['banding','Perbandingan antar-WP']];
+  const modes=[['ringkasan','Ringkasan'],['butir','Semua butir'],['grafik','Laporan grafik'],['keuangan','Keuangan'],['ppn','PPN & lawan'],['potput','PPh potput & buku besar'],['lanjutan','Lanjutan'],['banding','Perbandingan antar-WP']];
   const mode=modes.some(x=>x[0]===state.section)?state.section:'ringkasan';
   const facts=periodFacts(pkg,state.year), current=pkg.forms.filter(f=>f.year===state.year && f.latest);
   const issuesFound=issues(pkg,state.year);
   target.append(card('Dasbor',box('toolbar',yearPicker(state,state.repaint),printer()),toggleSet(modes,mode,s=>state.go('ringkas',s))));
   if(mode==='banding'){renderComparison(target,state);return;}
+  if(mode==='lanjutan'){renderAdvanced(target,state);return;}
   if(mode==='ringkasan'){
     const signature=el('p',pkg.report.valid?'Semua sidik jari yang diperiksa cocok.':'Paket memiliki peringatan integritas.','notice');
     const annual=current.find(f=>f.type==='OP' || f.type==='BADAN');
@@ -70,6 +73,7 @@ export function renderDashboard(target,state) {
   } else if(mode==='keuangan'){
     const annual=facts.filter(r=>r.Jenis===typeNames.OP||r.Jenis===typeNames.BADAN);
     target.append(card('Angka pada SPT tahunan',dataTable(annual,{name:'SPT tahunan'})));
+    renderFinancialRatios(target,state);
     for(const f of current.filter(f=>f.type==='BADAN')){
       const payload=payloads(f.parts.get('induk'))[0];const accounts=[];
       function walk(value){if(!value || typeof value!=='object')return;if(value.AccountCode&&value.Description){accounts.push(value);return;}Object.values(value).forEach(walk);}
@@ -91,19 +95,30 @@ export function renderEntries(target,state,profile=false) {
   const pkg=state.pkg;
   const entries=pkg.entries.filter(e=>!e.path.startsWith('spt/'));
   if(!entries.length){target.append(card('Data mentah',el('p','Paket ini belum memuat sumber untuk bagian ini.')));return;}
+  const combined=combinedLedger(entries);
+  const allLedger=combined && {path:'bukubesar/gabungan',cap:{label:'Buku besar gabungan'}};
+  const tables=combined?[allLedger,...entries]:entries;
+  const dataFor=e=>e===allLedger?combined.rows:rowsOf(e);
   const query=el('input');query.type='search';query.placeholder='Cari bagian atau berkas';query.setAttribute('aria-label',query.placeholder);
-  const rail=box('rail'),panel=card('');let active=entries.find(e=>e.path===state.selectedEntry)||entries.find(e=>e.path==='profil/informasi-umum.json')||entries[0];
+  const rail=box('rail'),panel=card('');let active=tables.find(e=>e.path===state.selectedEntry)||entries.find(e=>e.path==='profil/informasi-umum.json')||tables[0];
   const show=()=>{
-    const filtered=entries.filter(e=>(e.path+' '+(e.cap?.label||'')).toLowerCase().includes(query.value.toLowerCase()));
+    const filtered=tables.filter(e=>(e.path+' '+(e.cap?.label||'')).toLowerCase().includes(query.value.toLowerCase()));
     rail.replaceChildren(...filtered.map(e=>button(e.cap?.label||label(e.path),()=>{active=e;state.selectedEntry=e.path;show();},e===active?'':'secondary')));
     if(!filtered.length){rail.append(el('small','Tidak ada berkas yang cocok.'));panel.replaceChildren();return;}
     if(!filtered.includes(active)){active=filtered[0];state.selectedEntry=active.path;}
-    const rows=rowsOf(active);
+    const rows=dataFor(active);
     const presentation=active.path==='profil/informasi-umum.json' ? rows.flatMap(r=>[...flatten(r)].map(([k,v])=>({Isian:k,Nilai:v}))) : rows;
-    panel.replaceChildren(el('h2',active.cap?.label||label(active.path)),el('p',active.path,'hint'),dataTable(presentation,{name:label(active.path),filename:'Data-'+label(active.path)}),detail('Respons sumber',el('pre',JSON.stringify(active.pages,null,2))));
+    panel.replaceChildren(el('h2',active.cap?.label||label(active.path)),
+      el('p',active===allLedger?combined.sourceCount+' berkas bulanan. '+combined.omitted+' salinan identik dengan ID yang sama digabung. '+combined.conflicting+' ID mempunyai isi berbeda.':active.path,'hint'),
+      dataTable(presentation,{name:label(active.path),filename:'Data-'+label(active.path),incremental:true}));
+    if(active!==allLedger){
+      const source=active,pre=el('pre'),raw=detail('Respons sumber',pre);
+      raw.ontoggle=()=>{if(raw.open && !pre.textContent)pre.textContent=JSON.stringify(source.pages,null,2);};
+      panel.append(raw);
+    }
   };
   query.oninput=show;show();
-  target.append(card('Data mentah',box('toolbar',query,button('Excel semua bagian',()=>exportSheets(entries.map(e=>({name:label(e.path),rows:worksheet(rowsOf(e))})),'Bagian-data')),printer())),box('split',rail,panel));
+  target.append(card('Data mentah',box('toolbar',query,button('Excel semua bagian',()=>exportSheets(tables.map(e=>({name:e===allLedger?'Buku besar gabungan':label(e.path),rows:worksheet(dataFor(e))})),'Bagian-data')),printer())),box('split',rail,panel));
 }
 export function renderSpt(target,state) {
   const pkg=state.pkg,mode=state.section==='ringkasan'?'ringkasan':'daftar';

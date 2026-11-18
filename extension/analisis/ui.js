@@ -49,15 +49,31 @@ export function showDialog(title,content) {
 export function exportSheets(sheets, filename) {
   return createXlsx({sheets}).then(blob=>download(blob,filename+'.xlsx')).catch(error=>notice('Excel gagal dibuat. '+error.message,true));
 }
-export function dataTable(rows, {name='Tabel',openRow,filename='Tabel',empty='Tidak ada baris pada sumber ini.',formatNumber=count}={}) {
+export function dataTable(rows, {name='Tabel',openRow,filename='Tabel',empty='Tidak ada baris pada sumber ini.',formatNumber=count,incremental=false}={}) {
   const root=box('table-panel');
   if (!rows.length) {root.append(el('p',empty,'hint'));return root;}
   const search=el('input');search.type='search';search.placeholder='Cari di tabel';search.setAttribute('aria-label','Cari di tabel '+name);
-  const area=box('scroll');const pager=box('pager'); const pageSize=50;
+  const area=box('scroll');const pager=box('pager'); const pageSize=incremental?200:50;
   let index=0,order={key:'',dir:1},visible=rows;
   const keys=[...new Set(rows.flatMap(Object.keys))];
-  const tools=box('toolbar',search,button('Excel bagian ini',()=>exportSheets([{name,rows:worksheet(visible)}],filename)));
+  const tools=box('toolbar',search,button('Excel bagian ini',()=>exportSheets([{name,rows:worksheet(selectRows(rows,search.value,order))}],filename)));
   root.append(tools,area,pager);
+  function appendRows(body,from,to) {
+    const fragment=document.createDocumentFragment();
+    for(const row of visible.slice(from,to)){
+      const tr=el('tr');
+      if(openRow){const cell=el('td');cell.append(button('Buka',()=>openRow(row)));tr.append(cell);}
+      for(const key of keys){
+        const td=el('td');const value=row[key];const txt=typeof value==='number'?formatNumber(value):(serialize(value)||'—');
+        if(txt.length>60){
+          const b=button(txt.slice(0,50)+'…',()=>showDialog(key,el('pre',txt)));b.title='Lihat nilai lengkap';td.append(b);
+        }else td.textContent=txt;
+        tr.append(td);
+      }
+      fragment.append(tr);
+    }
+    body.append(fragment);
+  }
   function render() {
     visible=selectRows(rows,search.value,order);
     const last=Math.max(0,Math.ceil(visible.length/pageSize)-1);index=Math.min(index,last);
@@ -68,24 +84,24 @@ export function dataTable(rows, {name='Tabel',openRow,filename='Tabel',empty='Ti
       th.append(button(key+(order.key===key?(order.dir===1?' ↑':' ↓'):''),()=>{order={key,dir:order.key===key?-order.dir:1};index=0;render();},''));headings.append(th);
     }
     head.append(headings);
-    for(const row of visible.slice(index*pageSize,(index+1)*pageSize)){
-      const tr=el('tr');
-      if(openRow){const cell=el('td');cell.append(button('Buka',()=>openRow(row)));tr.append(cell);}
-      for(const key of keys){
-        const td=el('td');const value=row[key];const txt=typeof value==='number'?formatNumber(value):(serialize(value)||'—');
-        if(txt.length>60){
-          const b=button(txt.slice(0,50)+'…',()=>showDialog(key,el('pre',txt)));b.title='Lihat nilai lengkap';td.append(b);
-        }else td.textContent=txt;
-        tr.append(td);
-      }
-      body.append(tr);
-    }
+    appendRows(body,index*pageSize,(index+1)*pageSize);
     table.append(head,body);area.replaceChildren(table);
+    if(incremental){
+      let shown=Math.min(pageSize,visible.length);
+      const progress=el('small');progress.setAttribute('role','status');
+      const more=button('Tampilkan 1.000 baris lagi',()=>{
+        const end=Math.min(shown+1000,visible.length);
+        appendRows(body,shown,end);shown=end;update();
+      });
+      function update(){progress.textContent=count(shown)+' dari '+count(visible.length)+' baris ditampilkan';more.hidden=shown>=visible.length;}
+      update();pager.replaceChildren(progress,more);return;
+    }
     const prev=button('Sebelumnya',()=>{index--;render();});prev.disabled=index===0;
     const next=button('Berikutnya',()=>{index++;render();});next.disabled=index===last;
     pager.replaceChildren(prev,el('small',count(visible.length)+' baris · Halaman '+(index+1)+' dari '+(last+1)),next);
   }
-  search.oninput=()=>{index=0;render();};render();return root;
+  let timer;
+  search.oninput=()=>{index=0;if(incremental){clearTimeout(timer);timer=setTimeout(render,150);}else render();};render();return root;
 }
 export function namedGroups(rows, key) {
   return [...new Set(rows.map(r=>r[key]).filter(Boolean))].sort(compare);

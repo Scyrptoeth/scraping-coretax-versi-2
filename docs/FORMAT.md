@@ -25,4 +25,6 @@ Berkas kerja XLSX berisi workbook OOXML dan menyimpan teks sebagai teks, termasu
 
 ### Bukti uji
 
+Pada pemutar Versi 2, **Muat paket → Rincian mutu data** memisahkan masalah integritas, peringatan cakupan dan keterangan penarik. Di bagian **Cocokkan tabel dengan ekspor Coretax**, pilih tabel paket dan CSV dari tampilan yang sama. Pasangkan nama kolom yang berbeda, lalu pilih **Cocokkan baris dan isi**. Pembanding mempertahankan urutan baris, nol di depan dan kemunculan baris kembar. Format tanggal atau angka yang tampil berbeda memerlukan pemeriksaan pada sumber. Keterangan **Seluruh baris dan kolom cocok** mensyaratkan semua kolom pada kedua sumber berpasangan dan seluruh nilai cocok. Excel memuat ringkasan, pasangan kolom dan perbedaan.
+
 Jalankan `node --test tests/archive.test.mjs tests/document.test.mjs`. Uji mencakup empat paket referensi bila tersedia lokal, ekspor dan pembacaan ulang, deteksi ketidaksesuaian, enkripsi, kata sandi keliru, tipe sel, serta isi DOCX. Workbook dan dokumen sintetis juga telah dibuka dengan pembaca independen `openpyxl` dan `python-docx`. Contoh referensi tetap berada di workspace lokal. Pembukaan paket buatan Versi 2 di pemutar VERITAX asli belum diuji.

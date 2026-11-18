@@ -1,9 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {suggestedSource} from '../extension/app-batch.js';
-import {appendPackageEntry, metaForSelection, packagePath} from '../extension/app-package-entries.js';
+import {appendPackageEntry, metaForSelection, packagePath,selectSptListRows} from '../extension/app-package-entries.js';
 import {indexPackage,rowsOf} from '../extension/analisis/model.js';
-import {parseDelimited,checkIdentity} from '../extension/app-data.js';
+import {parseDelimited,checkIdentity,forms} from '../extension/app-data.js';
 
 const wp='0000000000000001';
 const make=(source,rows,spt='')=>({source,spt,wp,id:'local-1',name:'Dari tabel',period:'2025-01 s.d. 2025-12',
@@ -27,6 +27,20 @@ test('suggests only a selected, identifiable source',()=>{
   assert.equal(suggestedSource('Rekening bank',['bank','klu']),'bank');
   assert.equal(suggestedSource('Lainnya',['bank','klu']),'');
   assert.equal(suggestedSource('Rekening bank',['klu']),'');
+});
+test('classifies SPT lists per row and retains native fields, scope and ambiguous types',()=>{
+  const codes=forms.map(([code])=>code);
+  const rows=forms.flatMap(([code,name])=>[{ReturnSheetTypeCode:code},{'Jenis Surat Pemberitahuan Pajak':'SPT '+name}]);
+  rows.push({'Jenis Surat Pemberitahuan Pajak':'SPT PPh Badan Rupiah'}, {'Jenis Pajak':'PPN'}, {ReturnSheetTypeCode:'VAT_VATR','Jenis SPT':'ICT_WITR'});
+  const item=make('sptdaftar',rows,'VAT_VATR');item.total=30;
+  const all=selectSptListRows(item,codes);
+  assert.equal(all.page,item.page);assert.equal(all.spt,'');
+  assert.equal(all.sptSelection.jenisBelumDikenali,2);
+  assert.equal(all.sptSelection.perJenisPadaSumber.ICT_RCITR,3);
+  const one=selectSptListRows(item,['ICT_RCITR']);
+  assert.deepEqual(one.page.Payload.Data,[rows[8],rows[9],rows[12]]);
+  assert.equal(one.sptSelection.totalDilaporkanSumber,30);assert.equal(one.total,null);
+  assert.equal(selectSptListRows(item,[]),null);
 });
 test('records missing tax periods only for explicitly undated administrative sources',()=>{
   const meta={periode:'2025-01 s.d. 2025-12',opsi:{periode:{from:{y:2025,m:1},to:{y:2025,m:12}}}};

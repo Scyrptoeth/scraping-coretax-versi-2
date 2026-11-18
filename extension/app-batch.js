@@ -1,4 +1,4 @@
-import {sources, forms, visibleTables} from './app-data.js';
+import {sources, forms, rowsInColumnOrder, visibleTables} from './app-data.js';
 
 const names = {
   info:['profil utama','informasi umum','general information'],
@@ -56,7 +56,7 @@ export function batchCollector({ext, origin, context, isBusy, enqueue, refresh, 
           for(const [id,caption] of forms.filter(([id])=>scope.types.includes(id))) type.add(new Option(caption,id));
           const undated=document.createElement('input'), periodChoice=document.createElement('label');
           undated.type='checkbox';periodChoice.className='check';periodChoice.append(undated,document.createTextNode('Sumber tidak mencantumkan masa pajak.'));
-          const update=()=>{type.hidden=!category.value.startsWith('spt');periodChoice.hidden=category.value!=='tabelumum';undated.checked=false;};
+          const update=()=>{type.hidden=category.value!=='sptisi';periodChoice.hidden=category.value!=='tabelumum';undated.checked=false;};
           category.onchange=update;update();
           const state=document.createElement('small');
           line.append(label,category,type,periodChoice,state);rowsBox.append(line);
@@ -75,7 +75,8 @@ export function batchCollector({ext, origin, context, isBusy, enqueue, refresh, 
     const plan=selected.map(t=>({target:t,source:t.category.value,spt:t.type.hidden?'':t.type.value,
       undated:t.category.value==='tabelumum' && t.undated.checked}));
     if(plan.some(item=>!chosen.allowed.includes(item.source) ||
-      (item.source.startsWith('spt') && !chosen.types.includes(item.spt)))) throw Error('Periksa pilihan sumber dan jenis SPT pada setiap tabel.');
+      (item.source==='sptisi' && !chosen.types.includes(item.spt)) ||
+      (item.source.startsWith('spt') && !chosen.types.length))) throw Error('Periksa pilihan sumber dan jenis SPT pada setiap tabel.');
     active=true;paused=false;stopped=false;buttons();let added=0, skipped=0;
     $('batch-page-limit').disabled=true;
     for(const t of targets){t.category.disabled=true;t.type.disabled=true;t.undated.disabled=true;}
@@ -98,9 +99,9 @@ export function batchCollector({ext, origin, context, isBusy, enqueue, refresh, 
             if(frame?.result?.end) {more=false;break;}
             result=frame?.result;
             if(!result || result.skip || !Array.isArray(result.rows)) throw Error(result?.skip || 'Tabel belum dapat dibaca.');
-            const serialized=JSON.stringify(result.rows);
+            const rows=rowsInColumnOrder(result.rows,t.table.labels), serialized=JSON.stringify(rows);
             if(seen.has(serialized)) throw Error('Halaman berulang. Periksa posisi tabel dan pindai ulang.');
-            seen.add(serialized);pages.push(result.rows);more=result.canAdvance;
+            seen.add(serialized);pages.push(rows);more=result.canAdvance;
             t.state.textContent=pages.length+' halaman terbaca.';
             if(!more) break;
             options={...selector,advance:true,rows:result.rows.length,owner:chosen.wp,expected:serialized};

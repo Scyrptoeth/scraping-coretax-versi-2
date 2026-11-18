@@ -48,3 +48,15 @@ main>.notice{line-height:1.6}
   #sources .check{align-items:flex-start;margin-block:2px;padding-block:4px}
   #sources .check input{margin-top:3px}
 }
+.capture-table{max-width:100%;min-width:0;overflow-x:auto;margin-block:9px 12px;overscroll-behavior-x:contain}
+.capture-table:focus-visible{outline:2px solid var(--green);outline-offset:2px}
+.capture-table table{width:100%;border-collapse:collapse;font-size:13px;line-height:1.45}
+.capture-table caption{text-align:left;font-weight:700;padding-bottom:6px}
+.capture-table th,.capture-table td{text-align:left;vertical-align:top;padding:8px;border-bottom:1px solid var(--line)}
+.capture-table thead th{background:#eaf2ed;color:var(--ink)}
+.capture-table tbody th{font-weight:600;white-space:nowrap;font-variant-numeric:tabular-nums}
+.capture-table tbody td{min-width:5ch;max-width:29ch;overflow-wrap:break-word}
+.capture-table details{margin:0}.capture-table summary{white-space:nowrap}
+.capture-table ul{min-width:18ch;margin:5px 0;padding-left:17px}
+.result-actions{display:flex;flex-wrap:wrap;gap:4px}.result-actions button{white-space:nowrap}
+@media(max-width:740px){.capture-table table{min-width:36rem}#results .capture-table table{min-width:54rem}}
