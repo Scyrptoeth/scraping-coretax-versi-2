@@ -105,24 +105,25 @@ async function run(mode){
   let allowRevision,revisionRequested;
   const releaseRevision=new Promise(resolve=>allowRevision=resolve);
   const revisionRequest=new Promise(resolve=>revisionRequested=resolve);
+  const launch=()=>chromium.launchPersistentContext(profile,{headless:true,offline:true,channel:'chromium',executablePath:process.env.CHROMIUM_PATH||undefined,
+    args:['--disable-background-networking','--disable-extensions-except='+extension,'--load-extension='+extension]});
   try{
-    ctx=await chromium.launchPersistentContext(profile,{headless:true,offline:true,channel:'chromium',executablePath:process.env.CHROMIUM_PATH||undefined,
-      args:['--disable-background-networking','--disable-extensions-except='+extension,'--load-extension='+extension]});
-    const visited=[];let foreign=mode==='wrong-owner',hold=mode==='stop';
-    await ctx.route(/^https?:\/\//,async route=>{
+    const visited=[];let foreign=mode==='wrong-owner',hold=mode==='stop'||mode==='restart';
+    const serve=async route=>{
       const url=route.request().url();
       if(url===listing)return route.fulfill({contentType:'text/html; charset=utf-8',body:listPage(wp,mode==='missing-action')});
       const doc=records.find(r=>url===detailBase+r.id);
       if(!doc)return route.abort();
       visited.push(doc.id);
-      if(doc===records[1]&&hold){revisionRequested();await releaseRevision;}
+      if(doc===records[1]&&hold){revisionRequested();await releaseRevision;if(mode==='restart')return;}
       const owner=doc===records[1]&&foreign?otherWp:wp;
       return route.fulfill({contentType:'text/html; charset=utf-8',body:detailPage(doc,owner)});
-    });
+    };
+    ctx=await launch();await ctx.route(/^https?:\/\//,serve);
     const worker=ctx.serviceWorkers()[0]||await ctx.waitForEvent('serviceworker');
-    const source=await ctx.newPage();
+    let source=await ctx.newPage();
     if(mode!=='import')await source.goto(listing);
-    const page=await ctx.newPage();page.setDefaultTimeout(25000);
+    let page=await ctx.newPage();page.setDefaultTimeout(25000);
     await page.goto(new URL('app.html',worker.url()).href);await configure(page,{details:mode!=='import'});
     assert.equal(await page.locator('#queue .item').count(),0);
     if(mode==='import'){
@@ -133,11 +134,20 @@ async function run(mode){
       await page.locator('#queue .item').waitFor();
     }
     await page.getByRole('button',{name:'Mulai tarik',exact:true}).click();
-    if(mode==='stop'){
+    if(mode==='stop'||mode==='restart'){
       await Promise.race([revisionRequest,page.getByText('Tarikan selesai',{exact:true}).waitFor().then(()=>{throw Error('No second detail request to stop');})]);
-      await page.locator('#stop').click();hold=false;allowRevision();
+      if(mode==='restart'){
+        const appUrl=page.url();
+        // The first version has already been saved. Close the isolated browser mid-request, without a stop action.
+        await ctx.close();hold=false;allowRevision();
+        ctx=await launch();await ctx.route(/^https?:\/\//,serve);
+        source=await ctx.newPage();page=await ctx.newPage();page.setDefaultTimeout(25000);
+        await page.goto(appUrl);
+      }else{
+        await page.locator('#stop').click();hold=false;allowRevision();
+      }
     }
-    if(mode==='stop'||mode==='wrong-owner'){
+    if(mode==='stop'||mode==='restart'||mode==='wrong-owner'){
       const resume=page.locator('#pending-jobs').getByRole('button',{name:'Lanjutkan NPWP '+wp,exact:true});
       await resume.waitFor();await page.waitForFunction(()=>document.querySelector('#stop').hidden);
       assert.equal(await page.getByRole('button',{name:'Unduh paket',exact:true}).count(),0);
@@ -182,7 +192,7 @@ async function run(mode){
     if(mode==='complete')await verifyViewer(ctx,page,pkg,true);
   }finally{allowRevision();await ctx?.close();await rm(profile,{recursive:true,force:true});}
 }
-const scenarios=['complete','stop','wrong-owner','missing-action','import'];
+const scenarios=['complete','stop','restart','wrong-owner','missing-action','import'];
 for(const mode of process.argv.length>2?process.argv.slice(2):scenarios){
   assert.ok(scenarios.includes(mode));await run(mode);
 }

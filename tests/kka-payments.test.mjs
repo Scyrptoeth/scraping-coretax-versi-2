@@ -15,8 +15,8 @@ function ledger(pageRows,{total=null,reported=100,limit=100,annual=false}={}){
       payload:{First:0,Rows:limit,Filters:[{PropertyName:'PeriodCode',MatchMode:'equals',Value:period}]}},
     pages:pageRows.map(Data=>({IsSuccessful:true,Payload:{Data,TotalRecords:reported}}))};
 }
-function report(entries,failed=[]){
-  const pkg={entries,forms:[],manifest:{wp:{npwp:owner},dibuat:'2026-11-18T20:00:00Z',gagal:failed}};
+function report(entries,failed=[],created='2026-11-18T20:00:00Z'){
+  const pkg={entries,forms:[],manifest:{wp:{npwp:owner},dibuat:created,gagal:failed}};
   const result=kkaFigures(pkg,'2026');
   const rows=result.tables.find(t=>t.key==='5.3').rows;
   const full=rows.find(r=>r[0].startsWith('Pembayaran tercatat')),observed=rows.find(r=>r[0].startsWith('Subtotal pembayaran'));
@@ -77,4 +77,60 @@ test('source explicitly indicating an uncollected page or a narrower selection s
   assert.equal(report([e]).observed[1],15);
   for(const data of [[1,2],{rows:[1,2]}])
     assert.equal(ledgerPageCountProven({cap:{total:2,lengkap:true},pages:[{Payload:data}]},2),true);
+});
+
+test('KKA takes the transaction day first and uses the posting day only when the transaction date is absent',()=>{
+  const rows=[
+    payment('transaction',1,{TransactionDate:'2026-11-18',PostingDate:'2024-11-01'}),
+    payment('outside',2,{TransactionDate:'2024-11-01',PostingDate:'2026-11-18'}),
+    payment('fallback',4,{TransactionDate:null,PostingDate:'2026-11-18'}),
+    payment('reference-only',8,{TransactionDate:'',PostingDate:'2024-11-01',OriginalReferenceDate:'2026-11-18'})
+  ];
+  const {full,observed}=report([ledger([rows],{total:rows.length,reported:rows.length})]);
+  assert.equal(full[1],5);assert.equal(observed,undefined);
+  assert.match(full[3],/TransactionDate/);assert.match(full[3],/1 memakai tanggal buku/);
+});
+
+test('a malformed transaction day with a valid posting day leaves the full amount unknown and preserves dated evidence',()=>{
+  for(const TransactionDate of ['not-a-date','2025-02-30','2025-1-2T03:00:00']){
+    const good=payment('valid',21,{TransactionDate:'2026-11-18T23:59:59Z'});
+    const uncertain=payment('invalid',90,{TransactionDate,PostingDate:'2026-11-18'});
+    const {full,observed}=report([ledger([[good,uncertain]],{total:2,reported:2})]);
+    assert.equal(full[1],null);assert.equal(observed[1],21);assert.match(full[3],/Tanggal 1 pembayaran aktif belum dapat dipastikan/);
+  }
+});
+
+test('only active undated payments make the dated subtotal incomplete, and no dated payment yields no subtotal',()=>{
+  const paid=payment('paid',24,{TransactionDate:'2026-11-18'});
+  const cancelled=payment('cancelled',72,{TransactionDate:'bad-date',IsCancelled:true});
+  const undated=payment('undated',96,{TransactionDate:'bad-date'});
+  const calculate=rows=>report([ledger([rows],{total:rows.length,reported:rows.length})]);
+  const confirmed=calculate([paid,cancelled]);
+  assert.equal(confirmed.full[1],24);assert.equal(confirmed.observed,undefined);
+  const partial=calculate([paid,cancelled,undated]);
+  assert.equal(partial.full[1],null);assert.equal(partial.observed[1],24);
+  assert.match(partial.observed[3],/Tanggal 1 pembayaran aktif belum dapat dipastikan/);
+  assert.doesNotMatch(partial.full[3],/Kelengkapan halaman/);
+  const uncertain=calculate([cancelled,undated]);
+  assert.equal(uncertain.full[1],null);assert.equal(uncertain.observed,undefined);
+});
+
+test('365 source calendar dates include the package day, exclude the lower boundary, and preserve the written date across offsets',()=>{
+  const dates=['2023-03-02T23:59:59-07:00','2023-03-03T00:00:00+07:00','2024-02-29','2024-03-01T23:59:59-07:00','2024-03-02T00:00:00+07:00'];
+  const rows=dates.map((TransactionDate,i)=>payment('d'+i,2**i,{TransactionDate}));
+  const {full}=report([ledger([rows],{total:5,reported:5})],[],'2024-03-01T00:00:00Z');
+  assert.equal(full[1],14);
+});
+
+test('copies of a payment share one effective day and conflicting dates leave even the observed subtotal unknown',()=>{
+  const primary=payment('same',12,{TransactionDate:'2026-11-18',PostingDate:'2025-11-17'});
+  const fallback=payment('same',12,{PostingDate:'2026-11-18'});
+  const monthly=ledger([[primary]],{total:1,reported:1});
+  const annual=ledger([[fallback]],{total:1,reported:1,annual:true});
+  for(const sources of [[monthly,annual],[annual,monthly]]){
+    const {full}=report(sources);assert.equal(full[1],12);assert.match(full[3],/0 memakai tanggal buku/);
+  }
+  fallback.TransactionDate='2026-11-17';
+  const {full,observed}=report([monthly,annual]);
+  assert.equal(full[1],null);assert.equal(observed,undefined);assert.match(full[3],/rincian berbeda/);
 });

@@ -65,6 +65,10 @@ Tabel 5 memisahkan pokok hasil uji, sisa pokok yang sudah tercatat di buku besar
 
 Jika buku besar hanya membuktikan sebagian pembayaran, Tabel 5.3 menampilkan **Subtotal pembayaran teramati dalam 12 bulan**. Total lengkap menunggu bukti jumlah seluruh transaksi. Tabel 4.1 juga memberi keterangan jumlah masa bila bruto dan penerima PPh 21 hanya dapat dihitung untuk sebagian tahun.
 
+Pada Tabel 5.3, jendela setoran mencakup 365 hari hingga tanggal pembuatan paket. Pemutar memakai tanggal transaksi pembayaran. Jika kolom itu kosong, pemutar memakai tanggal buku. Periksa keterangan sumber pada subtotal untuk mengetahui apakah ada tanggal yang belum dapat dipastikan.
+
+Untuk WP Badan, buka **L-2a Pengurus** dari daftar isi Excel KKA. Lembar ini memakai data registrasi pihak terkait dan menampilkan riwayat jabatan, termasuk jabatan yang sudah berakhir. Identitas ditulis sebagai teks agar nol di depan tetap terbaca.
+
 Di **KKP → Keluaran → TL**, pilih tahun pajak dan isi tanggal rencana ketetapan untuk melihat perhitungan yang memiliki dasar waktu. Tabel menampilkan angka SPT, jumlah yang teramati, masa, dan sumber. Bila kredit dalam negeri dan luar negeri masih tergabung pada induk, pemutar menampilkan asumsi yang diperlukan untuk simulasi. Untuk memastikan selisih kredit, periksa rincian Lampiran 3, bukti potong dan buku besar.
 
 Di **KKP → Keluaran → TI**, setiap indikasi memuat dasar hitung, bukti yang perlu diminta dan status telaah. Petugas dapat menelaah butir yang sama lewat **Dasbor → Semua butir**. Butir yang terjelaskan atau tidak relevan keluar dari subtotal aktif. Untuk piutang afiliasi, masukkan persentase bunga tahunan dan rujukannya. Tombol **Gunakan contoh 8%** mengisi asumsi untuk latihan. Tanggal rencana dipakai bersama oleh TL, TI dan simulasi. Unduh Excel atau pilih **Cetak / PDF** untuk menyimpan tampilan, serta **Unduh berkas kerja** untuk melanjutkan telaah pada paket dan tahun yang sama.

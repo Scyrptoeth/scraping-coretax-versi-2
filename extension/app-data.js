@@ -277,7 +277,7 @@ export async function visibleTables(selected) {
     const filtered=activeColumns.length>0 || filterInputs.some(Boolean);
     const conflict=Boolean(ranges.length && !range || range && (firstControl && disabled(firstControl)!==(first<=1) || nextControl && disabled(nextControl)!==(last===total)));
     return {range,atStart:!conflict && (range?first<=1:disabled(firstControl)),atEnd:!conflict && (range?last===total:disabled(nextControl)),
-      filtered,filterState:JSON.stringify([activeColumns,filterInputs]),conflict};
+      filtered,filterValueHidden:activeColumns.length>0,filterState:JSON.stringify([activeColumns,filterInputs]),conflict};
   }
   function panelOwner() {
     const links=[...document.querySelectorAll('a[href]')].filter(a=>visible(a) && a.origin===location.origin);
@@ -321,7 +321,8 @@ export async function visibleTables(selected) {
   });
   if (!tables[selected.index]) throw new Error('Tabel berubah. Periksa ulang tab.');
   const currentTable=tables[selected.index], current=shape(currentTable);
-  if (JSON.stringify(current.labels) !== JSON.stringify(selected.labels) || location.href !== selected.url || current.data.length !== selected.rows || currentTable.id!==selected.tableId || tableTitle(currentTable,selected.index)!==selected.title) {
+  if (JSON.stringify(current.labels) !== JSON.stringify(selected.labels) || location.href !== selected.url ||
+      (!selected.quick?.afterMove && current.data.length !== selected.rows) || currentTable.id!==selected.tableId || tableTitle(currentTable,selected.index)!==selected.title) {
     throw new Error('Tampilan tab berubah. Pilih ulang tabel yang hendak diambil.');
   }
   const currentRows=records(current);
@@ -383,7 +384,7 @@ export async function visibleTables(selected) {
   if (selected.scope) {
     const checked=checkScope(currentRows,current.labels);
     if(selected.quick){
-      if(checked.skip)return {skip:checked.skip};
+      if(checked.skip)return {skip:checked.skip,loading:!!checked.loading};
       if(location.origin!=='https://coretax.intranet.pajak.go.id')return {skip:'Tab ini bukan sumber Coretax yang dipilih.'};
       const normal=s=>s.toLowerCase().replace(/\s+/g,' ').trim(),refs=(currentTable.getAttribute('aria-labelledby')||'').split(/\s+/).filter(Boolean).map(id=>document.getElementById(id));
       if(refs.some(el=>!el || !visible(el)))return {skip:'Label tabel belum dapat diperiksa.'};
@@ -406,12 +407,20 @@ export async function visibleTables(selected) {
         const signature=position.filtered && ['bb','bbtotal'].includes(selected.scope?.source)?[canonical,position.filterState]:canonical;
         slices.push({month,count:rows.length,hash:await digest(signature),...(selected.quick.expect && selected.quick.includeRows?{rows}:{})});
       }
+      const filterHash=await digest(position.filterState),pageHash=await digest(slices.map(s=>[s.month,s.hash]).sort());
       const latest=shape(currentTable),latestRows=records(latest);
       if(location.href!==selected.url || listTables()[selected.index]!==currentTable || tableTitle(currentTable,selected.index)!==selected.title ||
           checkScope(latestRows,latest.labels).skip || JSON.stringify([latest.labels,latestRows,indexPosition(currentTable,latestRows.length)])!==JSON.stringify([current.labels,currentRows,position]))
         return {skip:'Halaman sumber berubah saat isi tabel sedang dicocokkan.'};
-      return {stamp,slices,owner:checked.ownerColumns,period:checked.periodColumns,range:position.range,filtered:position.filtered,
-        atStart:position.atStart,atEnd:position.atEnd,canAdvance:!!nextButton(currentTable)};
+      if(selected.quick.move){
+        const first=selected.quick.move==='first';
+        const control=selected.quick.expect && position.range && (first?!position.atStart:selected.quick.move==='next'&&!position.atEnd) && nextButton(currentTable,first);
+        if(!control)return {skip:'Tombol halaman pada tabel sumber belum dapat dipastikan.'};
+        control.click();
+        return {moved:true};
+      }
+      return {stamp,slices,pageHash,filterHash,owner:checked.ownerColumns,period:checked.periodColumns,range:position.range,filtered:position.filtered,filterValueHidden:position.filterValueHidden,
+        atStart:position.atStart,atEnd:position.atEnd,canFirst:!!nextButton(currentTable,true),canAdvance:!!nextButton(currentTable)};
     }
     if(selected.restartIndex){
       if(checked.skip || !checked.indexScope || selected.scope.source!=='sptdaftar')return {skip:'Daftar dan WP belum cocok.'};

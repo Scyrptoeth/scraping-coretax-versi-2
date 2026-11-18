@@ -5,6 +5,7 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {readPackage} from '../extension/archive/package.js';
+import {testOpenSourcePagination} from './scraper-open-sources-pages.mjs';
 
 const {chromium}=createRequire(import.meta.url)(process.env.PLAYWRIGHT_MODULE||'playwright');
 const extension=process.env.EXTENSION_DIR||fileURLToPath(new URL('../extension/',import.meta.url));
@@ -148,6 +149,8 @@ try{
     assert.match(messages,/halaman berikutnya/i);assert.match(messages,/berubah sejak pratinjau/i);assert.match(messages,/belum ditemukan/i);
     assert.ok(!JSON.stringify(mixed.entries).includes('Perubahan yang belum ditinjau'));
     console.log('PASS: manual preview and automatic start share source checks; stale copies, foreign owner, changed data and unvisited pages remain visible in the package.');
+    await live.close();await copy.close();
+    await testOpenSourcePagination({ctx,ui,addr,wp,catalogue:catalogueRows});
   }
   assert.deepEqual(unexpected,[]);
 }finally{await ctx?.close();await rm(profile,{recursive:true,force:true});}

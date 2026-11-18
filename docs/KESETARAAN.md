@@ -1,6 +1,15 @@
 # Matriks kesetaraan terhadap VERITAX v1.32.0
 
-Prarilis 0.15.0, 19 November 2026 WIB. Penarik dan pemutar masih memiliki perbedaan dengan VERITAX. **Terverifikasi** berlaku untuk perilaku dan masukan yang disebutkan. **Berbeda** berarti ada selisih yang telah diketahui. **Belum teruji** berarti bukti pembandingan belum tersedia.
+Prarilis 0.16.0, 19 November 2026 WIB. Penarik dan pemutar masih memiliki perbedaan dengan VERITAX. **Terverifikasi** berlaku untuk perilaku dan masukan yang disebutkan. **Berbeda** berarti ada selisih yang telah diketahui. **Belum teruji** berarti bukti pembandingan belum tersedia.
+
+## Hasil prarilis 0.16.0
+
+| Alur | Hasil yang diperiksa | Batas |
+| --- | --- | --- |
+| Halaman tabel profil dan registrasi | Penarik memeriksa identitas WP, kolom, filter, urutan dan jumlah baris pada tabel yang memiliki penunjuk rentang. Paket dapat menyatakan tabel lengkap apabila rangkaian halaman dari awal sampai akhir cocok dengan jumlah sumber. [Uji Chrome](../tests/scraper-open-sources-browser.mjs) · [Uji kelengkapan paket](../tests/open-table-coverage.test.mjs) | Tabel tanpa navigasi yang dapat dicocokkan tetap mengikuti halaman yang terlihat. Pembagian buku besar per masa memerlukan bukti tersendiri. |
+| Daftar pengurus KKA Badan | Lembar L-2a menampilkan pengurus dan pihak terkait dari registrasi. Pembandingan Excel mencakup riwayat peran, tanggal, identitas dalam format teks, serta kolom opsional yang terisi. [Uji L-2a](../tests/kka-management.test.mjs) | Kelengkapan daftar bergantung pada registrasi yang masuk ke paket. Identitas WP dan rincian pengurus tetap berada di berkas kerja lokal. |
+| Setoran 12 bulan di Tabel 5.3 | Pergantian tahun, tahun kabisat, tanggal transaksi dan tanggal buku yang berbeda diuji melalui ekspor. Perhitungan memakai tanggal paket sebagai akhir jendela. Bila sebagian pembayaran belum dapat ditentukan, pemutar memisahkan subtotal dan keterangan sumber. [Uji pembayaran](../tests/kka-payments.test.mjs) | Pada tanggal tidak sah, transaksi dengan identitas yang sama tetapi saling bertentangan, dan jumlah mentah negatif, Studio dan Versi 2 dapat menampilkan hasil berbeda. |
+| Perbandingan dua tarikan | Program lokal menghitung berkas yang hanya ada di satu paket dan membandingkan isi untuk setiap berkas yang berpasangan. Pengujian mencakup perubahan paginasi, duplikat, nol, nilai kosong dan respons gagal. [Uji pembanding ZIP](../tests/compare-captures.test.mjs) | Perbedaan jalur antarberkas memerlukan pemeriksaan tersendiri. Pencocokan dua penarikan langsung dari intranet untuk penugasan yang sama masih terbuka. |
 
 ## Hasil prarilis 0.15.0
 

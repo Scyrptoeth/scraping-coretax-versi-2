@@ -1,6 +1,7 @@
 import {sources,rowsOf,visibleTables} from './app-data.js';
 import {suggestedSource} from './app-batch.js';
 import {periodLabel} from './app-package-entries.js';
+import {collectOpenPages} from './app-open-source-pages.js';
 
 // A table needs an exact source caption and at least one field from each group.
 // Ordinary transaction dates are never used to infer a tax period.
@@ -35,11 +36,11 @@ function competes(entry,month){
 function sameItems(a,b){return JSON.stringify(a)===JSON.stringify(b);}
 function samePlan(a,b){return a.wp===b.wp && a.period===b.period && sameItems(a.sources,b.sources) && sameItems(a.assignment,b.assignment);}
 
-async function inspectTable(ext,tab,table,source,scope,expect,includeRows=false){
+async function inspectTable(ext,tab,table,source,scope,expect,includeRows=false,navigation={}){
   const [from,to]=scope.period.split(' s.d. ');
   const fields=columns[source].map(group=>table.labels.filter(label=>group.some(f=>key(f)===key(label))));
   const [frame]=await ext.scripting.executeScript({target:{tabId:tab.id},func:visibleTables,args:[{...table,url:tab.url,
-    quick:{expect,fields,includeRows},scope:{source,wp:scope.wp,from,to,periodRequired:source==='bb'||source==='bbtotal'}}]});
+    quick:{expect,fields,includeRows,...navigation},scope:{source,wp:scope.wp,from,to,periodRequired:source==='bb'||source==='bbtotal'}}]});
   return frame?.result || {skip:'Tabel sumber tidak tersedia.'};
 }
 export function sourceChoices(items,queued,scope){
@@ -80,7 +81,7 @@ function groupStamps(choices){
 function visibleProof(item,slice,current,copies){
   const range=current.range,morePagesAvailable=Boolean(current.canAdvance||range&&range.last<range.total);
   return {columns:item.table.labels,owner:current.owner,period:current.period,morePagesAvailable,
-    pratinjauSumber:{masa:slice.month,barisPadaTabel:item.table.rows,barisPadaMasa:slice.count,filterAktif:current.filtered,
+    pratinjauSumber:{masa:slice.month,barisPadaTabel:current.slices.reduce((n,s)=>n+s.count,0),barisPadaMasa:slice.count,filterAktif:current.filtered,
       dasarPeriode:slice.month?'Masa pajak tiap baris':current.period.length?'Periode pada baris sesuai pilihan':
         'Tanpa masa pajak pada tabel. Periode paket mengikuti penugasan.',
       ...(current.range?{rentangTampilan:current.range}:{}),salinanBarisTampak:copies,sidikIsi:slice.hash,cakupan:'Halaman yang terlihat'}};
@@ -133,6 +134,7 @@ export function openSourcePreview({ext,origin,box,context,queued,enqueue,render,
     function coverage(source,proof){
       const evidence=proof?.pratinjauSumber;
       if(!evidence)return;
+      if(evidence.paginasi)return;
       if(proof.morePagesAvailable || evidence.rentangTampilan?.last<evidence.rentangTampilan?.total)
         warn(sources[source]+' · Ada halaman berikutnya yang belum dibaca.');
       if(evidence.rentangTampilan?.first>1)warn(sources[source]+' · Halaman sebelum tampilan ini belum dibaca.');
@@ -148,7 +150,10 @@ export function openSourcePreview({ext,origin,box,context,queued,enqueue,render,
       for(const entry of items)if(entry.wp===scope.wp&&entry.period===scope.period&&scope.sources.includes(entry.source))coverage(entry.source,entry.proof);
       result.missing=current.missing;
       for(const source of current.missing){
-        if(!items.some(e=>e.source===source&&e.wp===scope.wp&&e.period===scope.period))warn(sources[source]+' belum ditemukan pada tab yang dapat diperiksa.');
+        const old=items.filter(e=>e.source===source&&e.wp===scope.wp&&e.period===scope.period);
+        if(!old.length)warn(sources[source]+' belum ditemukan pada tab yang dapat diperiksa.');
+        else if(old.some(e=>e.proof?.pratinjauSumber?.paginasi)&&!old.some(e=>e.proof?.pratinjauSumber?.paginasi?.akhir))
+          warn(sources[source]+' · Tab sumber belum ditemukan untuk melanjutkan halaman yang tersimpan.');
       }
       if(current.unread)warn(current.unread+' tab atau daftar tab Coretax tidak dapat diperiksa.');
       for(const item of current.found)if(item.skip)skip(item.source,'',item.skip);
@@ -157,7 +162,47 @@ export function openSourcePreview({ext,origin,box,context,queued,enqueue,render,
       const changed='Tampilan sumber atau salinannya berubah sejak pratinjau. Buka kembali Pratinjau WP.';
       if(previous){
         for(const [name] of prior)if(!stamps.has(name)){
-          const [source,month]=name.split('/');skip(source,month,changed);
+          const [source,month]=name.split('/');if(!previous.moved?.has(source))skip(source,month,changed);
+        }
+      }
+      const paged=new Set();
+      if(options.scope){
+        const limit=Number.isInteger(options.pageLimit)?Math.min(100,Math.max(1,options.pageLimit)):100;
+        for(const source of scope.sources){
+          const peers=current.found.filter(p=>p.source===source&&!p.skip);
+          const existing=items.filter(e=>e.source===source&&e.wp===scope.wp&&e.period===scope.period);
+          if(!peers.some(p=>p.result.range) || existing.some(e=>!e.proof?.pratinjauSumber?.paginasi))continue;
+          if(peers.some(p=>p.result.filterValueHidden)){
+            warn(sources[source]+' · Nilai filter kolom belum terlihat. Hanya halaman saat ini yang diperiksa.');
+            continue;
+          }
+          paged.add(source);
+          const tracked=[...new Set([...(prior?.keys()||[]),...stamps.keys()])].filter(k=>k.startsWith(source+'/'));
+          let anchors=[];
+          if(prior&&tracked.some(k=>stamps.get(k)!==prior.get(k))){
+            if(!previous.moved?.has(source)){skip(source,'',changed);continue;}
+            const old=previous.found.filter(p=>p.source===source&&!p.skip);
+            anchors=peers.map(p=>old.find(o=>o.tab.id===p.tab.id&&o.tab.url===p.tab.url&&o.table.index===p.table.index)?.result);
+            if(anchors.length!==old.length||anchors.some(a=>!a?.range)){skip(source,'',changed);continue;}
+          }
+          if(peers.some(p=>!p.result.range)){skip(source,'','Salah satu salinan tabel tidak menunjukkan rentang baris.');continue;}
+          async function read(peer,expect,includeRows,navigation){
+            await check();let value;
+            try{value=await inspectTable(ext,peer.tab,peer.table,source,scope,expect,includeRows,navigation);}
+            catch{value={skip:'Tab, alamat, atau struktur tabel berubah. Periksa kembali sumber.'};}
+            if(value.moved&&previous){previous.moved??=new Set();previous.moved.add(source);}
+            await check();return value;
+          }
+          async function save(item,slice,current,pagination){
+            const proof=visibleProof(item,slice,current,peers.length-1);
+            proof.pratinjauSumber.paginasi=pagination;
+            proof.pratinjauSumber.cakupan='Rentang baris pada tabel';
+            await accept({wp:scope.wp,source,spt:'',period:scope.period,proof},{Payload:{Data:slice.rows}},item.table.title,'Tabel tampak');
+            result.added.push({source,month:slice.month,rows:slice.count,morePages:proof.morePagesAvailable});
+          }
+          const problem=await collectOpenPages({peers,existing,anchors,read,save,check,limit});
+          if(problem)skip(source,'',problem);
+          if(peers.some(p=>p.result.filtered))warn(sources[source]+' · Hasil mengikuti filter pada tabel sumber.');
         }
       }
       const verified=new Map(),peerChecks=new Map(),staged=[];
@@ -171,6 +216,7 @@ export function openSourcePreview({ext,origin,box,context,queued,enqueue,render,
         await check();cache.set(item,read);return read;
       }
       for(const {item,slice,ready,status,conflict,copies,peers} of choices){
+        if(paged.has(item.source))continue;
         const name=itemKey(item.source,slice.month);
         if(prior&&stamps.get(name)!==prior.get(name)){skip(item.source,slice.month,changed);continue;}
         if(!ready){
@@ -231,7 +277,7 @@ export function openSourcePreview({ext,origin,box,context,queued,enqueue,render,
       m.label=row(m.item,m.slice.month,m.slice.count,m.status+note+(result.canAdvance?' Ada halaman berikutnya.':''));
     }
     const status=accessibleMessage('Pembacaan mencakup baris yang sedang tampak. '+(missing.length?missing.length+' sumber terpilih belum ditemukan. ':'')+
-      (unread?unread+' tab tidak dapat diperiksa. ':'')+'Gunakan Cara menarik untuk beberapa halaman.');
+      (unread?unread+' tab tidak dapat diperiksa. ':'')+'Mulai tarik dapat membaca halaman berikutnya jika rentang baris dan tombol halaman dikenali.');
     const ready=choices.filter(m=>m.ready);
     if(ready.length){
       const add=document.createElement('button');add.textContent='Tambahkan sumber terverifikasi';box.append(add);

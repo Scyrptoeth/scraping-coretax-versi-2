@@ -10,6 +10,14 @@ Periksa **Berita acara** dalam ZIP atau **Cakupan sumber penarikan** di pemutar 
 
 Jika Anda sudah mencocokkan isi antrean dan ingin menyimpan cuplikan tersebut, pilih **Kemas isi antrean**. Cara ini dapat digunakan sesudah menghentikan pratinjau atau ketika sambungan kantor terputus.
 
+Pada tabel profil atau registrasi yang menampilkan nomor baris dan total, **Mulai tarik** dapat mengikuti tombol halaman pada tabel yang sama. Bila tabel memakai filter, identitas pada halaman berikut berubah atau rentang baris terputus, periksa catatan penarikan dan berkas yang sudah terbaca di pemutar.
+
+### Membandingkan dua hasil tarikan
+
+Untuk mengulang perbandingan di laptop, jalankan `node scripts/compare-captures.mjs acuan.zip pembanding.zip` dari folder proyek. Gunakan ZIP VERITAX dan ZIP Versi 2 untuk WP yang sama. Ringkasan menunjukkan apakah masa pilihan cocok dan berapa berkas per sumber yang hanya ada di satu paket. Kedua paket harus lolos pemeriksaan integritas.
+
+Untuk berkas yang punya jalur dan kode sumber yang sama, pemeriksaan membandingkan respons asli serta baris yang dibaca pemutar. Urutan halaman atau baris dapat berubah tanpa mengubah isi. Jumlah kemunculan baris yang berulang tetap diperiksa. Kolom `barisSama` menghitung **berkas** yang isi barisnya cocok. Sumber tanpa pasangan jalur tetap perlu ditelusuri di pemutar. Ringkasan hanya memuat hitungan dan nama kategori. [Program pembanding](../scripts/compare-captures.mjs)
+
 Di **Pratinjau WP**, periksa nama, jenis, status, KLU utama, dan jumlah SPT normal serta pembetulan per tahun. Jumlah mengikuti jenis dan periode yang dipilih. Bila baru sebagian daftar yang terbaca, pratinjau menjelaskan batasnya.
 
 Untuk buku besar, pilih **Sertakan transaksi buku besar yang dibatalkan** bila Anda juga memerlukan baris batal. Pilihan bawaan mengeluarkan baris yang terkonfirmasi batal. Baris tanpa status yang dapat dipastikan tetap tersimpan untuk penelusuran. Periksa jumlah pada sumber, jumlah yang masuk paket dan filter total pembanding sebelum menyimpulkan ada perbedaan.

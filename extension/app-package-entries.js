@@ -1,4 +1,4 @@
-import {forms as selectableForms, rowsOf, sources} from './app-data.js';
+import {forms as selectableForms, normalizeId, rowsOf, sources} from './app-data.js';
 
 const profiles={info:'informasi-umum',pihak:'pihak-terkait',bank:'rekening-bank',flag:'flag-wp',jenispajak:'jenis-pajak',
   alamat:'alamat',klu:'klu',nomorlain:'nomor-identitas-lain',sertel:'sertifikat-elektronik',pbb:'tanah-bangunan',login:'login-terakhir',dokumen:'dokumen'};
@@ -153,4 +153,44 @@ export function appendPackageEntry(groups,item,wp) {
   if(entry.pages.length===1 && type) entry.cap.konteks.jenisSpt=type;
   else if(entry.cap.konteks.jenisSpt!==type) delete entry.cap.konteks.jenisSpt;
   return entry;
+}
+
+// Only a whole table can be certified here. Ledger slices are grouped by tax month.
+export function finishOpenTable(entry){
+  const {cap,pages}=entry,observations=cap.halamanSumber;
+  if(!Object.hasOwn(profiles,cap.sumber)||!observations?.some(h=>h.pencocokan?.pratinjauSumber?.paginasi))return;
+  const total=wholeTableRows(entry);
+  if(total===null){
+    cap.catatan.push('Halaman yang tersimpan belum membuktikan seluruh baris tabel tanpa filter.');
+    return;
+  }
+  cap.lengkap=true;
+  cap.total=total;
+  cap.catatan.push('Rentang pada '+pages.length+' halaman mencakup seluruh '+total+' baris tabel tanpa filter.');
+}
+
+function wholeTableRows({cap,pages}){
+  const evidence=cap.halamanSumber,owner=normalizeId(cap.konteks.npwp);
+  if(!owner||pages.length!==evidence.length)return null;
+  const previousRows=new Set(),stamps=new Set();
+  let last=0,context;
+  for(const [i,page] of pages.entries()){
+    const proof=evidence[i].pencocokan,visible=proof?.pratinjauSumber,pager=visible?.paginasi;
+    if(!pager||pager.versi!==1||pager.halaman!==i+1||pager.awal!==(i===0)||pager.akhir!==(i===pages.length-1))return null;
+    const range=pager.rentang,rows=rowsOf(page);
+    if(!range||!Number.isSafeInteger(range.total)||!Number.isSafeInteger(range.last)||range.first!==last+1||
+      range.last!==last+rows.length||range.last>range.total||!rows.length||visible.masa!==''||visible.filterAktif!==false||
+      visible.barisPadaMasa!==rows.length||visible.barisPadaTabel!==rows.length||page.IsSuccessful===false||page.Errors?.length)return null;
+    if(!proof.owner?.length||!proof.columns?.length||!rows.every(row=>proof.owner.every(key=>normalizeId(row?.[key])===owner)))return null;
+    if(!pager.sidikRangkaian||!pager.sidikFilter||!pager.sidikHalaman||!visible.sidikIsi||stamps.has(pager.sidikHalaman))return null;
+    const pageRows=rows.map(row=>JSON.stringify(proof.columns.map(k=>row[k])));
+    if(pageRows.some(k=>previousRows.has(k)))return null;
+    for(const key of pageRows)previousRows.add(key);
+    const current=JSON.stringify([pager.sidikRangkaian,pager.sidikFilter,range.total,proof.columns,proof.owner]);
+    if(i&&current!==context)return null;
+    context=current;stamps.add(pager.sidikHalaman);
+    if(pager.akhir&&(proof.morePagesAvailable!==false||range.last!==range.total))return null;
+    last=range.last;
+  }
+  return last===cap.baris?last:null;
 }

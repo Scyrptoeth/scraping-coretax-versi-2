@@ -3,7 +3,7 @@ import * as vault from './app-vault.js';
 import {putHandoff, removeExpiredHandoffs} from './app-handoff.js';
 import {createPackage,sha256} from './archive/package.js';
 import {batchCollector} from './app-batch.js';
-import {appendPackageEntry,isSptList,metaForSelection,packagePath,selectSptListRows} from './app-package-entries.js';
+import {appendPackageEntry,finishOpenTable,isSptList,metaForSelection,packagePath,selectSptListRows} from './app-package-entries.js';
 import {checkLedgerScope,ledgerSelectionText,selectLedgerRows} from './ledger-status.js';
 import {planSptDetails} from './app-spt-plan.js';
 import {stageSptSource,finishSptSources} from './app-spt-snapshots.js';
@@ -1107,6 +1107,7 @@ async function run(resume,{queueOnly=false}={}) {
         pesan:'Hasil sebelumnya memuat catatan pengambilan SPT tanpa identitas bagian terstruktur. Periksa catatan pada hasil semula.'});
       if(!grouped.size)throw Error('Antrean ini tidak memuat baris untuk jenis SPT yang dipilih. Ambil kembali daftar dengan pilihan jenis yang sesuai.');
       const entries=[...grouped.values()], name=taxpayerName(plan.entries);
+      for(const entry of entries)finishOpenTable(entry);
       const meta={...metaForSelection(job.meta,plan.entries),wp:{npwp:plan.wp,...(name?{nama:name}:{})},dibuat:new Date().toISOString(),cek:checks};
       const remaining=pendingPlans(job).filter(p=>p!==plan);
       const pendingUpdate=remaining.length ? {id:job.id,value:{...job,plans:remaining,cursor:0}} : {id:job.id,remove:true};

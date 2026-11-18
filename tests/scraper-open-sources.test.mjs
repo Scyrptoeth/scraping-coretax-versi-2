@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {openSourcePreview,sourceChoices,supportedSources,tableFits} from '../extension/app-open-sources.js';
 import {packagePath,periodLabel} from '../extension/app-package-entries.js';
+import {collectOpenPages} from '../extension/app-open-source-pages.js';
 
 const scope={wp:'0000000000000017',period:'2025-01 s.d. 2025-03'};
 const item=(source,month,hash,opts={})=>({source,result:{filtered:false,atStart:true,atEnd:true,slices:[{month,hash,count:1}],...opts}});
@@ -74,4 +75,42 @@ test('monthly ledger and comparison balance route separately; non-month periods 
   entry.proof.pratinjauSumber.masa='2025-13';assert.equal(packagePath(entry),'bb/fiktif.json');
   assert.equal(periodLabel([{PeriodCode:'01012025'}],true),'2025-01');
   assert.equal(periodLabel([{PeriodCode:'01012025'}]),'');
+});
+
+function pageSimulation({copies=1,conflictingEnd=false,changes={}}={}){
+  const positions=Array(copies).fill(0);
+  const make=(i,n)=>{
+    const value=changes[n]||'R-'+n,last=n===2,rows=[{Account:value}];
+    const extra=last&&conflictingEnd&&i===1;
+    return {stamp:'stamp-'+value,pageHash:'page-'+value,filterHash:'filter',range:{first:n+1,last:n+1,total:3},atStart:!n,
+      atEnd:last&&!extra,canAdvance:!last||extra,canFirst:!!n,slices:[{month:'',hash:'slice-'+value,count:1,rows}]};
+  };
+  const peers=positions.map((_,id)=>({id,source:'bank',table:{labels:['Account']},result:make(id,0)}));
+  async function read(p,expect,includeRows,nav){
+    const state=make(p.id,positions[p.id]);
+    if(expect&&expect!==state.stamp)return {skip:'stale'};
+    if(nav.move){positions[p.id]=nav.move==='first'?0:positions[p.id]+1;return {moved:true};}
+    return {...state,slices:state.slices.map(s=>({...s,rows:includeRows?s.rows:undefined}))};
+  }
+  return async(existing=[],limit=100,anchors=[])=>{
+    const added=[];
+    const problem=await collectOpenPages({peers,existing,anchors,read,limit,check:async()=>{},
+      save:async(p,s,r,paginasi)=>added.push({proof:{pratinjauSumber:{paginasi,masa:s.month,sidikIsi:s.hash}}})});
+    return {added,problem};
+  };
+}
+test('every copy must agree that navigation ended before a final page can certify the table',async()=>{
+  const a=await pageSimulation({copies:2,conflictingEnd:true})();
+  assert.equal(a.added.length,3);assert.equal(a.added.at(-1).proof.pratinjauSumber.paginasi.akhir,false);
+  assert.match(a.problem,/belum dapat dibuktikan/);
+});
+test('resume verifies each stored page before extending the saved prefix, even when the first page still matches',async()=>{
+  const prefix=await pageSimulation()([],2);
+  assert.equal(prefix.added.length,2);assert.match(prefix.problem,/Batas 2/);
+  const same=await pageSimulation()(prefix.added);
+  assert.equal(same.problem,'');assert.equal(same.added.length,1);assert.equal(same.added[0].proof.pratinjauSumber.paginasi.akhir,true);
+  const changed=await pageSimulation({changes:{1:'new'}})(prefix.added);
+  assert.equal(changed.added.length,0);assert.match(changed.problem,/berbeda dari hasil yang tersimpan/);
+  const oldPreview=await pageSimulation()([],100,[{range:{first:2},stamp:'old-middle'}]);
+  assert.equal(oldPreview.added.length,1);assert.match(oldPreview.problem,/dipratinjau berubah/);
 });

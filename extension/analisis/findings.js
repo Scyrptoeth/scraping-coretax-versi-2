@@ -2,6 +2,7 @@ import {periodFacts, rowsOf, sptDay, submittedDay, typeNames, worksheet} from '.
 import {differenceCell,numericReference,sheetLink} from '../archive/table.js';
 import {kkaFigures} from './kka-figures.js';
 import {wireKkaWorkbook} from './kka-workbook.js';
+import {kkaManagementSheet} from './kka-management.js';
 import {kkaLegacyKey,kkaPotentials,kkaPrincipalTotals} from './kka-potentials.js';
 import {buildIndex} from './kkp-index.js';
 import {rateSourceLabel} from './rate-updates.js';
@@ -220,6 +221,8 @@ export function workpaper(pkg, year, work, mode, role, index) {
   });
   if(figures){
     wireKkaWorkbook(recap,figures.sheet,summary.length,selected.length);
+    const management=kkaManagementSheet(pkg);
+    if(management)sheets.splice(1,0,management);
     sheets.push(recap,{name:'L-8 Temuan langsung',rows:evidenceRows(verified)},figures.sheet);
     const previous=annualComparison(pkg,year);
     if(previous.length>1)sheets.push({name:'Isian induk SPT dua tahun',rows:previous});

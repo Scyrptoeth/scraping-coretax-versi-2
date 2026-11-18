@@ -1,5 +1,9 @@
 # Riwayat Scraping Coretax Versi 2
 
+## 19 November 2026 WIB · Prarilis 0.16.0
+
+Penarik dapat mengikuti rentang halaman pada tabel profil dan registrasi untuk satu WP. Excel KKA Badan memuat lembar pengurus dan pihak terkait. Setoran pada Tabel 5.3 mengikuti tanggal transaksi dan menjelaskan cakupan pembayaran yang terbaca. Dua ZIP dari WP yang sama dapat dibandingkan kembali di laptop dengan program yang disertakan di repositori. [Hasil pengujian dan batas cakupan](KESETARAAN.md#hasil-prarilis-0160)
+
 ## 19 November 2026 WIB · Prarilis 0.15.0
 
 **Mulai tarik** membaca sumber yang dapat dikenali dari tab Coretax yang terbuka untuk satu WP. Penarik memakai rencana versi SPT yang sama pada pratinjau dan penarikan. Berita acara dan pemutar menunjukkan sumber yang menghasilkan berkas. [Hasil pengujian dan batas cakupan](KESETARAAN.md#hasil-prarilis-0150)
