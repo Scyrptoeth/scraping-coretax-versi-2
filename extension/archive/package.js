@@ -1,4 +1,5 @@
 import { asBytes, decodeText, readZip, safePath, utf8, writeZip } from "./zip.js";
+import {sourceCoverage} from './source-coverage.js';
 
 const encryptedVersion = bytes => String.fromCharCode(...bytes.subarray(0, 5));
 const currentIterations = 600000;
@@ -55,7 +56,7 @@ function checkDataPath(path) {
 }
 
 function singleLine(value) { return String(value ?? "").replace(/[\r\n]+/g, " "); }
-function minutesFor(manifest, digest) {
+function minutesFor(manifest, digest,entries) {
   const lines = [
     "Berita acara penarikan data Coretax", "",
     ["Aplikasi", manifest.aplikasi], ["Waktu paket dibuat", manifest.dibuat],
@@ -68,7 +69,13 @@ function minutesFor(manifest, digest) {
     ["Pengambilan gagal", manifest.ringkas.gagal], ["Hash daftar file", manifest.hashDaftar],
     ["Hash MANIFEST.json", digest]
   ];
-  return lines.map(line => Array.isArray(line) ? line[0] + ": " + singleLine(line[1]) : line).join("\r\n") + "\r\n";
+  if(Array.isArray(manifest.opsi?.sumber)){
+    lines.push('','Cakupan sumber yang dipilih');
+    for(const row of sourceCoverage(manifest,entries).filter(r=>r['Pilihan penarik']==='Dipilih')){
+      lines.push([row.Sumber,row.Hasil+' ('+row['Berkas terbaca']+' berkas).']);
+    }
+  }
+  return lines.map(line => Array.isArray(line) ? singleLine(line[0]) + ": " + singleLine(line[1]) : line).join("\r\n") + "\r\n";
 }
 
 export async function createPackage({ meta = {}, entries, password = "" }) {
@@ -100,7 +107,7 @@ export async function createPackage({ meta = {}, entries, password = "" }) {
     endpoint: [...endpoints].sort()
   };
   const manifestText = JSON.stringify(manifest, null, 2), digest = await sha256(manifestText);
-  const minutes = minutesFor(manifest, digest);
+  const minutes = minutesFor(manifest, digest,entries);
   members.push({ name: "MANIFEST.json", data: manifestText }, { name: "BERITA-ACARA.txt", data: minutes },
     { name: "MANIFEST.sha256", data: digest + "  MANIFEST.json\r\n" + await sha256(minutes) + "  BERITA-ACARA.txt\r\n" });
   const zip = await writeZip(members);

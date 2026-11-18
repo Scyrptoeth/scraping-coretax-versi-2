@@ -56,45 +56,161 @@ export function sourceChoices(items,queued,scope){
     const hashes=new Set(members.map(m=>m.slice.hash)),first=members[0];
     const existing=queued.filter(e=>e.source===first.item.source && e.wp===scope.wp && e.period===scope.period && competes(e,first.slice.month));
     const live=existing.filter(e=>e.proof?.pratinjauSumber?.masa===first.slice.month);
-    const manuallyAdded=existing.some(e=>!e.proof?.pratinjauSumber);
+    const sameQueued=live.length>0&&live.length===existing.length&&live.every(e=>e.proof.pratinjauSumber.sidikIsi===first.slice.hash);
+    const conflict=hashes.size>1 || existing.length>0&&!sameQueued;
     for(const [i,m] of members.entries()){
       const status=hashes.size>1?'Ada beberapa tampilan berbeda untuk sumber dan masa ini. Periksa melalui Cara menarik.':
-        live.some(e=>e.proof.pratinjauSumber.sidikIsi===m.slice.hash)?'Sudah ada di antrean.':
-        live.length||manuallyAdded?'Ada sumber lain di antrean. Cocokkan melalui Cara menarik.':i?'Salinan identik pada baris yang tampak.':'Siap ditambahkan.';
+        sameQueued?'Sudah ada di antrean.':
+        conflict?'Ada sumber lain di antrean. Cocokkan melalui Cara menarik.':i?'Salinan identik pada baris yang tampak.':'Siap ditambahkan.';
       const ready=status==='Siap ditambahkan.';
-      choices.push({...m,status,copies:members.length-1,ready,peers:ready?members.filter(other=>other!==m):[]});
+      choices.push({...m,status,conflict,copies:members.length-1,ready,peers:ready?members.filter(other=>other!==m):[]});
     }
   }
   return choices;
 }
+function groupStamps(choices){
+  const perMonth=new Map();
+  for(const {item,slice} of choices){
+    const name=itemKey(item.source,slice.month);
+    if(!perMonth.has(name))perMonth.set(name,[]);
+    perMonth.get(name).push(JSON.stringify([item.tab.id,item.tab.url,item.table.index,item.result.stamp]));
+  }
+  return new Map([...perMonth].map(([name,stamps])=>[name,JSON.stringify(stamps.sort())]));
+}
+function visibleProof(item,slice,current,copies){
+  const range=current.range,morePagesAvailable=Boolean(current.canAdvance||range&&range.last<range.total);
+  return {columns:item.table.labels,owner:current.owner,period:current.period,morePagesAvailable,
+    pratinjauSumber:{masa:slice.month,barisPadaTabel:item.table.rows,barisPadaMasa:slice.count,filterAktif:current.filtered,
+      dasarPeriode:slice.month?'Masa pajak tiap baris':current.period.length?'Periode pada baris sesuai pilihan':
+        'Tanpa masa pajak pada tabel. Periode paket mengikuti penugasan.',
+      ...(current.range?{rentangTampilan:current.range}:{}),salinanBarisTampak:copies,sidikIsi:slice.hash,cakupan:'Halaman yang terlihat'}};
+}
 export function openSourcePreview({ext,origin,box,context,queued,enqueue,render,notice}){
-  let revision=0,active=false;
-  function invalidate(){revision++;box.replaceChildren();}
-  const stateText=row=>{const text=document.createElement('td');row.append(text);return text;};
+  let revision=0,active=false,preview=null;
+  function invalidate(){revision++;preview=null;box.replaceChildren();}
   function accessibleMessage(text){const p=document.createElement('p');p.setAttribute('role','status');p.textContent=text;box.append(p);return p;}
-  async function scan(){
-    invalidate();const generation=revision,scope=context(),wanted=scope.sources.filter(s=>supportedSources.includes(s));
-    if(!ext || !wanted.length)return false;
-    const valid=()=>generation===revision && samePlan(scope,context());
-    const found=[];let unread=0;
-    for(const [i,tab] of (await ext.tabs.query({url:origin+'/*'})).entries()){
-      if(!valid())return false;
+  function guard(scope,generation,checkpoint,explicitScope){
+    return async()=>{
+      if(checkpoint)await checkpoint();
+      if(generation!==revision || !explicitScope && !samePlan(scope,context()))throw Error('Penugasan atau pilihan sumber berubah. Buka kembali Pratinjau WP.');
+    };
+  }
+  async function inspect(scope,check){
+    const wanted=scope.sources.filter(s=>supportedSources.includes(s)),found=[];
+    let unread=0,tabs=[];
+    await check();
+    if(ext&&wanted.length){
+      try{tabs=await ext.tabs.query({url:origin+'/*'});}catch{unread++;}
+    }
+    await check();
+    for(const [i,tab] of tabs.entries()){
       if(!tab.url || new URL(tab.url).origin!==origin)continue;
       let tables;
-      try{const [frame]=await ext.scripting.executeScript({target:{tabId:tab.id},func:visibleTables,args:[null]});tables=frame?.result;}catch{unread++;continue;}
+      try{const [frame]=await ext.scripting.executeScript({target:{tabId:tab.id},func:visibleTables,args:[null]});tables=frame?.result;}
+      catch{unread++;}
+      await check();
       if(!Array.isArray(tables))continue;
       for(const table of tables){
         const source=suggestedSource(table.title,wanted);
         if(!source)continue;
         const item={tab,table,source,n:i+1};found.push(item);
         if(!tableFits(source,table.labels)){item.skip='Judul sesuai, tetapi kolom khas sumber belum cocok.';continue;}
-        if(!valid())return false;
         try{item.result=await inspectTable(ext,tab,table,source,scope);item.skip=item.result.skip;}
-        catch{item.skip='Tab atau struktur tabel berubah selama pratinjau.';}
+        catch{item.skip='Tab atau struktur tabel berubah saat diperiksa.';}
+        await check();
       }
     }
-    if(!valid())return false;
-    // SPT continues to use its own directory, including its independent rules for pagination.
+    return {scope,found,unread,missing:wanted.filter(s=>!found.some(item=>item.source===s))};
+  }
+
+  async function collectSelected(options={}){
+    if(active)throw Error('Tunggu sampai pembacaan sumber selesai.');
+    const scope=options.scope??context(),items=options.items??queued,accept=options.enqueue??enqueue;
+    const check=guard(scope,revision,options.checkpoint,Boolean(options.scope));
+    const previous=preview&&samePlan(scope,preview.scope)?preview:null;
+    const result={added:[],missing:[],skipped:[],issues:[]};
+    const warn=text=>{if(!result.issues.includes(text))result.issues.push(text);};
+    function coverage(source,proof){
+      const evidence=proof?.pratinjauSumber;
+      if(!evidence)return;
+      if(proof.morePagesAvailable || evidence.rentangTampilan?.last<evidence.rentangTampilan?.total)
+        warn(sources[source]+' · Ada halaman berikutnya yang belum dibaca.');
+      if(evidence.rentangTampilan?.first>1)warn(sources[source]+' · Halaman sebelum tampilan ini belum dibaca.');
+      if(evidence.filterAktif)warn(sources[source]+' · Hanya baris yang terlihat dengan filter saat ini yang ditambahkan.');
+    }
+    const skip=(source,month,reason,issue=true)=>{
+      result.skipped.push({source,month,reason});
+      if(issue)warn(sources[source]+(month?' · '+month:'')+' · '+reason);
+    };
+    active=true;
+    try{
+      const current=await inspect(scope,check);
+      for(const entry of items)if(entry.wp===scope.wp&&entry.period===scope.period&&scope.sources.includes(entry.source))coverage(entry.source,entry.proof);
+      result.missing=current.missing;
+      for(const source of current.missing){
+        if(!items.some(e=>e.source===source&&e.wp===scope.wp&&e.period===scope.period))warn(sources[source]+' belum ditemukan pada tab yang dapat diperiksa.');
+      }
+      if(current.unread)warn(current.unread+' tab atau daftar tab Coretax tidak dapat diperiksa.');
+      for(const item of current.found)if(item.skip)skip(item.source,'',item.skip);
+      const choices=sourceChoices(current.found,items,scope),stamps=groupStamps(choices);
+      const prior=previous?groupStamps(sourceChoices(previous.found,[],scope)):null;
+      const changed='Tampilan sumber atau salinannya berubah sejak pratinjau. Buka kembali Pratinjau WP.';
+      if(previous){
+        for(const [name] of prior)if(!stamps.has(name)){
+          const [source,month]=name.split('/');skip(source,month,changed);
+        }
+      }
+      const verified=new Map(),peerChecks=new Map(),staged=[];
+      async function reread(item,includeRows){
+        const cache=includeRows?verified:peerChecks;
+        if(cache.has(item))return cache.get(item);
+        await check();
+        let read;
+        try{read=await inspectTable(ext,item.tab,item.table,item.source,scope,item.result.stamp,includeRows);}
+        catch{read={skip:'Tab atau struktur sumber berubah. Buka kembali Pratinjau WP.'};}
+        await check();cache.set(item,read);return read;
+      }
+      for(const {item,slice,ready,status,conflict,copies,peers} of choices){
+        const name=itemKey(item.source,slice.month);
+        if(prior&&stamps.get(name)!==prior.get(name)){skip(item.source,slice.month,changed);continue;}
+        if(!ready){
+          skip(item.source,slice.month,status,conflict);
+          continue;
+        }
+        const current=await reread(item,true),read=current.slices?.find(s=>s.month===slice.month&&s.hash===slice.hash);
+        if(!Array.isArray(read?.rows)||current.skip){skip(item.source,slice.month,current.skip||changed);continue;}
+        let copyChanged=false;
+        for(const peer of peers){
+          const state=await reread(peer.item,false);
+          if(!state.slices?.some(s=>s.month===slice.month&&s.hash===slice.hash)){copyChanged=true;break;}
+        }
+        if(copyChanged){skip(item.source,slice.month,changed);continue;}
+        staged.push({item,slice,read,proof:visibleProof(item,slice,current,copies)});
+      }
+      await check();
+      for(const {item,slice,read,proof} of staged){
+        await check();
+        if(items.some(e=>e.source===item.source&&e.wp===scope.wp&&e.period===scope.period&&competes(e,slice.month))){
+          skip(item.source,slice.month,'Sudah ada sumber pada antrean. Periksa kembali.',false);continue;
+        }
+        await accept({wp:scope.wp,source:item.source,spt:'',period:scope.period,proof},{Payload:{Data:read.rows}},item.table.title,'Tabel tampak');
+        result.added.push({source:item.source,month:slice.month,rows:read.rows.length,morePages:proof.morePagesAvailable});
+        coverage(item.source,proof);
+      }
+      await check();return result;
+    }finally{active=false;}
+  }
+
+  async function scan(){
+    if(active)throw Error('Tunggu sampai pembacaan sumber selesai.');
+    invalidate();const scope=context(),generation=revision,check=guard(scope,generation);
+    if(!ext||!scope.sources.some(s=>supportedSources.includes(s)))return false;
+    active=true;
+    let snapshot;
+    try{snapshot=await inspect(scope,check);}
+    finally{active=false;}
+    preview=snapshot;
+    const {found,unread,missing}=snapshot;
     if(!found.length && scope.sources.includes('sptdaftar'))return false;
     const heading=document.createElement('h3');heading.textContent='Sumber lain dari tab Coretax';box.append(heading);
     if(!found.length){accessibleMessage('Belum ada tabel terverifikasi untuk sumber terpilih. Buka tabel sumber atau tambahkan ekspor lokal.');return true;}
@@ -106,7 +222,7 @@ export function openSourcePreview({ext,origin,box,context,queued,enqueue,render,
     const choices=sourceChoices(found,queued,scope);
     function row(item,month,count,status){
       const r=body.insertRow();
-      for(const v of [sources[item.source],month||'—',String(item.n),count??'—',status])stateText(r).textContent=v;
+      for(const v of [sources[item.source],month||'—',String(item.n),count??'—',status])r.insertCell().textContent=v;
       return r.lastElementChild;
     }
     for(const item of found.filter(t=>t.skip))row(item,'',null,item.skip);
@@ -114,60 +230,28 @@ export function openSourcePreview({ext,origin,box,context,queued,enqueue,render,
       const result=m.item.result,note=result.filtered?' Filter aktif pada tabel.':'';
       m.label=row(m.item,m.slice.month,m.slice.count,m.status+note+(result.canAdvance?' Ada halaman berikutnya.':''));
     }
-    const ready=choices.filter(m=>m.ready);
-    const missing=wanted.filter(s=>!found.some(item=>item.source===s)).length;
-    const status=accessibleMessage('Pembacaan mencakup baris yang sedang tampak. '+(missing?missing+' sumber terpilih belum ditemukan. ':'')+
+    const status=accessibleMessage('Pembacaan mencakup baris yang sedang tampak. '+(missing.length?missing.length+' sumber terpilih belum ditemukan. ':'')+
       (unread?unread+' tab tidak dapat diperiksa. ':'')+'Gunakan Cara menarik untuk beberapa halaman.');
+    const ready=choices.filter(m=>m.ready);
     if(ready.length){
       const add=document.createElement('button');add.textContent='Tambahkan sumber terverifikasi';box.append(add);
       add.onclick=async()=>{
-        if(active)return;active=true;add.disabled=true;
-        let accepted=0,skipped=0;
+        if(active)return;
+        add.disabled=true;
         try{
-          const verified=new Map(),peerChecks=new Map(),staged=[];
-          async function reread(item,includeRows){
-            const cache=includeRows?verified:peerChecks;
-            if(cache.has(item))return cache.get(item);
-            let current;
-            try{current=await inspectTable(ext,item.tab,item.table,item.source,scope,item.result.stamp,includeRows);}
-            catch{current={skip:'Tab atau struktur sumber berubah. Buka kembali Pratinjau WP.'};}
-            cache.set(item,current);return current;
-          }
+          const {added,skipped}=await collectSelected();
           for(const m of ready){
-            if(!valid())throw Error('Penugasan atau pilihan sumber berubah. Buka kembali Pratinjau WP.');
-            const {item,slice}=m;
-            const current=await reread(item,true);
-            let copyChanged=false;
-            for(const other of m.peers){
-              if(!valid())throw Error('Penugasan atau pilihan sumber berubah. Buka kembali Pratinjau WP.');
-              const peer=await reread(other.item,false);
-              if(!peer.slices?.some(s=>s.month===slice.month && s.hash===slice.hash)){copyChanged=true;break;}
-            }
-            if(!valid())throw Error('Penugasan atau pilihan sumber berubah. Buka kembali Pratinjau WP.');
-            const read=current.slices?.find(s=>s.month===slice.month && s.hash===slice.hash);
-            if(copyChanged){m.label.textContent='Salinan di tab lain berubah sejak pratinjau. Periksa kembali sumber ini.';skipped++;continue;}
-            if(!read || !Array.isArray(read.rows) || current.skip){m.label.textContent=current.skip||'Tampilan sumber berubah.';skipped++;continue;}
-            const added=queued.some(e=>e.source===item.source && e.wp===scope.wp && e.period===scope.period && competes(e,slice.month));
-            if(added){m.label.textContent='Sudah ada sumber pada antrean. Periksa kembali.';skipped++;continue;}
-            const proof={columns:item.table.labels,owner:current.owner,period:current.period,morePagesAvailable:current.canAdvance,
-              pratinjauSumber:{masa:slice.month,barisPadaTabel:item.table.rows,barisPadaMasa:slice.count,filterAktif:current.filtered,
-                dasarPeriode:slice.month?'Masa pajak tiap baris':current.period.length?'Periode pada baris sesuai pilihan':
-                  'Tanpa masa pajak pada tabel. Periode paket mengikuti penugasan.',
-                ...(current.range?{rentangTampilan:current.range}:{}),salinanBarisTampak:m.copies,sidikIsi:slice.hash,cakupan:'Halaman yang terlihat'}};
-            staged.push({m,read,info:{wp:scope.wp,source:item.source,spt:'',period:scope.period,proof}});
+            const match=entry=>entry.source===m.item.source&&entry.month===m.slice.month;
+            const entry=added.find(match),failure=skipped.find(match);
+            if(entry)m.label.textContent='Masuk antrean · '+entry.rows+' baris.';
+            else if(failure)m.label.textContent=failure.reason;
           }
-          if(!valid())throw Error('Penugasan atau pilihan sumber berubah. Buka kembali Pratinjau WP.');
-          for(const {m,read,info} of staged){
-            enqueue(info,{Payload:{Data:read.rows}},m.item.table.title,'Tabel tampak');
-            m.label.textContent='Masuk antrean · '+read.rows.length+' baris.';accepted++;
-          }
-          if(accepted)render();
-          status.textContent=accepted+' sumber atau masa masuk antrean. '+skipped+' dilewati.';
+          if(added.length)render();
+          status.textContent=added.length+' sumber atau masa masuk antrean. '+skipped.length+' dilewati.';
         }catch(error){notice(error.message,true);status.textContent=error.message;}
-        finally{active=false;}
       };
     }
     return true;
   }
-  return {scan,invalidate,get active(){return active;}};
+  return {scan,collectSelected,invalidate,get active(){return active;}};
 }

@@ -1,6 +1,15 @@
 # Matriks kesetaraan terhadap VERITAX v1.32.0
 
-Prarilis 0.14.0, 19 November 2026 WIB. Penarik dan pemutar masih memiliki perbedaan dengan VERITAX. **Terverifikasi** berlaku untuk perilaku dan masukan yang disebutkan. **Berbeda** berarti ada selisih yang telah diketahui. **Belum teruji** berarti bukti pembandingan belum tersedia.
+Prarilis 0.15.0, 19 November 2026 WIB. Penarik dan pemutar masih memiliki perbedaan dengan VERITAX. **Terverifikasi** berlaku untuk perilaku dan masukan yang disebutkan. **Berbeda** berarti ada selisih yang telah diketahui. **Belum teruji** berarti bukti pembandingan belum tersedia.
+
+## Hasil prarilis 0.15.0
+
+| Alur | Hasil pengujian | Batas |
+| --- | --- | --- |
+| Mulai tarik · satu NPWP | Dari antrean kosong, tombol membaca daftar dua halaman, mengambil induk dan lampiran dua versi SPT dalam masa terpilih, dan menghasilkan ZIP yang dapat dibuka di pemutar. Versi di luar masa dikecualikan. Uji antrean besar mencakup 103 versi dan pengecualian manual. [Uji alur penarik ke pemutar](../tests/spt-start-browser.mjs) · [Uji pemilihan versi](../tests/spt-multi-browser.mjs) | Pembacaan bergantung pada tab daftar, identitas WP, versi dan kontrol formulir yang dapat dicocokkan. Pengujian memakai halaman fiktif di Chrome. |
+| Sumber selain SPT | Pada tab fiktif yang terbuka, penarik dapat mencocokkan 13 kategori melalui judul, kolom serta identitas. Perubahan WP atau isi tabel setelah pratinjau terdeteksi saat membaca kembali. [Uji sumber dari beberapa tab](../tests/scraper-open-sources-browser.mjs) | Pembacaan otomatis ini mencakup halaman yang terlihat. Menu yang belum terbuka serta tata letak Coretax operasional masih perlu diuji. |
+| Berita acara dan mutu data | Berita acara mencatat kategori yang dipilih beserta jumlah berkasnya. Pemutar membandingkan pilihan sumber dengan berkas yang tercantum dan dapat dibaca. Sumber tanpa berkas dapat dibedakan dari tabel kosong yang memiliki berkas. [Uji arsip dan berita acara](../tests/source-coverage.test.mjs) | Kolom pilihan memakai keterangan yang disimpan penarik. Pada arsip lama tanpa keterangan tersebut, pilihan awal ditampilkan sebagai tidak tercatat. |
+| Pekerjaan terhenti | Sesudah tab penarik ditutup, kemajuan yang sudah tersimpan dapat dibuka kembali untuk penugasan yang sama. Pengujian mencakup perubahan penugasan dan pergantian WP pada formulir sumber. Petugas juga dapat memilih **Kemas isi antrean** untuk menyimpan hasil pratinjau yang telah diperiksa. [Uji pemulihan](../tests/spt-start-browser.mjs) · [Uji pengemasan pratinjau](../tests/spt-preview-browser.mjs) | Sumber yang belum terbaca masih memerlukan tab dan koneksi yang sesuai. |
 
 ## Hasil prarilis 0.14.0
 

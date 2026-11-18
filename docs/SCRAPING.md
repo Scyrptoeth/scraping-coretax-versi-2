@@ -4,6 +4,12 @@ Buka ekstensi melalui ikon Chrome. Pada bagian **Penugasan**, isi nama penarik d
 
 ## Mengambil sumber
 
+Setelah memilih sumber, jalankan **Mulai tarik**. Untuk membaca daftar serta formulir SPT, buka tab **SPT Dilaporkan** milik WP yang ditugaskan. **Pratinjau WP** memungkinkan Anda meninjau pilihan dan mengecualikan versi tertentu. Versi normal dan pembetulan yang masih memerlukan data dapat dipilih untuk seluruh daftar, termasuk baris yang belum ditampilkan di pratinjau.
+
+Periksa **Berita acara** dalam ZIP atau **Cakupan sumber penarikan** di pemutar untuk melihat sumber mana yang menghasilkan berkas. Jumlah berkas perlu dibaca bersama catatan batas halaman, masa, serta bagian yang dapat dikenali.
+
+Jika Anda sudah mencocokkan isi antrean dan ingin menyimpan cuplikan tersebut, pilih **Kemas isi antrean**. Cara ini dapat digunakan sesudah menghentikan pratinjau atau ketika sambungan kantor terputus.
+
 Di **Pratinjau WP**, periksa nama, jenis, status, KLU utama, dan jumlah SPT normal serta pembetulan per tahun. Jumlah mengikuti jenis dan periode yang dipilih. Bila baru sebagian daftar yang terbaca, pratinjau menjelaskan batasnya.
 
 Untuk buku besar, pilih **Sertakan transaksi buku besar yang dibatalkan** bila Anda juga memerlukan baris batal. Pilihan bawaan mengeluarkan baris yang terkonfirmasi batal. Baris tanpa status yang dapat dipastikan tetap tersimpan untuk penelusuran. Periksa jumlah pada sumber, jumlah yang masuk paket dan filter total pembanding sebelum menyimpulkan ada perbedaan.

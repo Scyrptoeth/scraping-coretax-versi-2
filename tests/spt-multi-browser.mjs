@@ -312,10 +312,11 @@ async function run(mode) {
     const choices=ui.getByRole('checkbox',{name:/^Pilih .*pembetulan \d+$/i});
     await choices.first().waitFor();
     if(mode==='seratus'){
-      assert.equal(await choices.count(),100);await ui.getByText(/100 versi dipilih dari 100 versi yang ditampilkan.*103/).waitFor();
-      await choices.first().uncheck();await ui.getByText(/99 versi dipilih dari 100 versi yang ditampilkan.*103/).waitFor();
+      assert.equal(await choices.count(),100);await ui.getByText('103 dari 103 versi dipilih. 100 versi ditampilkan.').waitFor();
+      await choices.first().uncheck();await ui.getByText('102 dari 103 versi dipilih. 100 versi ditampilkan.').waitFor();
       await ui.getByRole('button',{name:'Tampilkan versi berikutnya'}).click();assert.equal(await choices.count(),103);
-      await ui.getByText(/102 versi dipilih dari 103 versi yang ditampilkan/).waitFor();assert.deepEqual(opened,[]);return;
+      await ui.getByText('102 dari 103 versi dipilih. 103 versi ditampilkan.').waitFor();
+      assert.equal(await choices.first().isChecked(),false);assert.equal(await choices.last().isChecked(),true);assert.deepEqual(opened,[]);return;
     }
     assert.equal(await choices.count(),mode==='lanjut'?5:mode==='ganti'?3:2);
     for(const choice of await choices.all())assert.equal(await choice.isChecked(),true);

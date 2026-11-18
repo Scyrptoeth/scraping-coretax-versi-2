@@ -2,6 +2,7 @@ import {rowsOf, worksheet} from './model.js';
 import {box,button,card,dataTable,el,exportSheets,select} from './ui.js';
 import {parseDelimited,sources as sourceNames} from '../app-data.js';
 import {reconcileLedgerTotals} from './ledger-reconciliation.js';
+import {sourceCoverage} from '../archive/source-coverage.js';
 
 const severity = ['Kritis','Peringatan','Info'];
 const safeCount = value => typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
@@ -175,6 +176,9 @@ export function renderQuality(root,pkg,back) {
   show('');
   root.append(card('Rincian mutu data',box('toolbar',button('Kembali ke Muat paket',back),
     select([['','Semua tingkat'],...severity],'',show,'Tingkat catatan')),rows));
+  const coverage=sourceCoverage(pkg.manifest,pkg.entries);
+  if(coverage.length)root.append(card('Cakupan sumber penarikan',el('p','Bandingkan pilihan penarik dengan berkas yang dapat dibaca. Satu sumber dapat memuat beberapa masa dan lampiran. Periksa catatan tiap berkas untuk mengetahui batasnya.','hint'),
+    dataTable(coverage,{wp,name:'Cakupan sumber penarikan',filename:'Cakupan-sumber'})));
   const ledger=reconcileLedgerTotals(pkg);
   if(ledger.length)root.append(card('Saldo buku besar per periode',el('p','Jumlah transaksi bertanda positif dan negatif dibandingkan dengan saldo pada filter sumber yang sama. Setiap masa dan tahun diperiksa sendiri.','hint'),
     dataTable(ledger,{wp,name:'Pencocokan saldo buku besar',filename:'Saldo-buku-besar'})));

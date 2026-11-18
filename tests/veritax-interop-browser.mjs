@@ -9,7 +9,7 @@ import {readPackage} from '../extension/archive/package.js';
 const {chromium}=createRequire(import.meta.url)(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const studio=process.env.VERITAX_STUDIO;
 if(!studio)throw Error('Set VERITAX_STUDIO to the locally supplied VERITAX Studio 1.32.0 HTML file.');
-const dir=await mkdtemp(path.join(tmpdir(),'v2-studio-interop-')),extension=path.resolve('extension');
+const dir=await mkdtemp(path.join(tmpdir(),'v2-studio-interop-')),extension=path.resolve(process.env.EXTENSION_DIR||'extension');
 const wp='0000000000000001',month='01012025',id='DOKUMEN-FIKTIF-016';
 const spt={RecordId:id,ReturnSheetTypeCode:'VAT_VATR',TaxPeriodCode:month,ReturnSheetModel:'Normal',
   ReturnSheetStatusCode:'SUBMITTED',BpsNo:'BPE-FIKTIF-016',ReturnDate:'2025-02-15',ExpectedReturnDate:'2025-02-28'};

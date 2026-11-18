@@ -76,7 +76,8 @@ async function scenario(mode){
       await ui.locator('#preview-box').getByText(/2 halaman daftar dan 4 baris sumber terbaca/).waitFor();
     }
     const count=await ui.locator('#queue .item').count();await ui.locator('#preview').click();await plan.waitFor();assert.equal(await ui.locator('#queue .item').count(),count);
-    await ui.locator('#start').click();await ui.getByRole('button',{name:'Unduh paket'}).first().click();
+    // Use the reviewed snapshot, including when the original tab changed during preview.
+    await ui.getByRole('button',{name:'Kemas isi antrean',exact:true}).click();await ui.getByRole('button',{name:'Unduh paket'}).first().click();
     const [download]=await Promise.all([ui.waitForEvent('download'),ui.locator('#package-dialog button[value=ok]').click()]);
     const pkg=await readPackage(await readFile(await download.path()));assert.ok(pkg.report.valid);assert.equal(pkg.manifest.wp.npwp,wp);
     const index=pkg.entries.find(e=>e.path==='spt/daftar.json');assert.equal(index.cap.lengkap,false);

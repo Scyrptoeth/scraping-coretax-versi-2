@@ -106,9 +106,9 @@ try{
     await ui.locator('#month-start').selectOption('01');await ui.locator('#month-end').selectOption('03');
     const wanted=new Set(catalogueRows.map(([source])=>source));
     for(const input of await ui.locator('#sources input').all())await input.setChecked(wanted.has(await input.inputValue()));
-    await ui.locator('#consent').check();await ui.locator('#preview').click();await add.click();
-    await ui.waitForFunction(()=>document.querySelectorAll('#queue .item').length===13);
-    await ui.locator('#start').click();await ui.getByRole('button',{name:'Unduh paket'}).first().click();
+    await ui.locator('#consent').check();assert.equal(await ui.locator('#queue .item').count(),0);
+    await ui.locator('#start').click();await ui.locator('#status').getByText(/Tarikan selesai untuk NPWP/).waitFor();
+    await ui.getByRole('button',{name:'Unduh paket'}).first().click();
     const [allDownload]=await Promise.all([ui.waitForEvent('download'),ui.locator('#package-dialog button[value=ok]').click()]);
     const all=await readPackage(await readFile(await allDownload.path()));
     assert.ok(all.report.valid);assert.equal(all.entries.length,13);assert.deepEqual(new Set(all.entries.map(e=>e.cap.sumber)),wanted);
@@ -120,7 +120,34 @@ try{
     assert.ok(all.entries.some(e=>e.path==='bukubesar/2025-03.json'));assert.ok(all.entries.some(e=>e.path==='bukubesar-total/2025-03.json'));
     const allHandoff=ctx.waitForEvent('page');await ui.getByRole('button',{name:'Buka di Analisis'}).first().click();
     const allViewer=await allHandoff;await allViewer.getByText(/13 berkas diperiksa/).first().waitFor();
-    console.log('PASS: one-WP multi-source preview, owner/month/shape validation, copies, conflicts and changed rows; 4-file and 13-category archives verified in the viewer.');
+    await full.close();
+    const live=await ctx.newPage(),copy=await ctx.newPage();
+    await live.goto(addr(0));await copy.goto(addr(1));
+    await live.locator('#bb').evaluate(t=>{
+      const b=document.createElement('button');b.type='button';b.setAttribute('aria-controls',t.id);b.textContent='Berikutnya';t.parentElement.append(b);
+    });
+    await ui.reload();await ui.locator('#officer').fill('Penguji sumber otomatis');await ui.locator('#ids').fill(wp);
+    for(const id of ['start','end'])await ui.locator('#year-'+id).selectOption('2025');
+    await ui.locator('#month-start').selectOption('01');await ui.locator('#month-end').selectOption('03');
+    for(const input of await ui.locator('#sources input').all())await input.setChecked(['bank','klu','bb','nomorlain'].includes(await input.inputValue()));
+    await ui.locator('#consent').check();await ui.locator('#preview').click();
+    await add.waitFor();assert.equal(await ui.locator('#queue .item').count(),0);
+    await copy.locator('#bank tbody td').first().evaluate((cell,value)=>{cell.textContent=value;},other);
+    await live.locator('#klu tbody td').last().evaluate(cell=>{cell.textContent='Perubahan yang belum ditinjau';});
+    async function downloadStartedJob(){
+      await ui.locator('#start').click();
+      await ui.locator('#status').getByText(/Tarikan selesai untuk NPWP/).waitFor();
+      const button=ui.getByRole('button',{name:'Unduh paket'}).first();await button.click();
+      const [d]=await Promise.all([ui.waitForEvent('download'),ui.locator('#package-dialog button[value=ok]').click()]);
+      return readPackage(await readFile(await d.path()));
+    }
+    const mixed=await downloadStartedJob();assert.ok(mixed.report.valid);assert.equal(mixed.manifest.wp.npwp,wp);
+    assert.deepEqual(mixed.entries.map(e=>e.path).sort(),['bukubesar/2025-01.json','bukubesar/2025-02.json']);
+    for(const e of mixed.entries){assert.equal(e.cap.lengkap,false);assert.equal(e.cap.halamanSumber[0].pencocokan.morePagesAvailable,true);}
+    const messages=JSON.stringify(mixed.manifest.cek);
+    assert.match(messages,/halaman berikutnya/i);assert.match(messages,/berubah sejak pratinjau/i);assert.match(messages,/belum ditemukan/i);
+    assert.ok(!JSON.stringify(mixed.entries).includes('Perubahan yang belum ditinjau'));
+    console.log('PASS: manual preview and automatic start share source checks; stale copies, foreign owner, changed data and unvisited pages remain visible in the package.');
   }
   assert.deepEqual(unexpected,[]);
 }finally{await ctx?.close();await rm(profile,{recursive:true,force:true});}

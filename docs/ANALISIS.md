@@ -4,6 +4,8 @@ Pilih **Buka di Analisis** sesudah penarikan atau buka beberapa paket ZIP lokal 
 
 ## Profil, SPT dan data mentah
 
+Pada **Muat paket → Rincian mutu data → Cakupan sumber penarikan**, cocokkan sumber yang dipilih dengan berkas yang tercantum di manifest dan berkas yang dapat dibaca. Tabel dengan nol baris tetap dapat memiliki berkas. Sumber yang dipilih tetapi belum memiliki berkas ditandai tersendiri. Pada paket lama yang tidak mencatat pilihan sumber, kolom pilihan menampilkan **Tidak tercatat**.
+
 Di **Muat paket → Rincian mutu data → Saldo buku besar per periode**, periksa jumlah transaksi bertanda positif dan negatif, saldo pembanding Coretax, dan selisih. Jika sumber menyimpan total keseluruhan dan total setelah filter, pemutar memakai baris **Filtered** untuk pasangan dengan lingkup yang cocok. Tiap bulan dan tahun ditampilkan sendiri. Pada paket penarik yang memuat pilihan pembatalan, buka berkas buku besar di **Data mentah** lalu lihat **Pemilihan transaksi pada penarik** untuk mengetahui jumlah yang disimpan dan dilewati.
 
 Di menu **Tampilan**, pilihan **Identitas WP pada nama berkas** menentukan nama unduhan Excel, Word, dan berkas kerja untuk satu WP. Pilihan bawaan **NPWP saja** mempertahankan nol di depan nomor. Pilih **NPWP dan nama WP** untuk menyertakan nama pada unduhan berikutnya. Berkas perbandingan beberapa WP dan katalog umum memakai nama laporannya. **Kembali ke bawaan** mengembalikan ukuran ke Otomatis, tema ke Terang, mematikan kontras tinggi, dan memilih NPWP saja. Peran petugas tetap mengikuti pilihan terakhir.

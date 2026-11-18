@@ -1,5 +1,9 @@
 # Riwayat Scraping Coretax Versi 2
 
+## 19 November 2026 WIB · Prarilis 0.15.0
+
+**Mulai tarik** membaca sumber yang dapat dikenali dari tab Coretax yang terbuka untuk satu WP. Penarik memakai rencana versi SPT yang sama pada pratinjau dan penarikan. Berita acara dan pemutar menunjukkan sumber yang menghasilkan berkas. [Hasil pengujian dan batas cakupan](KESETARAAN.md#hasil-prarilis-0150)
+
 ## 19 November 2026 WIB · Prarilis 0.14.0
 
 Pratinjau satu WP menampilkan profil dan jumlah versi SPT per tahun dan jenis. Penarik menyimpan pilihan penyertaan transaksi buku besar yang dibatalkan serta jejaknya pada tiap halaman. Pemutar mencocokkan saldo per periode. KKA memakai butir yang sama untuk menghitung rekap potensi di L-7 dan rasio kemampuan membayar di L-13. Word menaut ke kedua lembar Excel. [Hasil pengujian dan selisih](KESETARAAN.md#hasil-prarilis-0140)

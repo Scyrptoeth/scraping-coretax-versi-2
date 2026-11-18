@@ -56,14 +56,14 @@
       </details>
       <div id="queue"></div><label class="check"><input id="dedupe" type="checkbox" checked>Lewati salinan identik dari sumber yang sama dalam tarikan ini.</label>
     </section>
-    <section><h2><span>4</span>Tarik data</h2><details><summary>Bagaimana prosesnya?</summary><p>Ekstensi menyusun satu paket untuk NPWP pada penugasan. Anda dapat menambahkan beberapa tabel atau berkas ekspor untuk WP yang sama. Pemrosesan dan penyimpanan berlangsung di perangkat ini.</p></details>
+    <section><h2><span>4</span>Tarik data</h2><details><summary>Bagaimana prosesnya?</summary><p>Mulai tarik membaca sumber yang dapat dicocokkan dengan penugasan dan membuat satu ZIP untuk WP ini. Anda juga bisa menggunakan berkas ekspor yang sudah ditambahkan. Berita acara mencatat sumber yang masuk ke paket.</p></details>
       <label class="check notice"><input type="checkbox" id="consent">Saya menarik data sesuai penugasan dan akan menjaga kerahasiaannya.</label>
-      <p class="hint">Untuk profil, registrasi, daftar dokumen, dan buku besar, pilih Pratinjau WP agar tabel yang sedang terbuka di Coretax dapat dicocokkan dengan penugasan.</p>
+      <p class="hint">Gunakan Pratinjau WP untuk meninjau sumber atau mengubah versi SPT yang ingin diambil. Tab Coretax yang memuat sumber pilihan harus terbuka agar penarik dapat membacanya.</p>
       <div id="preview-index-options" hidden><p class="hint">Pratinjau WP dapat membaca daftar SPT untuk NPWP ini dari tab Coretax yang sudah terbuka. Periode dan jenis SPT menentukan versi yang ditampilkan pada pratinjau.</p>
         <label>Halaman daftar maksimal untuk pratinjau<input type="number" id="preview-index-limit" min="1" max="100" value="100"></label>
         <label class="check"><input type="checkbox" id="preview-save" autocomplete="off" aria-describedby="preview-save-hint">Simpan kemajuan pratinjau daftar SPT untuk penugasan ini di perangkat</label>
         <p class="hint" id="preview-save-hint"></p></div>
-      <div class="actions"><button id="preview">Pratinjau WP</button><button id="start" class="primary" disabled>Mulai tarik</button><button id="pause" hidden>Jeda</button><button id="stop" class="danger" hidden>Hentikan</button></div>
+      <div class="actions"><button id="preview">Pratinjau WP</button><button id="start" class="primary" disabled>Mulai tarik</button><button id="pack-queue" hidden>Kemas isi antrean</button><button id="pause" hidden>Jeda</button><button id="stop" class="danger" hidden>Hentikan</button></div>
       <div class="actions" id="preview-read-actions"></div><p id="preview-read-status" role="status"></p>
       <div id="preview-recovery"></div><div id="pending-jobs"></div>
       <div id="preview-box"></div><div id="other-preview"></div><progress id="progress" value="0" max="1" hidden></progress><p id="status" role="status"></p>
