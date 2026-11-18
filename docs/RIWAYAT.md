@@ -1,5 +1,13 @@
 # Riwayat Scraping Coretax Versi 2
 
+## 18 November 2026 · Prarilis 0.6.0
+
+Jika beberapa ekspor memuat lampiran yang sama pada satu pembetulan, penarik menyimpan satu sumber untuk analisis dan menampilkan ekspor lain sebagai pembanding. Urutan halaman dari satu proses paginasi tetap dipertahankan. [Penanganan cuplikan SPT](SCRAPING.md)
+
+Saat membuka satu versi SPT Masa PPN, pemutar menunjukkan berkas yang diterima untuk delapan bagian dan bukti kelengkapannya. Lampiran yang belum dikirim, respons gagal, tabel dengan nol baris, dan total yang dikirim tanpa angka dapat ditelusuri di layar dan Excel. [Cakupan SPT PPN](ANALISIS.md)
+
+Petugas dapat memilih saran dokumen dari Probis, mengirimkannya ke indeks KKP untuk WP dan tahun aktif, lalu mengunduh Excel DOK beserta asal permintaan. Menu Bantuan memuat 13 prosedur yang dapat dicari tanpa membuka paket. [Probis dan program pengujian](KATALOG.md)
+
 ## 18 November 2026 · Prarilis 0.5.1
 
 Pada perbandingan pembetulan SPT, pemutar memasangkan faktur dan bukti potong menurut nomor dokumen. Mengurutkan ulang baris saja menghasilkan nol perubahan. Jika nomor kosong atau berulang, layar dan Excel menunjukkan baris sumber yang perlu diperiksa. [Perbandingan lampiran](ANALISIS.md)

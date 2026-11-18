@@ -1,4 +1,5 @@
 import {kbli} from './catalog-data.js';
+import {publicGuide} from './probis-guide.js';
 import {kluAttachment,kluZ} from './klu-z.js';
 import {codeTitle,hierarchicalKlu,percentage} from './klu-calculator.js';
 import {regulations} from './regulation-data.js';
@@ -151,17 +152,33 @@ function calculator() {
     out,link('Contoh perhitungan berjenjang dalam lampiran DJP',kluAttachment+'#page=6'),link('Baca Pasal 4 dan 5 PER-12/PJ/2022',sourceKLU));
 }
 
-function publicGuide(code) {
-  const division=Number(code.slice(0,2));
-  if(division>0 && division<=3) return ['Produksi atau budidaya, panen, penyimpanan, penjualan.','Bandingkan catatan jumlah panen, stok dan penjualan untuk periode yang sama.'];
-  if(division>=5 && division<=9) return ['Ekstraksi, pengolahan awal, pengangkutan dan penjualan.','Telusuri satu pengiriman dari catatan volume dan dokumen angkut sampai faktur.'];
-  if(division>=10 && division<=33) return ['Pembelian bahan, produksi, persediaan barang jadi dan penjualan.','Rekonsiliasi pemakaian bahan dengan hasil produksi. Catat sisa bahan, retur dan perbedaan satuan.'];
-  if(division>=41 && division<=43) return ['Kontrak pekerjaan, pelaksanaan, tagihan termin dan serah terima.','Cocokkan nilai dan tanggal kontrak, perubahan pekerjaan, termin dan berita acara.'];
-  if(division>=45 && division<=47) return ['Pembelian barang, penyimpanan, penjualan dan retur.','Telusuri sampel penjualan sampai pengiriman dan penerimaan pembayaran.'];
-  if(division>=49 && division<=53) return ['Pemesanan, pelaksanaan layanan angkutan atau penyimpanan, penagihan.','Cocokkan pesanan dengan bukti layanan dan tagihan per perjalanan atau periode.'];
-  if(division===55||division===56) return ['Reservasi atau pemesanan, pemberian layanan, penerimaan pembayaran.','Bandingkan catatan pemesanan dengan penjualan harian dan penyelesaian pembayaran.'];
-  if(division>=64 && division<=66) return ['Perjanjian layanan, pencatatan transaksi dan pelaporan.','Bedakan dana yang dikelola dengan pendapatan jasa berdasarkan perjanjian dan catatan transaksi.'];
-  return ['Identifikasi kegiatan aktual, pihak yang terlibat, waktu penyerahan, serta dasar penagihan.','Telusuri satu transaksi dari kontrak atau pesanan sampai bukti pelaksanaan dan pembayaran.'];
+
+function requestPanel(row,scope){
+  const guide=publicGuide(row.code),status=el('p');status.setAttribute('role','status');
+  const years=select(scope.years,scope.year,scope.changeYear,'Tahun pajak untuk dokumen');
+  const panel=card('Dokumen untuk penelusuran',years,el('p',guide.code+' · '+guide.check));
+  if(!scope.groups.length){
+    panel.append(el('p','Pada tahun ini belum ada indeks KKP yang dapat menerima dokumen.'));
+    return panel;
+  }
+  let target='';
+  const picker=select([['','Pilih indeks'],...scope.groups.map(g=>[g.key,g.ref+' · '+g.title])],'',v=>{target=v;update();},'Indeks KKP tujuan');
+  const choices=guide.documents.map(([id,label])=>{
+    const input=el('input');input.type='checkbox';input.addEventListener('change',update);
+    return {id,input,control:field(label,input)};
+  });
+  const add=button('Tambahkan ke permintaan dokumen',()=>{
+    try{
+      const result=scope.add(row,target,choices.filter(c=>c.input.checked).map(c=>c.id));
+      status.textContent=result.added.length+' saran ditambahkan. '+result.numbers.map(n=>'DOK.'+n).join(', ')+'.';
+      if(!result.added.length)status.textContent='Saran sudah tercatat sebagai '+result.numbers.map(n=>'DOK.'+n).join(', ')+'.';
+      open.hidden=false;
+    }catch(e){status.textContent=e.message;}
+  });
+  const open=button('Buka indeks tujuan di KKP',()=>scope.open(target));
+  function update(){add.disabled=!target || !choices.some(c=>c.input.checked);open.hidden=true;status.textContent='';}
+  update();panel.append(picker,...choices.map(c=>c.control),add,status,open);
+  return panel;
 }
 
 function business(container, options) {
@@ -180,7 +197,7 @@ function business(container, options) {
     if(isZ)rows.push(['Halaman lampiran',row.first===row.last?String(row.first):row.first+'–'+row.last]);
     const content=box('stack',...rows.map(([a,b])=>el('p',a+' · '+b)));
     if(!isZ && row.code.length>=2) {
-      const [flow,check]=publicGuide(row.code);
+      const {flow,check}=publicGuide(row.code);
       content.append(card('Panduan penelusuran awal',el('p',flow),el('p',check),el('small','Sesuaikan langkah ini dengan kegiatan dan bukti yang benar-benar tersedia.')));
     }
     if(options.manifest && row.code.length===5) content.append(button('Jadikan acuan WP pada sesi ini',()=>{
@@ -212,7 +229,9 @@ function business(container, options) {
     }
     if(picked)detail.append(button('Acuan sesi ini · '+picked.code+' '+picked.title,()=>showRecord(picked)));
     detail.append(button('Pilih acuan dari katalog',()=>switchMode('search')));
-    panel.append(detail,calculator());
+    panel.append(detail);
+    if(picked && options.requests)panel.append(requestPanel(picked,options.requests()));
+    panel.append(calculator());
   }
   draw();
 }

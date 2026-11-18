@@ -5,6 +5,7 @@ import {validateDrafts} from './draft-model.js';
 import {renderSanksi,validateSimulation} from './sanksi.js';
 import {buildIndex,restoreIndexedRows,restoreNotes,validateIndexDocuments} from './kkp-index.js';
 import {outputFilename} from './preferences.js';
+import {probisRequestKey,publicGuide} from '../probis-guide.js';
 import {editIndexLine,renderIndex} from './kkp-index-ui.js';
 import {identifyRows,markEdit,planMerge,progressReport,rowIdentity,showMergePreview,validateTimes} from './team-work.js';
 import {analysisFields,findingKey,potentialSummary,reviewOptions,scopeDefaults,scopeOptions,workpaper} from './findings.js';
@@ -58,10 +59,46 @@ function edit(parent,work,row,idx,repaint){
   };
   showDialog(idx===null?'Tambah butir':'Ubah butir',form);
 }
-export function renderWork(target,state) {
-  const pkg=state.pkg,wp=pkg.manifest.wp;const key=JSON.stringify([pkg.report.manifestHash||pkg.fileKey,state.year]);
+function yearWork(state,pkg,year){
+  const key=JSON.stringify([pkg.report.manifestHash||pkg.fileKey,year]);
   if(!state.work.has(key))state.work.set(key,{rows:[],drafts:[]});
-  const work=state.work.get(key);
+  return state.work.get(key);
+}
+
+export function probisRequests(state){
+  const pkg=state.pkg, year=String(state.year),work=yearWork(state,pkg,year);
+  const index=work.indexData??=buildIndex(pkg,year);
+  function assertScope(){
+    if(state.pkg!==pkg || String(state.year)!==year || !pkg.report.valid)throw Error('Paket atau tahun berubah. Buka kembali Probis untuk WP yang dipilih.');
+  }
+  return {year,years:pkg.years,groups:index.groups,
+    changeYear(next){assertScope();if(pkg.years.includes(next)){state.year=next;state.repaint();}},
+    open(target){assertScope();work.activeIndex=target;state.go('kerja','kkp');},
+    add(row,target,ids){
+      assertScope();
+      if(!index.groups.some(g=>g.key===target))throw Error('Pilih indeks KKP untuk tahun ini.');
+      const guide=publicGuide(row.code),docs=work.indexDocuments||[],next=[...docs],added=[],numbers=[];
+      let last=docs.reduce((n,d)=>Math.max(n,d.number),0);
+      for(const id of new Set(ids)){
+        const choice=guide.documents.find(([key])=>key===id);
+        if(!choice)throw Error('Pilih dokumen yang tersedia untuk prosedur ini.');
+        const probis={klu:row.code,edition:row.year,year,procedure:guide.code,check:guide.check,document:id};
+        const key=probisRequestKey(target,probis),existing=docs.find(d=>d.probis && probisRequestKey(d.index,d.probis)===key);
+        if(existing){numbers.push(existing.number);continue;}
+        const doc={number:++last,index:target,name:choice[1],status:'Saran',date:'',due:'',reference:'',probis};
+        next.push(doc);added.push(doc);numbers.push(doc.number);
+      }
+      if(added.length){
+        work.indexDocuments=validateIndexDocuments(next,index,year);
+        for(const d of added)markEdit(work,'indexDocuments',String(d.number));
+      }
+      return {added,numbers};
+    }
+  };
+}
+
+export function renderWork(target,state) {
+  const pkg=state.pkg,wp=pkg.manifest.wp,work=yearWork(state,pkg,state.year);
   work.indexNotes??={};
   work.indexDocuments??=[];
   work.editTimes??={};
@@ -84,7 +121,7 @@ export function renderWork(target,state) {
       if(v.format!=='SCV2-KERJA'||v.versi!==1||!v.paket||v.paket!==pkg.report.manifestHash||v.tahun!==state.year||!Array.isArray(v.rows)||!Array.isArray(v.drafts))throw Error('Lembar ini harus berasal dari paket dan tahun yang sama.');
       const incoming=identifyRows(restoreIndexedRows(v.rows,v.rows.map(workRow),index()));
       const indexNotes=restoreNotes(v.indexNotes,index());
-      const indexDocuments=validateIndexDocuments(v.indexDocuments,index());
+      const indexDocuments=validateIndexDocuments(v.indexDocuments,index(),state.year);
       for(const field of ['scopes','analysis','dispositions']){
         if(v[field]!==undefined && (!v[field] || typeof v[field]!=='object' || Array.isArray(v[field])))throw Error('Pengaturan lembar kerja tidak dikenali.');
       }
@@ -97,7 +134,13 @@ export function renderWork(target,state) {
       if(v.drafts.some(d=>d.npwp!==pkg.manifest.wp?.npwp||d.year!==state.year))throw Error('Berita acara menggunakan WP atau tahun lain.');
       const data={rows:incoming,drafts:v.drafts,scopes,analysis,dispositions,simulation,indexNotes,indexDocuments};
       data.editTimes=validateTimes(v.editTimes,data);
-      const apply=(result,merged=false)=>{Object.assign(work,result);state.repaint();notice(merged?'Isian berkas kerja telah digabungkan.':'Berkas kerja berhasil dimuat.');};
+      const apply=(result,merged=false)=>{
+        if(merged){
+          try{result.indexDocuments=validateIndexDocuments(result.indexDocuments,index(),state.year);}
+          catch(e){notice('Penggabungan dibatalkan. '+e.message,true);return;}
+        }
+        Object.assign(work,result);state.repaint();notice(merged?'Isian berkas kerja telah digabungkan.':'Berkas kerja berhasil dimuat.');
+      };
       if(work.rows.length||work.drafts.length||work.indexDocuments.length||Object.keys(work.analysis).length||Object.keys(work.dispositions).length ||Object.keys(work.indexNotes).length||
            work.simulation.end||work.simulation.cases.length||Object.keys(scopeDefaults).some(k=>scopeDefaults[k]!==work.scopes[k])){
         const plan=planMerge(work,data),close=()=>document.getElementById('dialog').close();

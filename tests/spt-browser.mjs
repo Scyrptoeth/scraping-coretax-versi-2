@@ -113,5 +113,32 @@ try{
   const saved=await readZip(await readFile(await download.path())),sheet=decodeText(saved.get('xl/worksheets/sheet2.xml').data);
   assert.match(sheet,/FAK-B/);assert.match(sheet,/<v>220<\/v>/);assert.match(sheet,/<v>225<\/v>/);assert.doesNotMatch(sheet,/FAK-A/);
   assert.deepEqual(errors,[]);await page.close();
+  const coveragePage=await browser.newPage({acceptDownloads:true});
+  coveragePage.on('pageerror',e=>errors.push(e.message));
+  await coveragePage.goto('http://127.0.0.1:'+server.address().port+'/analisis/index.html');
+  await coveragePage.locator('#filePkg').setInputFiles(resolve(dir,'CONTOH-paket-DEMO-FIKTIF.zip'));
+  await coveragePage.getByText('Konsisten · Seluruh sidik jari yang diperiksa cocok.').waitFor();
+  for(const role of ['AR','Pemeriksa','Penelaah']){
+    await coveragePage.locator('#role').selectOption(role);
+    await coveragePage.getByRole('navigation').getByRole('button',{name:'SPT',exact:true}).click();
+    await coveragePage.getByRole('combobox',{name:'Tahun pajak'}).selectOption('2025');
+    await coveragePage.getByRole('combobox',{name:'Jenis',exact:true}).selectOption('PPN');
+    await coveragePage.getByRole('table',{name:'Daftar SPT',exact:true}).getByRole('button',{name:'Buka'}).first().click();
+    const drawer=coveragePage.getByRole('dialog');
+    await drawer.locator('summary').filter({hasText:/Cakupan SPT PPN · 8 dari 8 berkas diterima/}).click();
+    const table=drawer.getByRole('table',{name:'Cakupan delapan bagian PPN'});
+    assert.equal(await table.locator('tbody tr').count(),8);
+    const total=table.getByRole('row').filter({has:coveragePage.getByRole('cell',{name:'Total C',exact:true})});
+    await total.getByRole('cell',{name:'Kosong terverifikasi',exact:true}).waitFor();
+    await total.getByText('Total C diterima tanpa isian. Lampiran C terbukti 0 baris.').waitFor();
+    if(role==='AR'){
+      const [download]=await Promise.all([coveragePage.waitForEvent('download'),drawer.getByRole('button',{name:'Excel cakupan PPN'}).click()]);
+      const book=await readZip(await readFile(await download.path()));
+      const sheet=decodeText(book.get('xl/worksheets/sheet1.xml').data);
+      assert.match(sheet,/ID rekaman/);assert.match(sheet,/Total C diterima tanpa isian/);assert.match(sheet,/Berkas diterima/);
+    }
+    await drawer.getByRole('button',{name:'Tutup',exact:true}).click();
+  }
+  await coveragePage.close();assert.deepEqual(errors,[]);
   console.log('SPT UI passed: 4 fictitious archives, 5 form types, annexes, content search, selected and combined export, print, revisions, reporting calendar and 16 VAT columns.');
 }finally{await browser.close();await new Promise(resolve=>server.close(resolve));}

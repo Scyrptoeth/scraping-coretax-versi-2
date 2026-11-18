@@ -1,4 +1,5 @@
-import {assessLine,completeIndexBook,documentStatuses,indexSheets,indexStatus,reviewRefundCode,validateIndexDocuments} from './kkp-index.js';
+import {assessLine,completeIndexBook,documentRows,documentStatuses,indexSheets,indexStatus,reviewRefundCode,validateIndexDocuments} from './kkp-index.js';
+import {probisSourceFields} from '../probis-guide.js';
 import {button,box,card,dataTable,el,exportSheets,field,notice,select,showDialog} from './ui.js';
 import {count} from './model.js';
 import {markEdit,rowIdentity} from './team-work.js';
@@ -88,7 +89,7 @@ function editDocument(group,index,work,repaint,existing){
     field('Nomor atau lokasi bukti',source),error,submit);
   form.onsubmit=e=>{
     e.preventDefault();
-    const item={number,index:group.key,name:name.value,status:state,date:date.value,due:due.value,reference:source.value};
+    const item={...existing,number,index:group.key,name:name.value,status:state,date:date.value,due:due.value,reference:source.value};
     const next=existing?work.indexDocuments.map(d=>d.number===number?item:d):[...work.indexDocuments,item];
     try{work.indexDocuments=validateIndexDocuments(next,index);markEdit(work,'indexDocuments',String(number),existing,item);document.getElementById('dialog').close();repaint();}
     catch(err){error.textContent=err.message;}
@@ -128,7 +129,7 @@ export function renderIndex(target,state,work,index){
       ...(Object.hasOwn(l,'refundCode')?{'Kode pilihan pengembalian':l.refundCode}:{})};
   });
   const documents=work.indexDocuments.filter(d=>d.index===group.key);
-  const docRows=documents.map(d=>({Nomor:'DOK.'+d.number,Dokumen:d.name,Status:d.status,'Tanggal permintaan':d.date,Tenggat:d.due,Rujukan:d.reference}));
+  const docRows=documents.map(d=>({Nomor:'DOK.'+d.number,Dokumen:d.name,Status:d.status,'Tanggal permintaan':d.date,Tenggat:d.due,Rujukan:d.reference,...probisSourceFields(d.probis)}));
   target.append(card('Indeks KKP',selected,el('p',group.ref+(meta.revision?' (P'+meta.revision+')':'')+' · '+group.title),
     dataTable(rowList,{wp,name:'Pengujian per indeks',openRow:r=>editIndexLine(group.lines[rowList.indexOf(r)],work,state.repaint,wp)}),
     ...group.lines.filter(l=>l.withoutReturn).flatMap(l=>[el('p',l.explanation),...l.coverage.map(s=>el('p',s,'hint')),
@@ -136,6 +137,7 @@ export function renderIndex(target,state,work,index){
     fieldset,box('toolbar',rev,button('Excel KKP ini',()=>exportSheets([indexSheets(group,reviewed,work.indexNotes,work.indexDocuments)],'KKP-'+group.ref+'-'+state.year,wp)),
       button('Excel semua KKP',()=>exportSheets(completeIndexBook(state.pkg,state.year,index,reviewed,work.indexNotes,work.indexDocuments,work.simulation),'KKP-Indeks-'+state.year,wp))),
     el('h3','Dokumen pendukung'),button('Tambah permintaan dokumen',()=>editDocument(group,index,work,state.repaint)),
+    button('Excel daftar dokumen',()=>exportSheets([{name:'Permintaan Dokumen',rows:documentRows(work.indexDocuments)}],'Daftar-Dokumen-'+state.year,wp)),
     dataTable(docRows,{wp,name:'Dokumen indeks terpilih',empty:'Belum ada permintaan dokumen untuk indeks ini.',
       openRow:r=>editDocument(group,index,work,state.repaint,documents[docRows.indexOf(r)])}),
     ...index.warnings.filter(s=>!group.lines.some(l=>l.coverage?.includes(s))).map(s=>el('p',s,'hint'))));

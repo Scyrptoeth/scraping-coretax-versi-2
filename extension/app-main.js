@@ -5,6 +5,7 @@ import {createPackage,sha256} from './archive/package.js';
 import {batchCollector} from './app-batch.js';
 import {appendPackageEntry,isSptList,metaForSelection,selectSptListRows} from './app-package-entries.js';
 import {planSptDetails} from './app-spt-plan.js';
+import {stageSptSource,finishSptSources} from './app-spt-snapshots.js';
 import {sptNavigation} from './app-spt-navigation.js';
 
 const $ = id => document.getElementById(id);
@@ -214,6 +215,7 @@ async function collectPages() {
   paging=true;pagingPaused=false;pagingStopped=false;
   for(const id of ['list-tables','add-table','collect-pages','tab','table','start']) $(id).disabled=true;
   $('pause-pages').hidden=false;$('pause-pages').textContent='Jeda pembacaan';$('stop-pages').hidden=false;
+  const captureId=crypto.randomUUID();
   let added=0;
   try {
     let result=await read(selector),previousProof;
@@ -225,6 +227,7 @@ async function collectPages() {
       if(seen.has(hash)) throw new Error('Halaman berulang. Periksa paginator Coretax sebelum melanjutkan.');
       seen.add(hash);
       const proof={columns:entry.labels,owner:result.ownerColumns,period:result.periodColumns,morePagesAvailable:result.canAdvance};
+      if(info.source==='sptisi')proof.urutan={id:captureId,halaman:added+1};
       if(result.indexScope)Object.assign(proof,{indexScope:result.indexScope,ownerEvidence:result.ownerEvidence});
       addEntry({...info,proof},{Payload:{Data:page}},entry.title+' · halaman pengambilan '+(added+1),'Tabel tampak');
       if(previousProof)delete previousProof.morePagesAvailable;
@@ -377,13 +380,14 @@ function sptViewControls(doc) {
           const proof={recordId:result.recordId,receipt:result.receipt,period:doc.period,revision:doc.revision,
             part:result.part,label:result.label,docKey:doc.key};
           const page={Payload:{Data:result.rows}};
-          const existing=queue.find(e=>e.detailProof?.docKey===doc.key && e.detailProof.part===result.part);
-          if(existing) {
-            if(JSON.stringify(existing.page)!==JSON.stringify(page))throw Error('Isi bagian berubah. Keluarkan cuplikan sebelumnya sebelum menggantinya.');
+          const existing=queue.filter(e=>e.detailProof?.docKey===doc.key && e.detailProof.part===result.part &&
+            (e.detailProof.recordId && proof.recordId ? e.detailProof.recordId===proof.recordId : e.detailProof.receipt && e.detailProof.receipt===proof.receipt));
+          if(existing.some(e=>JSON.stringify(e.page)===JSON.stringify(page))) {
             status.textContent='Cuplikan yang sama sudah ada dalam antrean.';return;
           }
           addEntry({wp,source:'sptisi',spt:doc.type,period:range,detailProof:proof},page,result.label,'Satu halaman tampilan SPT');
-          renderQueue();status.textContent=result.rows.length+' baris ditambahkan sebagai cuplikan satu halaman.';
+          renderQueue();status.textContent=existing.length?'Isi bagian berubah. Cuplikan baru dan cuplikan sebelumnya disimpan terpisah untuk dibandingkan.':
+            result.rows.length+' baris ditambahkan sebagai cuplikan satu halaman.';
         } catch(error){status.textContent=errorText(error);} finally {save.disabled=false;}
       });
       actions.append(select,save);
@@ -428,7 +432,7 @@ async function run(resume) {
         await vault.save([{id,value:job}],'Mulai tarik',{jumlahWP:1,penarik:job.meta.penarik.nama,dasar:job.meta.penugasan.nomor,npwp:plan.wp});
       }
       jobButtons();
-      const seen = new Set(), grouped = new Map(), checks=[];
+      const seen = new Set(), grouped = new Map(), sections=new Map(), checks=[];
       const progress=$('progress'); progress.max=plan.entries.length; progress.value=0;
       for (const queued of plan.entries) {
         while (paused && !stop) await sleep(100);
@@ -438,22 +442,26 @@ async function run(resume) {
         progress.value++;
         if(!source) continue;
         checkIdentity(rowsOf(source.page),plan.wp);
-        const key=await vault.digest(JSON.stringify([source.source,source.spt,source.detailProof?.docKey,source.detailProof?.part,source.page]));
-        if(seen.has(key) && job.meta.opsi.lewatiDuplikat) continue;
-        seen.add(key);
+        const sptTracked=stageSptSource(sections,source,plan.wp);
+        if(!sptTracked) {
+          const key=await vault.digest(JSON.stringify([source.source,source.spt,source.detailProof?.docKey,source.detailProof?.part,source.page]));
+          if(seen.has(key) && job.meta.opsi.lewatiDuplikat) continue;
+          seen.add(key);
+        }
         const reported=source.sptSelection?.totalDilaporkanSumber ?? source.total;
         const received=source.sptSelection?.barisSumber ?? source.rows;
         if(reported!=null && reported!==received) {
           const issue={tingkat:'TINGGI',pesan:sources[source.source]+' melaporkan '+reported+' baris. Yang diterima '+received+'.'};
           checks.push(issue); message(plan.wp+' · '+issue.pesan,true);
         }
-        appendPackageEntry(grouped,source,plan.wp);
+        if(!sptTracked)appendPackageEntry(grouped,source,plan.wp);
         await sleep(0);
       }
       if(stop) {
         await vault.save([],'Tarikan dihentikan',{npwp:plan.wp});
         $('status').textContent='Antrean NPWP '+plan.wp+' tersimpan dan dapat dilanjutkan.'; return;
       }
+      finishSptSources(sections,grouped,checks,job.meta.opsi.lewatiDuplikat);
       if(!grouped.size)throw Error('Antrean ini tidak memuat baris untuk jenis SPT yang dipilih. Ambil kembali daftar dengan pilihan jenis yang sesuai.');
       const entries=[...grouped.values()], name=taxpayerName(plan.entries);
       const meta={...metaForSelection(job.meta,plan.entries),wp:{npwp:plan.wp,...(name?{nama:name}:{})},dibuat:new Date().toISOString(),cek:checks};

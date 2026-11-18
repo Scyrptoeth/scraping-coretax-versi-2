@@ -77,6 +77,12 @@ try {
   await save.waitFor();await ui.getByLabel('Bagian SPT pada sumber').selectOption('a1');await save.click();
   await ui.getByText('1 baris ditambahkan sebagai cuplikan satu halaman.').waitFor();
   await save.click();await ui.getByText('Cuplikan yang sama sudah ada dalam antrean.').waitFor();
+  const tbody=detailTab.locator('#a1 tbody');
+  await tbody.evaluate(el=>el.insertAdjacentHTML('beforeend','<tr><td>Baris kedua fiktif</td><td>9</td></tr>'));
+  await save.click();await ui.getByText(/Isi bagian berubah/).waitFor();
+  await tbody.locator('tr').last().evaluate(el=>el.remove());
+  await tbody.locator('td').last().evaluate(el=>el.textContent='99');
+  await save.click();await ui.getByText(/Isi bagian berubah/).waitFor();
   await detailTab.locator('dd').first().evaluate(el=>el.innerText='0000000000000002');
   await save.click();await ui.getByText(/Identitas WP atau dokumen berubah/).waitFor();
   await detailTab.close();
@@ -102,9 +108,11 @@ try {
   const pkg=await readPackage(await readFile(await file.path()));
   assert.ok(pkg.report.valid);
   const saved=pkg.entries.filter(e=>e.cap.sumber==='sptisi');
-  assert.equal(saved.length,2);
+  assert.equal(saved.length,4);
   assert.ok(saved.every(e=>!e.cap.lengkap && e.cap.konteks.cuplikanTampilan && e.cap.konteks.spt.recordId==='test-document'));
-  assert.deepEqual(saved.find(e=>e.path.endsWith('/a1.json')).pages[0].Payload.Data,[{'Jenis barang':'Contoh fiktif',Jumlah:'7'}]);
+  const primary=saved.find(e=>e.path.startsWith('spt/') && e.path.endsWith('/a1.json'));
+  assert.deepEqual(primary.pages[0].Payload.Data,[{'Jenis barang':'Contoh fiktif',Jumlah:'7'}]);
+  assert.deepEqual(primary.cap.cuplikanSpt.pembanding.map(path=>saved.find(e=>e.path===path).cap.baris),[2,1]);
   assert.deepEqual(saved.find(e=>e.path.endsWith('/induk.json')).pages[0].Payload.Data,[{Keterangan:'Contoh fiktif'}]);
   console.log('PASS: one assigned taxpayer, normal link opening a new tab, same-tab detail, document revalidation, named form tabs, partial capture and matching archive rows.');
 } finally {

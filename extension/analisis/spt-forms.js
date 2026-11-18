@@ -4,6 +4,7 @@ import {box,button,card,dataTable,detail,el,exportSheets,select,showDialog} from
 import {linkedPaymentGroups,packageLedger} from './profile.js';
 import {annualVat} from './annual-vat.js';
 import {monthlyWithholding} from './monthly-withholding.js';
+import {vatCoverage} from './vat-coverage.js';
 
 const fields={
   MainFormData:'Induk',IncomeTaxInAYear:'PPh terutang setahun',NetIncomeBeforeTax:'Laba sebelum pajak',UnderpaymentIncomeTax:'PPh kurang/(lebih) bayar',OverpaymentIncomeTax:'Kode pilihan pengembalian',
@@ -147,9 +148,26 @@ export function exportControls(forms,pkg){
 }
 export function openForm(form,pkg,onVersionChange){
   const wp=pkg.manifest.wp;
+  const coverageByForm=new Map();
   const content=box('form-body'),versions=pkg.forms.filter(f=>f.type===form.type&&f.period===form.period).sort((a,b)=>b.version-a.version);
   let part=sortedParts(form)[0],raw=false,locate='';
   function paint(){
+    paintForm();
+    const main=form.parts.get(part), comparison=main.cap?.cuplikanSpt;
+    if(!Array.isArray(comparison?.pembanding))return;
+    const alternatives=new Set(comparison.pembanding);
+    const sources=pkg.entries.filter(e=>alternatives.has(e.path) && e.cap?.cuplikanSpt?.utama===main.path);
+    if(!sources.length)return;
+    content.append(el('p','Sumber formulir · '+main.cap.asal+'. '+comparison.alasan));
+    for(const source of sources){
+      const body=box(''),panel=detail(source.cap.label,body);
+      panel.addEventListener('toggle',()=>{
+        if(panel.open && !body.childNodes.length)body.append(dataTable(rowsOf(source),{wp,name:source.cap.label,incremental:true}));
+      });
+      content.append(panel);
+    }
+  }
+  function paintForm(){
     const version=select(versions.map(f=>[f.key,versionName(f)]),form.key,key=>{
       form=versions.find(f=>f.key===key);if(!form.parts.has(part))part=sortedParts(form)[0];locate='';onVersionChange?.(form);paint();
     },'Versi');
@@ -194,9 +212,19 @@ export function openForm(form,pkg,onVersionChange){
     const table=dataTable(rows,{wp,name:labelPart(form,part)});
     const search=table.querySelector('input[type=search]');
     if(search&&locate){search.value=locate;search.dispatchEvent(new Event('input'));}
-    content.replaceChildren(el('p',[pkg.manifest.wp?.nama,pkg.manifest.wp?.npwp,form.period,versionName(form)].filter(Boolean).join(' · ')),
-      controls,keyword,hits,el('h3',labelPart(form,part)),el('p',form.parts.get(part).path,'hint'),
-      table);
+    const context=[pkg.manifest.wp?.nama,pkg.manifest.wp?.npwp,form.period,versionName(form)].filter(Boolean).join(' · ');
+    content.replaceChildren(el('p',context),controls);
+    if(!coverageByForm.has(form))coverageByForm.set(form,vatCoverage(form,pkg));
+    const coverage=coverageByForm.get(form);
+    if(coverage){
+      const summary=coverage.received+' dari 8 berkas diterima · '+coverage.verified+' dari 8 bagian terverifikasi';
+      content.append(detail('Cakupan SPT PPN · '+summary,box('',
+        dataTable(coverage.rows,{wp,name:'Cakupan delapan bagian PPN'}),
+        button('Excel cakupan PPN',()=>exportSheets([{name:'Cakupan PPN',rows:[...header(form,pkg),['ID rekaman',form.id],
+          ['Berkas diterima',coverage.received],['Bagian terverifikasi',coverage.verified],[],...worksheet(coverage.rows)]}],
+          'Cakupan-PPN-'+form.period+'-P'+form.version,wp)))));
+    }
+    content.append(keyword,hits,el('h3',labelPart(form,part)),el('p',form.parts.get(part).path,'hint'),table);
   }
   paint();showDialog((typeNames[form.type]||form.type)+' · '+form.period,content);
 }

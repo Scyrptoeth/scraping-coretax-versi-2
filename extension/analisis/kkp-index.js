@@ -1,4 +1,5 @@
 import {differenceCell} from '../archive/table.js';
+import {probisRequestKey,probisSourceFields,validatedProbisSource} from '../probis-guide.js';
 import {compare, rowsOf, typeNames, worksheet} from './model.js';
 import {simulationTables} from './sanksi.js';
 import {rateSourceLabel} from './rate-updates.js';
@@ -211,10 +212,10 @@ export function restoreNotes(notes,index){
 }
 
 export const documentStatuses=['Saran','Diminta','Diterima sebagian','Diterima','Tidak diberikan'];
-export function validateIndexDocuments(documents,index){
+export function validateIndexDocuments(documents,index,year){
   if(documents===undefined)return [];
   if(!Array.isArray(documents))throw Error('Daftar permintaan dokumen tidak sah.');
-  const groups=new Set(index.groups.map(g=>g.key)),numbers=new Set();
+  const groups=new Set(index.groups.map(g=>g.key)),numbers=new Set(),sources=new Set();
   return documents.map(d=>{
     if(!d||!Number.isSafeInteger(d.number)||d.number<1||numbers.has(d.number)||!groups.has(d.index)||
       typeof d.name!=='string'||!d.name.trim()||!documentStatuses.includes(d.status)||
@@ -225,12 +226,23 @@ export function validateIndexDocuments(documents,index){
     }
     if(d.date&&d.due&&d.date>d.due)throw Error('Tenggat mendahului tanggal permintaan.');
     numbers.add(d.number);
-    return {number:d.number,index:d.index,name:d.name.trim(),status:d.status,date:d.date,due:d.due,reference:d.reference.trim()};
+    const result={number:d.number,index:d.index,name:d.name.trim(),status:d.status,date:d.date,due:d.due,reference:d.reference.trim()};
+    if(d.probis!==undefined){
+      result.probis=validatedProbisSource(d.probis,year);
+      const key=probisRequestKey(d.index,result.probis);
+      if(sources.has(key))throw Error('Saran Probis yang sama muncul dua kali pada indeks ini.');
+      sources.add(key);
+    }
+    return result;
   });
 }
-function documentRows(documents){
-  return [['Nomor','Jenis dokumen','Indeks','Status','Tanggal permintaan','Tenggat tercatat','Rujukan'],
-    ...documents.map(d=>['DOK.'+d.number,d.name,d.index.split('/')[1],d.status,d.date,d.due,d.reference])];
+export function documentRows(documents){
+  const source=documents.find(d=>d.probis)?.probis, extra=Object.keys(probisSourceFields(source));
+  return [['Nomor','Jenis dokumen','Indeks','Status','Tanggal permintaan','Tenggat tercatat','Rujukan',...extra],
+    ...documents.map(d=>{
+      const fields=probisSourceFields(d.probis);
+      return ['DOK.'+d.number,d.name,d.index.split('/')[1],d.status,d.date,d.due,d.reference,...extra.map(k=>fields[k]??'')];
+    })];
 }
 
 export function indexStatus(group,reviewed){

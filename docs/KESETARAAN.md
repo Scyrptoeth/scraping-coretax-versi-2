@@ -1,6 +1,6 @@
 # Matriks kesetaraan terhadap VERITAX v1.32.0
 
-Prarilis 0.5.1, 18 November 2026. Kedua aplikasi masih memiliki perbedaan dengan VERITAX. **Terverifikasi** berlaku untuk perilaku dan masukan yang disebutkan. **Berbeda** berarti ada selisih yang telah diketahui. **Belum teruji** berarti bukti pembandingan belum tersedia.
+Prarilis 0.6.0, 18 November 2026. Kedua aplikasi masih memiliki perbedaan dengan VERITAX. **Terverifikasi** berlaku untuk perilaku dan masukan yang disebutkan. **Berbeda** berarti ada selisih yang telah diketahui. **Belum teruji** berarti bukti pembandingan belum tersedia.
 
 ## Hasil sampai prarilis 0.3.0
 
@@ -57,6 +57,15 @@ Pada uji lampiran PPN A2, menukar urutan dua faktur menyebabkan 0.5.0 melaporkan
 ## Yang sudah dicocokkan pada 0.5.1
 
 Pada uji luring lampiran A2 berisi dua faktur, membalik urutan faktur menghasilkan nol perubahan. Mengubah PPN salah satu faktur dari 220 menjadi 225 menghasilkan satu dokumen berubah dan kenaikan total PPN dari 330 menjadi 335. Menambahkan faktur ketiga menghasilkan satu dokumen baru. Ketiga hasil cocok dengan Studio 1.32.0. Pemutar dan Excel Versi 2 memakai hasil pencocokan yang sama. Nomor yang ambigu serta bagian yang belum lengkap disertai lokasi atau keterangan cakupan. [Uji pencocokan](../tests/spt-amendment.test.mjs) · [Uji layar dan Excel](../tests/spt-browser.mjs)
+
+## Yang sudah dicocokkan pada 0.6.0
+
+| Alur | Hasil uji | Cakupan yang masih terbuka |
+| --- | --- | --- |
+| Ekspor yang tumpang tindih untuk satu lampiran | Tiga ekspor A1 fiktif berisi 1, 2 dan 2 baris. V2 dan Studio membuka satu versi SPT dengan satu sumber analisis. Dua ekspor lain tetap dapat ditelusuri di ZIP, dan V2 menyajikannya di formulir. Dua halaman yang diperoleh berurutan tetap terkumpul sebagai satu sumber. [Uji penarik dan kedua pemutar](../tests/spt-snapshot-overlap-browser.mjs) | Saat isi bertentangan, petugas perlu memeriksa cuplikan dan sumbernya. |
+| Cakupan satu versi SPT Masa PPN | Pada 72 versi dalam dua paket fiktif, pemutar mengenali delapan bagian per versi. Untuk 72 respons total C tanpa isian, layar menjelaskan bahwa C terbukti kosong dan respons total tidak memuat angka. Penghapusan bagian, jumlah baris yang berbeda dan respons gagal diuji terpisah. [Uji cakupan](../tests/vat-coverage.test.mjs) | Kelengkapan berkas yang sudah diterima dapat diperiksa luring. Pembacaan semua bagian langsung dari Coretax serta keluarga SPT lainnya perlu pembuktian tersendiri. |
+| Probis ke KKP | Dalam Studio dan Versi 2, menambahkan dokumen pertama menghasilkan satu permintaan. Pengulangan mempertahankan satu permintaan dan dokumen tercantum pada Excel. Dua WP dan dua tahun fiktif diuji di Versi 2, termasuk pemulihan berkas kerja. [Uji alur](../tests/probis-requests-browser.mjs) | Versi 2 menyediakan sembilan panduan awal dengan dua saran dokumen masing-masing. Cakupan tiap sektor dan dasar hukum per prosedur belum setara. |
+| Bantuan dan program pengujian | Menu dapat dibuka sebelum memuat ZIP. Dari 13 prosedur Versi 2, empat dapat dijalankan dari sumber Coretax yang disebutkan. Pencarian dan saringan juga berlaku pada Excel. [Uji pencarian dan unduhan](../tests/viewer-navigation-browser.mjs) | Studio menampilkan 506 baris. Isi, rujukan hukum dan hubungan ke seluruh indeks masih berbeda. |
 
 ## Kemampuan yang masih perlu dibandingkan
 

@@ -8,9 +8,10 @@ import {qualityNotes,renderQuality} from './quality.js';
 import {activeRateUpdate,hasSavedRates} from './rate-updates.js';
 import {rateUpdateTools} from './rate-updates-ui.js';
 import {buildIndex} from './kkp-index.js';
-import {box,button,card,detail,el,notice,select,showDialog} from './ui.js';
-import {renderWork} from './work.js';
+import {box,button,card,detail,el,notice,select,showDialog,toggleSet} from './ui.js';
+import {probisRequests,renderWork} from './work.js';
 import {readPref,resetAppearance,setPref} from './preferences.js';
+import {renderTestingPrograms} from './testing-programs.js';
 
 const tabs=[['muat','Muat paket'],['ringkas','Dasbor'],['probis','Probis'],['profil','Profil WP'],['spt','SPT'],['kerja','Kertas Kerja'],['peraturan','Peraturan'],['tabel','Data mentah'],['bantuan','Bantuan']];
 const needsPackage=new Set(['ringkas','profil','spt','kerja','tabel']);
@@ -64,6 +65,7 @@ function preferences(){
 function search(){
   const inp=el('input');inp.type='search';inp.placeholder='Menu, bagian profil, jenis dan masa SPT, atau berkas';inp.setAttribute('aria-label','Kata kunci pencarian cepat');const results=box('quick');let hits=[],index=0,limit=12;
   const routes=tabs.filter(([k])=>state.pkg||!needsPackage.has(k)).map(([k,title])=>({title,act:()=>go(k)}));
+  routes.push({title:'Program pengujian',aliases:'prosedur penelaahan dokumen Coretax',act:()=>go('bantuan','program')});
   if(state.pkg){
     routes.push({title:'Rincian mutu data',aliases:'pencocokan baris CSV dan isi tabel',act:()=>go('muat','mutu')});
     if(state.pkg.report.valid && state.year){
@@ -173,6 +175,8 @@ function importView(root){
   root.append(quality);
 }
 function help(root){
+  root.append(toggleSet([['','Panduan dan tarif'],['program','Program pengujian']],state.section==='program'?'program':'',key=>go('bantuan',key)));
+  if(state.section==='program'){renderTestingPrograms(root);return;}
   rateUpdateTools(root,render);
   root.append(card('Bantuan',detail('Membuka dan memeriksa paket',el('p','Seret paket ke Muat paket. Untuk paket terenkripsi masukkan kata sandi. Periksa integritas, periode, dan WP aktif sebelum mengolah data.')),detail('Membaca SPT dan data mentah',el('p','Pilih tahun dan buka satu baris pada Daftar SPT untuk melihat induk, lampiran, atau membandingkan pembetulan. Untuk tabel sumber lain, gunakan Profil WP dan Data mentah.')),detail('Kertas kerja dan berita acara',el('p','Tambah butir, catat sumber serta simpulan, lalu unduh berkas kerja sebelum menutup tab. Buka kembali berkas kerja bersama paket dan tahun yang sama.')),detail('Data lokal dan pintasan',el('p','Paket dan catatan sesi dilepas saat tab ditutup. Tema dan peran tersimpan sebagai preferensi. Gunakan Ctrl+K untuk pencarian, 1–9 untuk tab, dan ? untuk daftar pintasan.'))));
 }
@@ -220,7 +224,8 @@ function render(){
   }
   else if(['profil','tabel'].includes(state.tab))renderEntries(root,state,state.tab==='profil');
   else if(state.tab==='kerja')renderWork(root,state);
-  else if(['probis','peraturan'].includes(state.tab))renderCatalog(root,state.tab,{manifest:state.pkg?.manifest,entries:state.pkg?.entries,query:state.query,openBusinessSearch:state.section==='klu'});
+  else if(['probis','peraturan'].includes(state.tab))renderCatalog(root,state.tab,{manifest:state.pkg?.manifest,entries:state.pkg?.entries,query:state.query,openBusinessSearch:state.section==='klu',
+    requests:state.pkg?.report.valid && state.year?()=>probisRequests(state):null});
   else help(root);
 }
 render();

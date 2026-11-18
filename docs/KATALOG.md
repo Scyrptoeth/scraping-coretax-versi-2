@@ -19,6 +19,18 @@ Untuk golongan pokok 46 dan 47, perhitungan mengikuti cabang perdagangan dalam l
 
 Uji contoh pertama menghasilkan **28221**. Angka untuk 28210 di tabel awal halaman 6 tertulis 21.000, sedangkan rincian halaman 7 dan 9 memakai 3.000, dalam jutaan rupiah. Uji menggunakan tabel rincian yang menghasilkan total 100.000. Contoh kedua menghasilkan **47420**. Rincian dua kegiatan dalam golongan 474 berjumlah 23.000 atau 23% dari total, meskipun tabel ringkasan pada halaman cetak 17 menuliskan 230.000. [Lampiran bagian B, mulai halaman PDF 6](https://www.pajak.go.id/sites/default/files/lampiran/Lampiran%20PER_12_PJ_2022.pdf#page=6)
 
+## Program pengujian
+
+Di **Bantuan → Program pengujian**, cari prosedur menurut kode, jenis pajak, langkah kerja atau dokumen yang diperlukan. Sembilan panduan kegiatan pada daftar ini juga tersedia melalui Probis. Empat pemeriksaan lain dapat dilakukan dari sumber Coretax yang sudah ada di paket, termasuk membandingkan faktur antarversi dan menelusuri angka rekap. Centang **Dapat dilakukan dengan data Coretax saja** untuk menemukan keempatnya. **Unduh hasil ke Excel** menyimpan hasil pencarian dan saringan yang sedang digunakan. Daftar ini disusun untuk Versi 2. Studio 1.32.0 menampilkan 506 baris pada menu pembanding.
+
+## Dari Probis ke daftar dokumen
+
+Di tab **Probis**, buka kelompok kegiatan dan pilih **Jadikan acuan WP pada sesi ini**. Pada bagian **Dokumen untuk penelusuran**, pilih tahun pajak dan indeks KKP. Centang dokumen yang relevan, lalu pilih **Tambahkan ke permintaan dokumen**. Setiap baris mendapat nomor DOK dan status awal **Saran**. Memilih dokumen yang sama lagi untuk acuan, tahun, dan indeks yang sama akan menampilkan nomor sebelumnya.
+
+Pilih **Buka indeks tujuan di KKP** untuk memperbarui status atau mencatat lokasi bukti. **Excel daftar dokumen** memuat seluruh permintaan pada WP dan tahun aktif. Untuk saran dari Probis, lembar ini juga mencatat kode KLU, edisi klasifikasi, kode prosedur dan langkah penelusuran. **Unduh berkas kerja** menyimpan asal tersebut beserta tindak lanjut petugas untuk sesi berikutnya.
+
+Proyek ini menyediakan sembilan panduan awal yang dikembangkan sendiri dan dua pilihan dokumen per panduan. Petugas memilih relevansinya dengan transaksi yang diperiksa.
+
 ## Mencari peraturan
 
 Tab **Peraturan** memuat **92 dokumen unik** pada 18 November 2026. Sebanyak 84 entri berasal dari indeks DJP dan 10 dokumen diperiksa melalui halaman peraturan masing-masing. Dua di antara 10 dokumen tersebut juga muncul pada indeks. Status dan tanggal mengikuti keterangan DJP saat pengambilan. Untuk menilai keberlakuan pada masa pajak tertentu, buka naskah serta perubahannya melalui tautan sumber. [Katalog dokumen peraturan DJP](https://www.pajak.go.id/id/peraturan)

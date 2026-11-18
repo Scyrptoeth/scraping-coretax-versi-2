@@ -1,6 +1,6 @@
 # Pemutar paket dan kertas kerja
 
-Pada prarilis 0.5.1, pilih **Buka di Analisis** sesudah penarikan atau buka beberapa paket ZIP lokal dari tab **Muat paket**. Pilih **WP aktif**, periksa periode dan hasil pemeriksaan integritas, lalu pilih tahun pada bagian yang akan digunakan. Paket dan isian kerja berada di memori tab. Unduh berkas kerja jika isian perlu dibuka kembali bersama paket yang sama. [Format dan pemeriksaan integritas](FORMAT.md)
+Pada prarilis 0.6.0, pilih **Buka di Analisis** sesudah penarikan atau buka beberapa paket ZIP lokal dari tab **Muat paket**. Pilih **WP aktif**, periksa periode dan hasil pemeriksaan integritas, lalu pilih tahun pada bagian yang akan digunakan. Paket dan isian kerja berada di memori tab. Unduh berkas kerja jika isian perlu dibuka kembali bersama paket yang sama. [Format dan pemeriksaan integritas](FORMAT.md)
 
 ## Profil, SPT dan data mentah
 
@@ -30,6 +30,8 @@ Pada **Ringkasan SPT**, rekap PPN menyediakan 17 ukuran per bulan dan rekap PPh 
 Gunakan **Ctrl+K** untuk mencari bagian profil, tabel sumber, atau formulir menurut jenis SPT, masa, versi, atau BPE. Membuka kembali tautan formulir memerlukan paket asal.
 
 Pada tab **Probis**, katalog menyediakan KBLI 2020 dan 2025 serta 60 kode KLU kategori Z dari lampiran DJP. Pilih kode untuk melihat jenjang, uraian dan halaman rujukan. Kalkulator memakai omzet tiap kegiatan dan menampilkan langkah penentuan KLU per jenjang. [Cakupan dan sumber katalog](KATALOG.md)
+
+**Cakupan SPT PPN.** Buka satu versi SPT PPN, lalu pilih **Cakupan SPT PPN** untuk melihat induk, A1, A2, B1, B2, B3, C dan total C. Daftar menunjukkan berapa berkas diterima dan berapa bagian yang kelengkapannya dapat diverifikasi. Untuk tabel, pemutar mencocokkan jumlah baris tersimpan dengan total yang dinyatakan sumber. Respons total C tanpa isian ditandai kosong terverifikasi hanya jika lampiran C juga terverifikasi kosong. Nominal footer tetap kosong. **Excel cakupan PPN** menyimpan hasil untuk WP, masa, ID rekaman dan pembetulan yang sedang dibuka.
 
 ## Kertas kerja
 
