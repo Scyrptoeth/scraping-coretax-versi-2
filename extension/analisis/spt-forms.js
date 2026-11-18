@@ -1,9 +1,11 @@
-import {differences,flatten,payloads,rowsOf,typeNames,worksheet} from './model.js';
-import {box,button,card,dataTable,el,exportSheets,select,showDialog} from './ui.js';
+import {differences,flatten,payloads,rowsOf,sptDay,submittedDay,typeNames,worksheet} from './model.js';
+import {box,button,card,dataTable,detail,el,exportSheets,select,showDialog} from './ui.js';
 import {linkedPaymentGroups,packageLedger} from './profile.js';
+import {annualVat} from './annual-vat.js';
+import {monthlyWithholding} from './monthly-withholding.js';
 
 const fields={
-  MainFormData:'Induk',IncomeTaxInAYear:'PPh terutang setahun',NetIncomeBeforeTax:'Laba sebelum pajak',UnderpaymentIncomeTax:'PPh kurang bayar',OverpaymentIncomeTax:'PPh lebih bayar',
+  MainFormData:'Induk',IncomeTaxInAYear:'PPh terutang setahun',NetIncomeBeforeTax:'Laba sebelum pajak',UnderpaymentIncomeTax:'PPh kurang/(lebih) bayar',OverpaymentIncomeTax:'Kode pilihan pengembalian',
   TaxableIncome:'Penghasilan kena pajak',IncomeTaxPayable:'PPh terutang',AnnualNetIncome:'Penghasilan neto setahun',UnderOrOverPaymentTax:'PPh kurang atau lebih bayar',
   ListOfOwnership:'Kepemilikan dan penyertaan',ListOfShareholders:'Pemegang saham',InvestmentList:'Penyertaan',PitrL1Form:'Lampiran 1',PitrL2Form:'Lampiran 2',PitrL3BForm:'Lampiran 3B',
   TotalDeliveryOfGoodsAndServices:'Jumlah penyerahan',DeliveryOfTaxableGoodsSubjectToVAT:'Penyerahan yang terutang PPN',ExportTangibleTaxableGoods:'Ekspor barang kena pajak berwujud',
@@ -33,16 +35,43 @@ export function indicativeDates(forms,pkg) {
   return dates;
 }
 
+function formAmount(value) {
+  if(typeof value==='string' && /^[+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?$/i.test(value.trim()))return numeric(Number(value));
+  return numeric(value);
+}
+
+function withholdingAmount(data) {
+  const groups=[
+    {fields:[['A21IncomeTaxUnderpaidOverpaid','KB/LB PPh 21'],['A26IncomeTaxUnderpaidOverpaid','KB/LB PPh 26']]},
+    {fields:[['A21IncomeTaxWithheld','potongan PPh 21'],['A26IncomeTaxWithheld','potongan PPh 26']],deduction:'A21IncomeTaxBorneByGovernment'}
+  ];
+  for(const {fields,deduction} of groups){
+    const terms=fields.map(([key,label])=>({value:formAmount(data[key]),label})).filter(term=>term.value!==null);
+    if(!terms.length)continue;
+    let amount=terms.reduce((sum,term)=>sum+term.value,0);
+    let basis=terms.map(term=>term.label).join(' + ');
+    const borne=deduction?formAmount(data[deduction]):null;
+    if(borne!==null){
+      amount-=borne;
+      basis+=' − PPh 21 ditanggung pemerintah';
+    }
+    return {amount,basis};
+  }
+  return {amount:null,basis:null};
+}
+
 export function financialPosition(f) {
   const data=main(f);
-  let amount=null;
-  if(f.type==='PPN')amount=numeric(data.VATUnderOrOverPaid?.VAT);
-  if(f.type==='OP')amount=numeric(data.UnderOrOverPaymentTax);
-  if(f.type==='BADAN'){
-    const debit=numeric(data.MainFormData?.UnderpaymentIncomeTax),credit=numeric(data.MainFormData?.OverpaymentIncomeTax);
-    if(debit!==null&&credit!==null&&debit>=0&&credit>=0&&!(debit>0&&credit>0))amount=debit-credit;
+  let amount=null,basis=null;
+  switch(f.type){
+    case 'PPN': amount=formAmount(data.VATUnderOrOverPaid?.VAT);basis='PPN kurang/(lebih) bayar';break;
+    case 'OP': amount=formAmount(data.UnderOrOverPaymentTax);basis='PPh OP kurang/(lebih) bayar';break;
+    // The corporate overpayment field is a refund option, not a monetary credit.
+    case 'BADAN': amount=formAmount(data.MainFormData?.UnderpaymentIncomeTax);basis='PPh Badan kurang/(lebih) bayar';break;
+    case 'UNIFIKASI': amount=formAmount(data.TotalIncomeTaxPaid);basis='Jumlah PPh disetor pada induk';break;
+    case 'PPH2126': ({amount,basis}=withholdingAmount(data));break;
   }
-  return {amount,status:amount===null?'Belum tersedia':amount===0?'Nihil':amount>0?'Kurang bayar':'Lebih bayar'};
+  return {amount,basis:amount===null?null:basis,status:amount===null?'Belum tersedia':amount===0?'Nihil':amount>0?'Kurang bayar':'Lebih bayar'};
 }
 
 function labelPart(form,part){
@@ -78,7 +107,7 @@ export function partRows(f,part,raw=false) {
 }
 function header(f,pkg){
   return [['Jenis',typeNames[f.type]||f.type],['Masa / tahun',f.period],['Versi',versionName(f)],
-    ['WP',pkg.manifest.wp?.nama??''],['NPWP',pkg.manifest.wp?.npwp??''],['BPE',f.meta.DocumentReceiptNumber??''],['Tanggal lapor',f.meta.ReturnDate?.slice(0,10)??'']];
+    ['WP',pkg.manifest.wp?.nama??''],['NPWP',pkg.manifest.wp?.npwp??''],['BPE',f.meta.DocumentReceiptNumber??''],['Tanggal lapor',f.reportDate??submittedDay(f.meta)]];
 }
 export function formSheets(forms,pkg,raw=false) {
   const sheets=[];
@@ -166,7 +195,7 @@ const vatAxes=[
   ['Pajak keluaran','OutputTaxMustBeSelfCollected.VAT'],['Kompensasi masukan','CarryForwardOfInputTax.VAT'],
   ['Pajak masukan diperhitungkan','InputTaxCanBeCalculated.VAT'],['Kurang/(lebih) bayar','VATUnderOrOverPaid.VAT']
 ];
-export function summaryPanels(forms) {
+export function summaryPanels(forms,year) {
   const current=forms.filter(f=>f.latest);
   const vats=current.filter(f=>f.type==='PPN').map(f=>{
     const source=main(f),row={Masa:f.period,Versi:versionName(f)};
@@ -177,8 +206,20 @@ export function summaryPanels(forms) {
     const r=main(f);return {Masa:f.period,Jenis:typeNames[f.type],Versi:versionName(f),'Bruto':numeric(r.Form1A?.GrossIncome),'PPh 21':numeric(r.A21IncomeTaxWithheld),
       'PPh 26':numeric(r.A26IncomeTaxWithheld),'PPh 21 DTP':numeric(r.A21IncomeTaxBorneByGovernment),'Potong/pungut Unifikasi':numeric(r.TotalWithholding),'Setor Unifikasi':numeric(r.TotalIncomeTaxPaid)};
   });
-  const calendar=forms.map(f=>({Masa:f.period,Jenis:typeNames[f.type]||f.type,Versi:versionName(f),'Batas pada sumber':f.meta.ExpectedReturnDate?.slice(0,10),
-    'Tanggal lapor':f.meta.ReturnDate?.slice(0,10),Ketepatan:f.late===null?'Belum dinilai':f.late?'Lewat tanggal pada sumber':'Dalam tanggal pada sumber'}));
-  return [card('PPN per masa',dataTable(vats,{name:'PPN per masa'})),card('Potong dan pungut per masa',dataTable(payments,{name:'Potong pungut'})),
-    card('Kalender pelaporan',el('p','Tanggal pada paket digunakan untuk pembandingan SPT normal. Periksa hari libur saat menilai ketepatan.','hint'),dataTable(calendar,{name:'Kalender pelaporan'}))];
+  const calendar=forms.map(f=>({Masa:f.period,Jenis:typeNames[f.type]||f.type,Versi:versionName(f),'Batas pada sumber':f.dueDate??sptDay(f.meta.ExpectedReturnDate),
+    'Batas setelah akhir pekan':f.filingDueDate,'Tanggal lapor':f.reportDate??submittedDay(f.meta),Ketepatan:f.filingLate==null?'Belum dinilai':f.filingLate?'Lewat batas':'Tepat'}));
+  const annual=annualVat(forms,year);
+  const withholding=monthlyWithholding(forms,year);
+  const annualPanel=annual?card('Rekap PPN tahunan',
+    el('p',annual.available+' dari 12 masa mempunyai versi SPT terakhir. Kompensasi dan posisi kurang/lebih bayar dibaca per masa. Kolom lainnya dijumlahkan untuk masa yang tersedia.','hint'),
+    dataTable(annual.rows,{name:'Rekap PPN tahunan',filename:'Rekap-PPN-'+year}),
+    annual.notes.length?detail('Sumber angka PK',dataTable(annual.notes,{name:'Sumber angka PK'})):null):null;
+  const withholdingPanel=withholding.columns.length>1 || withholding.warnings.length?card('Rekap PPh potong/pungut',
+    el('p','Nilai memakai versi terakhir per jenis dan masa. Buka sumber per pasal untuk melihat isian asal dan perhitungannya.','hint'),
+    withholding.unreportedColumns.length?el('p','Kolom tanpa angka pada seluruh masa: '+withholding.unreportedColumns.join(', ')+'. Jumlah nilai tersedia pada kolom tersebut adalah 0.','hint'):null,
+    ...withholding.warnings.map(text=>el('p',text,'notice')),
+    withholding.columns.length>1?dataTable([...withholding.rows,withholding.total],{name:'Rekap PPh potong/pungut',filename:'Rekap-PPh-'+year}):null,
+    withholding.sources.length?detail('Sumber per pasal',dataTable(withholding.sources,{name:'Sumber per pasal'})):null):null;
+  return [annualPanel,card('PPN per masa',dataTable(vats,{name:'PPN per masa'})),withholdingPanel,card('Potong dan pungut per masa',dataTable(payments,{name:'Potong pungut'})),
+    card('Kalender pelaporan',el('p','Untuk SPT normal, batas yang jatuh pada Sabtu atau Minggu digeser ke Senin. Periksa hari libur lain dan relaksasi sebelum menilai kepatuhan.','hint'),dataTable(calendar,{name:'Kalender pelaporan'}))];
 }

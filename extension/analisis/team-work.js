@@ -119,7 +119,8 @@ export function mergeWork(plan,choices={}){
 }
 
 export function progressReport(pkg,year,work,index){
-  const manual=work.rows.filter(r=>!r.kkpLine), indexed=work.rows.filter(r=>r.kkpLine);
+  const manual=work.rows.filter(r=>!r.kkpLine);
+  const indexed=work.rows.filter(r=>r.kkpLine&&!(r.legacyOptionReview&&r.status==='Perlu tindak lanjut'));
   const issues=findingsFor(pkg,String(year),[]);
   const reviewed=issues.filter(f=>Object.hasOwn(work.dispositions,findingKey(f)));
   const summary=[['Kelompok','Sudah dikerjakan','Jumlah','Persentase (%)']];

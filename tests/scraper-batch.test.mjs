@@ -73,3 +73,21 @@ test('routes unambiguous SPT detail to the viewer and retains an untagged captur
   assert.equal(packagePath(make('bb',[{'Masa Pajak':'2025-02'}])),'bukubesar/2025-02.json');
   assert.equal(packagePath(make('tabelumum',[{'Status kasus':'Aktif'}])),'tabel/local-1.json');
 });
+
+test('writes verifiable CAP paths and SPT context from the captured source fields',()=>{
+  const groups=new Map(),id='ID-DENGAN_GARIS';
+  function write(code,fields){
+    const entry=make('sptisi',[{'ID SPT':id,Pembetulan:2,'Bagian SPT':'L1',...fields}],code);
+    appendPackageEntry(groups,entry,wp);
+    return groups.get(packagePath(entry)).cap.konteks;
+  }
+  assert.equal(packagePath(make('sptarsip',[{}])),'spt/daftar-arsip.json');
+  assert.equal(packagePath(make('bbsaldo',[{}])),'bukubesar-saldo.json');
+  const monthly=write('VAT_VATR',{TaxPeriodCode:'03032025'});
+  assert.deepEqual(monthly.spt,{recordId:id,jenis:'VAT_VATR',masa:'03032025',pemb:2,tahun:2025,npwp:wp});
+  assert.equal(monthly.bagian,'l1');assert.equal(monthly.jenisBagian,'grid');
+  const annual=write('ICT_RCITR',{TaxPeriodCode:'04122025'});
+  assert.equal(annual.spt.masa,'04122025');
+  const yearOnly=write('ICT_RCITR',{'Tahun Pajak':'2024'});
+  assert.equal(yearOnly.spt.masa,'2024');
+});

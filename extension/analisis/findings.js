@@ -1,4 +1,4 @@
-import {periodFacts, rowsOf, typeNames, worksheet} from './model.js';
+import {periodFacts, rowsOf, sptDay, submittedDay, typeNames, worksheet} from './model.js';
 import {differenceCell} from '../archive/table.js';
 
 export const scopeOptions = [['verified','Berbukti saja'],['all','Berbukti + indikatif']];
@@ -16,9 +16,12 @@ function sourceFindings(pkg, year) {
   for (const form of pkg.forms.filter(f => f.year <= year)) {
     const kind = typeNames[form.type] || form.type;
     if (form.year===year && form.late) {
+      const fromForm = form.reportSource && !form.reportSource.startsWith('spt/daftar');
+      const reported = form.reportDate ?? submittedDay(form.meta);
+      const due = form.dueDate ?? sptDay(form.meta?.ExpectedReturnDate);
       output.push({...emptyFinding(),status:'berbukti',kind,period:form.period,
-        detail:'Tanggal lapor '+form.meta.ReturnDate.slice(0,10)+' melewati tanggal batas '+form.meta.ExpectedReturnDate.slice(0,10)+' pada daftar SPT. Periksa relaksasi dan keadaan WP sebelum mengusulkan tindak lanjut.',
-        source:'Daftar SPT · '+form.key});
+        detail:'Tanggal lapor '+reported+' melewati tanggal batas '+due+(fromForm?' pada metadata formulir SPT.':' pada daftar SPT.')+' Periksa relaksasi dan keadaan WP sebelum mengusulkan tindak lanjut.',
+        source:fromForm ? form.reportSource : 'Daftar SPT · '+form.key});
     }
     if (form.year===year && form.amended) output.push({...emptyFinding(),kind,period:form.period,source:form.key,
       detail:'Periksa perubahan isian pembetulan '+form.version+' terhadap versi sebelumnya.'});

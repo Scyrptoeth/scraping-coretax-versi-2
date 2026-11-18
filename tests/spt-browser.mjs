@@ -33,6 +33,9 @@ try{
     await page.locator('#filePkg').setInputFiles(file);
     await page.getByText('Konsisten · Seluruh sidik jari yang diperiksa cocok.').waitFor();
     await page.getByRole('navigation').getByRole('button',{name:'SPT',exact:true}).click();
+    const latest=page.getByRole('checkbox',{name:'Versi terakhir'});
+    assert.equal(await latest.isChecked(),true);
+    await latest.uncheck();
     const kinds=new Set(pkg.forms.map(f=>f.type));
     for(const kind of kinds){
       const form=pkg.forms.find(f=>f.type===kind&&f.amended)||pkg.forms.find(f=>f.type===kind);
@@ -75,6 +78,9 @@ try{
     if(kinds.has('PPN')){
       const vat=page.getByRole('table',{name:'PPN per masa',exact:true});
       await vat.waitFor();assert.equal(await vat.getByRole('columnheader').count(),16);
+      const annual=page.getByRole('table',{name:'Rekap PPN tahunan',exact:true});
+      assert.equal(await annual.getByRole('columnheader').count(),18);
+      assert.equal(await annual.locator('tbody tr').count(),13);
       await page.getByRole('table',{name:'Potong pungut'}).waitFor();
     }
     await page.close();

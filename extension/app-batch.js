@@ -50,7 +50,7 @@ export function batchCollector({ext, origin, context, isBusy, enqueue, refresh, 
           const category=document.createElement('select');category.setAttribute('aria-label','Sumber '+label.textContent);
           category.add(new Option('Lewati tabel ini',''));
           for(const id of scope.allowed) category.add(new Option(sources[id],id));
-          category.value=suggestedSource(table.title,scope.allowed);
+          category.value=scope.allowed.includes(table.indexSource)?table.indexSource:suggestedSource(table.title,scope.allowed);
           const type=document.createElement('select');type.setAttribute('aria-label','Jenis SPT '+label.textContent);
           type.add(new Option('Pilih jenis SPT',''));
           for(const [id,caption] of forms.filter(([id])=>scope.types.includes(id))) type.add(new Option(caption,id));
@@ -88,7 +88,7 @@ export function batchCollector({ext, origin, context, isBusy, enqueue, refresh, 
         try {
           const tab=await ext.tabs.get(t.tabId);
           if(tab.url!==t.url || new URL(tab.url).origin!==origin) throw Error('Alamat tab berubah. Pindai ulang tabel.');
-          const selector={...t.table,url:t.url,scope:{wp:chosen.wp,from:chosen.from,to:chosen.to,periodRequired:temporal.has(source)}};
+          const selector={...t.table,url:t.url,scope:{source,wp:chosen.wp,from:chosen.from,to:chosen.to,periodRequired:temporal.has(source)}};
           let options=selector, result, more=false;
           const pages=[], seen=new Set();
           while(pages.length<pageLimit) {
@@ -110,6 +110,7 @@ export function batchCollector({ext, origin, context, isBusy, enqueue, refresh, 
           if(JSON.stringify(context())!==JSON.stringify(chosen)) throw Error('Cakupan penugasan berubah. Pindai ulang tab.');
           const data=pages.flat();
           const proof={columns:t.table.labels,owner:result?.ownerColumns || [],period:result?.periodColumns || [],
+            ...(result?.indexScope?{indexScope:result.indexScope,ownerEvidence:result.ownerEvidence}:{}),
             pageRows:pages.map(page=>page.length),morePagesAvailable:Boolean(more)};
           const info={wp:chosen.wp,period:undated?null:chosen.period,source,spt,proof};
           enqueue(info,{Payload:{Data:data}},t.table.title,'Tabel tampak');

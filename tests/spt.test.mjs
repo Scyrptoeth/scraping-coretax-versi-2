@@ -7,12 +7,41 @@ function form(type,data,version=0){
   return {type,period:'2025-01',version,id:'f'+version,meta:{},key:'spt/'+type+'/2025-01/p0'+version+'_f'+version,
     parts:new Map([['induk',entry('induk.json',{FormData:JSON.stringify(data)})]])};
 }
-test('Induk balances retain missing, zero and sign independently of gross withholding',()=>{
-  for(const [f,expected] of [[form('PPN',{VATUnderOrOverPaid:{VAT:-42}}),'Lebih bayar'],
-    [form('OP',{UnderOrOverPaymentTax:0}),'Nihil'],[form('BADAN',{MainFormData:{UnderpaymentIncomeTax:99,OverpaymentIncomeTax:0}}),'Kurang bayar'],
-    [form('BADAN',{MainFormData:{UnderpaymentIncomeTax:99,OverpaymentIncomeTax:1}}),'Belum tersedia'],
-    [form('BADAN',{MainFormData:{UnderpaymentIncomeTax:0}}),'Belum tersedia'],[form('PPH2126',{A21IncomeTaxWithheld:99}),'Belum tersedia'],
-    [form('UNIFIKASI',{TotalWithholding:99,TotalIncomeTaxPaid:99}),'Belum tersedia']])assert.equal(financialPosition(f).status,expected);
+test('Returns distinguish signed balances from a corporate overpayment option',()=>{
+  for(const [kind,data,expected,amount] of [
+    ['PPN',{VATUnderOrOverPaid:{VAT:-42}},'Lebih bayar',-42],
+    ['OP',{UnderOrOverPaymentTax:0},'Nihil',0],
+    ['BADAN',{MainFormData:{UnderpaymentIncomeTax:99,OverpaymentIncomeTax:null}},'Kurang bayar',99],
+    ['BADAN',{MainFormData:{UnderpaymentIncomeTax:-37,OverpaymentIncomeTax:1}},'Lebih bayar',-37],
+    ['BADAN',{MainFormData:{UnderpaymentIncomeTax:0}},'Nihil',0],
+    ['BADAN',{MainFormData:{UnderpaymentIncomeTax:'16.75'}},'Kurang bayar',16.75],
+    ['BADAN',{MainFormData:{OverpaymentIncomeTax:2}},'Belum tersedia',null],
+    ['BADAN',{MainFormData:{UnderpaymentIncomeTax:'',OverpaymentIncomeTax:0}},'Belum tersedia',null]
+  ]){
+    const result=financialPosition(form(kind,data));assert.equal(result.status,expected);assert.equal(result.amount,amount);
+  }
+});
+test('Article 21/26 reads the balance of each version before considering withholding',()=>{
+  const normal=form('PPH2126',{A21IncomeTaxUnderpaidOverpaid:0,A26IncomeTaxUnderpaidOverpaid:0,A21IncomeTaxWithheld:99});
+  const changed=form('PPH2126',{A21IncomeTaxUnderpaidOverpaid:-50,A26IncomeTaxUnderpaidOverpaid:20,
+    A21IncomeTaxUnderpaidOverpaidDueToAmendment:75},1);
+  assert.equal(financialPosition(normal).amount,0);
+  assert.equal(financialPosition(changed).amount,-30);assert.equal(financialPosition(changed).status,'Lebih bayar');
+  const withheld=financialPosition(form('PPH2126',{A21IncomeTaxWithheld:95,A26IncomeTaxWithheld:10,A21IncomeTaxBorneByGovernment:5}));
+  assert.equal(withheld.amount,100);assert.equal(withheld.status,'Kurang bayar');assert.match(withheld.basis,/potongan/i);
+  const oneComponent=financialPosition(form('PPH2126',{A26IncomeTaxUnderpaidOverpaid:12}));
+  assert.equal(oneComponent.amount,12);assert.match(oneComponent.basis,/26/);assert.doesNotMatch(oneComponent.basis,/21/);
+  const noPositiveComponent=financialPosition(form('PPH2126',{A21IncomeTaxBorneByGovernment:5}));
+  assert.equal(noPositiveComponent.amount,null);
+  assert.equal(financialPosition(form('PPH2126',{})).amount,null);
+});
+test('Unified withholding reports the payment as a payment including zero',()=>{
+  for(const amount of [0,99]){
+    const result=financialPosition(form('UNIFIKASI',{TotalWithholding:123,TotalIncomeTaxPaid:amount}));
+    assert.equal(result.amount,amount);assert.equal(result.status,amount===0?'Nihil':'Kurang bayar');assert.match(result.basis,/disetor/i);
+  }
+  assert.equal(financialPosition(form('UNIFIKASI',{TotalWithholding:123})).amount,null);
+  assert.equal(financialPosition(form('UNIFIKASI',{TotalIncomeTaxPaid:false})).amount,null);
 });
 test('Content search covers annexes, source codes and Indonesian names without losing zero or false',()=>{
   const f=form('PPN',{TaxPeriodYear:2025,VATUnderOrOverPaid:{VAT:0},IsDraft:false});

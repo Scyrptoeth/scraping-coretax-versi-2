@@ -1,6 +1,6 @@
 import {rowsOf, worksheet} from './model.js';
 import {box,button,card,dataTable,el,exportSheets,select} from './ui.js';
-import {parseDelimited} from '../app-data.js';
+import {parseDelimited,sources as sourceNames} from '../app-data.js';
 
 const severity = ['Kritis','Peringatan','Info'];
 const safeCount = value => typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
@@ -14,7 +14,7 @@ function tableRows(page) {
 
 export function qualityNotes(pkg) {
   if(notesCache.has(pkg)) return notesCache.get(pkg);
-  const notes=[];
+  const notes=[],limitGroups=new Map();
   function add(level,source,test,observed,impact) {
     notes.push({Tingkat:level,Sumber:source,Pemeriksaan:test,Hasil:observed,'Dampak pada analisis':impact});
   }
@@ -25,7 +25,7 @@ export function qualityNotes(pkg) {
     const message=check?.teks || check?.pesan;
     if(!message) continue;
     const level=({tinggi:'Kritis',kritis:'Kritis',sedang:'Peringatan',warning:'Peringatan',peringatan:'Peringatan',info:'Info'})[String(check.lvl || check.tingkat).toLowerCase()] || 'Info';
-    const effect=check.kode==='MASA-KOSONG'?'Periksa kewajiban dan masa sebelum menafsirkan kekosongan.':
+    const effect=check.kode==='MASA-KOSONG'?'Penarik mencatat masa tanpa SPT yang ditemukan. Periksa kewajiban dan masa pelaporan WP.':
       (level==='Info'?'Catatan dari penarik saat paket dibuat.':'Periksa sumber terkait sebelum menggunakan hasil ringkasan.');
     add(level,'Manifest',check.kode || 'Catatan penarik',message,effect);
   }
@@ -44,10 +44,24 @@ export function qualityNotes(pkg) {
         rowCount+' baris data, '+cap.baris+' pada metadata.','Hitung ulang sebelum memakai jumlah atau nilai agregat.');
       const expected=new Set([cap.total,...pages.map(p=>p?.Payload?.TotalRecords ?? p?.Payload?.TotalRecordCount ?? p?.Payload?.TotalCount)]
         .filter(safeCount));
+      const limit=cap.payload?.Rows,lastEmpty=rawPages.at(-1).length===0;
+      const repeatsLimit=cap.total===null && cap.payload?.First===0 && safeCount(limit) && limit>0 &&
+        pages.every(p=>p.IsSuccessful===true && p.Payload?.TotalRecords===limit);
+      if(repeatsLimit && rowCount===limit && !lastEmpty && sources.length<=1) {
+        add('Peringatan',path,'Batas permintaan tercapai',rowCount+' baris tersimpan, sama dengan batas permintaan. Halaman penutup kosong belum tercatat.',
+          'Periksa apakah sumber masih memiliki halaman berikutnya.');
+      }
       // A grouped file can contain independent tables, each with its own footer.
       if(sources.length<=1 && expected.size>0 && (expected.size>1 || !expected.has(rowCount))) {
-        add('Peringatan',path,'Jumlah baris menurut sumber',rowCount+' baris tersimpan. Total pada sumber '+[...expected].join(', ')+'.',
-          'Periksa paginasi dan saringan sumber sebelum menjumlahkan data.');
+        const result=rowCount+' baris tersimpan. Total pada sumber '+[...expected].join(', ')+'.';
+        if(repeatsLimit && rowCount<limit && !sources.length && cap.sumber && cap.lengkap===true &&
+            cap.baris===rowCount && cap.halaman===pages.length && !cap.catatan?.length && !pkg.report.issues.length) {
+          const key=JSON.stringify([cap.sumber,limit]);
+          if(!limitGroups.has(key))limitGroups.set(key,[]);
+          limitGroups.get(key).push({source:cap.sumber,path,result,rowCount,lastEmpty});
+        }else{
+          add('Peringatan',path,'Jumlah baris menurut sumber',result,'Periksa paginasi dan saringan sumber sebelum menjumlahkan data.');
+        }
       }
     }
     for(const origin of sources) {
@@ -58,6 +72,21 @@ export function qualityNotes(pkg) {
           proof.pageRows.reduce((n,x)=>n+x,0)!==origin.baris) add('Peringatan',path,'Rincian baris per halaman',
           proof.pageRows.join(' + ')+' dibandingkan dengan '+origin.baris+' baris.','Periksa kembali tabel yang masuk ke paket.');
     }
+  }
+  const counts=new Map();
+  for(const group of limitGroups.values()) {
+    // A positive result and an empty last page are independent evidence for the same source and limit.
+    const corroborated=group.some(e=>e.rowCount>0) && group.some(e=>e.lastEmpty);
+    for(const e of group) {
+      if(corroborated)counts.set(e.source,(counts.get(e.source) || 0)+1);
+      else add('Peringatan',e.path,'Jumlah baris menurut sumber',e.result,'Periksa paginasi dan saringan sumber sebelum menjumlahkan data.');
+    }
+  }
+  if(counts.size){
+    const affected=[...counts.values()].reduce((sum,n)=>sum+n,0);
+    const labels=[...counts].map(([src,n])=>(sourceNames[src] || src)+' ('+n+')').join(', ');
+    add('Info',labels,'Total respons sama dengan batas permintaan',affected+' berkas memuat total yang sama dengan batas permintaan. Jumlah baris tersimpan sesuai metadata penarik.',
+      'Ada halaman akhir kosong untuk sumber dengan pola ini. Cocokkan dengan ekspor Coretax jika jumlah baris sebenarnya diperlukan.');
   }
   notes.sort((a,b)=>severity.indexOf(a.Tingkat)-severity.indexOf(b.Tingkat));
   notesCache.set(pkg,notes);

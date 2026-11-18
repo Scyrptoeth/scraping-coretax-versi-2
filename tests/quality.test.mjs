@@ -27,6 +27,31 @@ test('quality separates source coverage, empty periods and integrity from numeri
     assert.ok(notes.some(n=>n.Pemeriksaan===name));
 });
 
+test('quality groups a repeated request limit only when pagination evidence supports it',()=>{
+  const make=(path,source,sizes,overrides={})=>{
+    const pages=sizes.map(size=>({IsSuccessful:true,Payload:{Data:Array(size).fill({}),TotalRecords:10000}}));
+    const cap={sumber:source,baris:sizes.reduce((total,n)=>total+n,0),halaman:sizes.length,lengkap:true,
+      total:null,payload:{Rows:10000,First:0},...overrides};
+    return {path,cap,pages};
+  };
+  const entries=[
+    make('ledger/empty','bb',[0]),make('ledger/short','bb',[3]),make('documents','dokumen',[8,0]),
+    make('slips/partial','bplawan',[5]),make('ledger/confirmed-total','bb',[4],{total:10000}),
+    make('ledger/request-mismatch','bb',[4],{payload:{Rows:50,First:0}}),
+    make('ledger/next-page','bb',[1],{lengkap:false}),make('ledger/at-limit','bb',[10000]),
+    make('ledger/limit-and-end','bb',[10000,0]),make('ledger/late-start','bb',[1],{payload:{Rows:10000,First:300}}),
+    make('ledger/explicit-origin','bb',[1],{halamanSumber:[{pencocokan:{morePagesAvailable:true}}]}),
+  ];
+  const notes=qualityNotes({entries,report:{issues:[]},manifest:{cek:[{lvl:'sedang',kode:'MASA-KOSONG',teks:'Satu masa kosong.'}]}});
+  const info=notes.filter(n=>n.Pemeriksaan==='Total respons sama dengan batas permintaan');
+  assert.equal(info.length,1);assert.equal(info[0].Tingkat,'Info');assert.match(info[0].Hasil,/3 berkas/);
+  const warnings=notes.filter(n=>n.Tingkat==='Peringatan').map(n=>n.Sumber);
+  for(const file of ['slips/partial','ledger/confirmed-total','ledger/request-mismatch','ledger/next-page',
+    'ledger/at-limit','ledger/late-start','ledger/explicit-origin'])assert.ok(warnings.includes(file),file);
+  for(const file of ['ledger/empty','ledger/short','documents','ledger/limit-and-end'])assert.ok(!warnings.includes(file),file);
+  assert.equal(notes.filter(n=>n.Pemeriksaan==='MASA-KOSONG').length,1);
+});
+
 test('comparison preserves order, duplicate rows, leading zeros and column coverage',()=>{
   const source=[{ID:'001',N:'0'},{ID:'001',N:'0'},{ID:'002',N:''}];
   const target=[{Kode:'001',Nilai:0},{Kode:'001',Nilai:0},{Kode:'002',Nilai:''}];

@@ -15,7 +15,7 @@ const formSection=/^form-([a-f0-9]{32})-([1-9]\d*)$/;
 const monthFormatter=new Intl.DateTimeFormat('id',{month:'long',timeZone:'UTC'});
 let openFormHash='';
 const $=id=>document.getElementById(id);
-const state={packages:new Map(),pkg:null,tab:'muat',section:'',year:'',role:'Pemeriksa',selectedEntry:'',query:'',work:new Map(),sptFilters:{type:'',latest:false,late:false,amended:false},go,repaint:render};
+const state={packages:new Map(),pkg:null,tab:'muat',section:'',year:'',role:'Pemeriksa',selectedEntry:'',query:'',work:new Map(),sptFilters:{type:'',latest:true,late:false,amended:false},go,repaint:render};
 const readPref=k=>{try{return localStorage.getItem('scv2-view-'+k);}catch{return null;}};
 const setPref=(k,v)=>{try{localStorage.setItem('scv2-view-'+k,v);}catch{/* Browser preferences may be disabled. */}};
 const validRole=readPref('role');if(['AR','Penelaah','Pemeriksa'].includes(validRole))state.role=validRole;

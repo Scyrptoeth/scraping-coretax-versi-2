@@ -1,5 +1,5 @@
 import {packageLedger} from './profile.js';
-import {rowsOf,worksheet} from './model.js';
+import {rowsOf,sptDay,submittedDay,worksheet} from './model.js';
 import {box,button,card,dataTable,el,exportSheets,select,showDialog} from './ui.js';
 
 function sourceRows(pkg,source,path) {
@@ -47,10 +47,11 @@ export function eventsFor(pkg,year) {
   for(const r of sourceRows(pkg,'dokumen','profil/dokumen.json'))add(r.DocumentDate||r.IssueDate||r.CreatedDate,'Dokumen',r.DocumentTitle||r.DocumentTypeCode||'Dokumen',r['Berkas sumber'],'',r.DocumentNumber);
   const kinds={VAT_VATR:'PPN',VAT_VATTRNTEVATC:'PPN pemungut',ICT_RCITR:'PPh Badan',ICT_PITR:'PPh OP',ICT_WITR:'PPh 21/26',ICT_WTR:'PPh Unifikasi'};
   for(const r of sourceRows(pkg,'sptdaftar','spt/daftar.json')){
-    const late=isoDay(r.ExpectedReturnDate)&&isoDay(r.ReturnDate)>isoDay(r.ExpectedReturnDate);
+    const reported=submittedDay(r), due=sptDay(r.ExpectedReturnDate);
+    const late=due && reported>due;
     const amendment=/amend|pembetulan|correction/i.test(r.ReturnSheetModel||'');
     const group=amendment?'Pembetulan SPT':late?'SPT melewati tanggal pada sumber':'Pelaporan SPT';
-    add(r.ReturnDate,group,[kinds[r.ReturnSheetTypeCode]||r.ReturnSheetTypeCode,r.TaxPeriodCode,r.ReturnSheetModel].filter(Boolean).join(' · '),r['Berkas sumber'],periodYear(r.TaxPeriodCode),r.DocumentReceiptNumber);
+    add(reported,group,[kinds[r.ReturnSheetTypeCode]||r.ReturnSheetTypeCode,r.TaxPeriodCode,r.ReturnSheetModel].filter(Boolean).join(' · '),r['Berkas sumber'],periodYear(r.TaxPeriodCode),r.DocumentReceiptNumber);
   }
   for(const r of packageLedger(pkg)){
     if(r.IsCancelled===true||r.IsCancelled==='true')continue;

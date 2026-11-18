@@ -4,6 +4,7 @@ import {putHandoff, removeExpiredHandoffs} from './app-handoff.js';
 import {createPackage,sha256} from './archive/package.js';
 import {batchCollector} from './app-batch.js';
 import {appendPackageEntry,isSptList,metaForSelection,selectSptListRows} from './app-package-entries.js';
+import {planSptDetails} from './app-spt-plan.js';
 
 const $ = id => document.getElementById(id);
 const coretax = 'https://coretax.intranet.pajak.go.id';
@@ -178,9 +179,13 @@ async function addTable() {
   const info = scope(), tab = await tabNow(), entry = tables.find(x => String(x.index) === val('table'));
   if (!entry) throw new Error('Pilih tabel terlebih dahulu.');
   if (!entry.rows) throw new Error('Tabel kosong. Belum ada baris yang dapat ditambahkan.');
-  const [frame] = await ext.scripting.executeScript({target:{tabId:tab.id},func:visibleTables,args:[{...entry,url:tabUrl}]});
-  if (!Array.isArray(frame?.result)) throw new Error('Tabel tidak dapat dibaca. Periksa ulang halaman.');
-  addEntry({...info,proof:{columns:entry.labels}},{Payload:{Data:rowsInColumnOrder(frame.result,entry.labels)}},entry.title,'Tabel tampak');
+  const [frame] = await ext.scripting.executeScript({target:{tabId:tab.id},func:visibleTables,
+    args:[{...entry,url:tabUrl,scope:{wp:info.wp,source:info.source,manual:true}}]});
+  const result=frame?.result;
+  if (!Array.isArray(result?.rows)) throw new Error(result?.skip || 'Tabel tidak dapat dibaca. Periksa ulang halaman.');
+  const proof={columns:entry.labels,morePagesAvailable:result.canAdvance};
+  if(result.indexScope)Object.assign(proof,{indexScope:result.indexScope,ownerEvidence:result.ownerEvidence});
+  addEntry({...info,proof},{Payload:{Data:rowsInColumnOrder(result.rows,entry.labels)}},entry.title,'Tabel tampak');
   $('scope-ok').checked = false; scopeChanged(); message('Tabel ditambahkan ke antrean.');
 }
 async function collectPages() {
@@ -189,7 +194,9 @@ async function collectPages() {
   if(!Number.isInteger(limit) || limit<1 || limit>100) throw new Error('Pilih batas antara 1 dan 100 halaman.');
   const info=scope(),tab=await tabNow(),entry=tables.find(t=>String(t.index)===val('table'));
   if (!entry || !entry.canAdvance) throw new Error('Pilih tabel dengan kontrol halaman berikut yang dapat dikenali.');
-  const selector={...entry,url:tabUrl}, seen=new Set();
+  const selector={...entry,url:tabUrl,scope:{wp:info.wp,source:info.source,
+    from:val('year-start')+'-'+val('month-start'),to:val('year-end')+'-'+val('month-end'),
+    periodRequired:info.source.startsWith('spt') || ['bb','bbtotal','bplawan'].includes(info.source)}},seen=new Set();
   async function read(options) {
     const [result]=await ext.scripting.executeScript({target:{tabId:tab.id},func:visibleTables,args:[options]});
     if(!result || result.result==null) throw new Error('Tabel tidak dapat dibaca. Periksa kembali tab dan posisi halaman.');
@@ -200,22 +207,28 @@ async function collectPages() {
   $('pause-pages').hidden=false;$('pause-pages').textContent='Jeda pembacaan';$('stop-pages').hidden=false;
   let added=0;
   try {
-    let page=await read(selector);
-    if(!Array.isArray(page) || !page.length) throw new Error('Tabel kosong atau halaman pertama tidak tersedia.');
+    let result=await read(selector),previousProof;
     while(added<limit && !pagingStopped) {
-      page=rowsInColumnOrder(page,entry.labels);
+      if(JSON.stringify(scope())!==JSON.stringify(info))throw Error('Cakupan penugasan berubah. Pilih ulang tabel.');
+      if(!result.rows?.length)throw new Error(result.skip || 'Tabel kosong atau halaman tidak tersedia.');
+      const page=rowsInColumnOrder(result.rows,entry.labels);
       const serialized=JSON.stringify(page),hash=await vault.digest(serialized);
       if(seen.has(hash)) throw new Error('Halaman berulang. Periksa paginator Coretax sebelum melanjutkan.');
       seen.add(hash);
-      addEntry({...info,proof:{columns:entry.labels}},{Payload:{Data:page}},entry.title+' · halaman pengambilan '+(added+1),'Tabel tampak');
+      const proof={columns:entry.labels,owner:result.ownerColumns,period:result.periodColumns,morePagesAvailable:result.canAdvance};
+      if(result.indexScope)Object.assign(proof,{indexScope:result.indexScope,ownerEvidence:result.ownerEvidence});
+      addEntry({...info,proof},{Payload:{Data:page}},entry.title+' · halaman pengambilan '+(added+1),'Tabel tampak');
+      if(previousProof)delete previousProof.morePagesAvailable;
+      previousProof=proof;
       added++;renderQueue();$('page-status').textContent=added+' halaman masuk antrean.';
-      if(added>=limit) break;
+      if(added>=limit || !result.canAdvance) break;
       await sleep(150);
       while(pagingPaused && !pagingStopped) await sleep(100);
       if(pagingStopped) break;
       const next=await read({...selector,rows:page.length,advance:true,owner:info.wp,expected:serialized});
       if(next.end) break;
-      page=next.rows;
+      if(next.skip)throw new Error(next.skip.startsWith('Identitas WP')?'NPWP tampilan berubah. Halaman berikut tidak ditambahkan.':next.skip);
+      result=next;
     }
     message(added+' halaman ditambahkan ke antrean.');
   } finally {
@@ -237,7 +250,7 @@ async function importFiles() {
   }
   $('scope-ok').checked = false; scopeChanged();
 }
-function prepare() {
+function prepare({preview=false}={}) {
   const wp = captureOwner(), allowed = checked('sources'), types = checked('forms');
   if (!val('officer')) throw new Error('Isi nama penarik pada bagian Penugasan.');
   if (val('letter') && val('basis') !== 'RUTIN' && (val('letter').length < 6 || !/\d/.test(val('letter')))) throw new Error('Nomor dasar penugasan harus memuat angka dan sedikitnya 6 karakter.');
@@ -247,16 +260,18 @@ function prepare() {
   const range=matching.some(e=>e.period!==null)?period():null;
   const inPeriod=matching.filter(e=>e.period===range || (e.source==='tabelumum' && e.period===null));
   const relevant=inPeriod.map(e=>selectSptListRows(e,types)).filter(Boolean);
-  if(inPeriod.length && !relevant.length) throw Error('Tidak ada baris untuk jenis SPT terpilih. Pilih semua jenis untuk menyertakan baris yang belum dikenali.');
-  if (!relevant.length) throw new Error('Tambahkan tabel atau berkas yang sesuai dengan WP, periode, dan sumber terpilih.');
+  if (!relevant.length && !(preview && inPeriod.some(item=>isSptList(item.source)))) {
+    if(inPeriod.length) throw Error('Tidak ada baris untuk jenis SPT terpilih. Pilih semua jenis untuk menyertakan baris yang belum dikenali.');
+    throw new Error('Tambahkan tabel atau berkas yang sesuai dengan WP, periode, dan sumber terpilih.');
+  }
   const meta = {penugasan:{peran:val('role'),jenis:val('basis'),nomor:val('letter'),tanggal:val('date')},penarik:{nama:val('officer'),nip:val('nip')},periode:range,
     opsi:{metode:'Tabel yang terlihat atau ekspor lokal',jenisSpt:types,sumber:allowed,lewatiDuplikat:$('dedupe').checked,
       periode:{from:{y:Number(val('year-start')),m:Number(val('month-start'))},to:{y:Number(val('year-end')),m:Number(val('month-end'))}}}};
   const omittedRows=inPeriod.reduce((sum,e)=>sum+e.rows,0)-relevant.reduce((sum,e)=>sum+e.rows,0);
-  return {plan:{wp,entries:relevant},meta:metaForSelection(meta,relevant),excluded:queue.length-relevant.length,omittedRows};
+  return {plan:{wp,entries:relevant},meta:metaForSelection(meta,relevant),inPeriod,excluded:queue.length-relevant.length,omittedRows};
 }
 function showPreview() {
-  const {plan,meta,excluded,omittedRows}=prepare(), box=$('preview-box');
+  const {plan,meta,inPeriod,excluded,omittedRows}=prepare({preview:true}), box=$('preview-box');
   box.replaceChildren();
   const rows=plan.entries.reduce((sum,entry)=>sum+entry.rows,0);
   const body=captureTable(box,'Pratinjau penarikan',['NPWP','Nama WP','Periode','Sumber dalam antrean','Baris terpilih']);
@@ -268,8 +283,52 @@ function showPreview() {
     const hint=document.createElement('p');hint.className='hint';hint.textContent='Jumlah pada pratinjau dihitung sebelum salinan identik dilewati.';details.append(hint);
   }
   box.append(details);
+  if(inPeriod.some(item=>isSptList(item.source))) {
+    const planned=planSptDetails({wp:plan.wp,period:meta.opsi.periode,types:meta.opsi.jenisSpt,items:inPeriod});
+    showSptPlan(box,planned);
+  }
   const summary=excluded ? excluded+' sumber di luar pilihan.' : 'Semua sumber dalam antrean masuk dalam tarikan.';
   $('status').textContent=summary+(omittedRows?' '+omittedRows+' baris di luar pilihan jenis SPT.':'');
+}
+function showSptPlan(box,{counts,documents}) {
+  const summary=captureTable(box,'SPT dalam periode terpilih',['Jenis dan masa berbeda','Versi SPT','Bagian tersedia','Bagian perlu diambil','Bagian perlu diulang']);
+  captureRow(summary,[counts.periods,counts.versions,counts.readyParts,counts.pendingParts,counts.retryParts]);
+  const notes=[
+    [counts.outside,'baris di luar periode'],[counts.excludedType,'baris di luar pilihan jenis'],
+    [counts.unknown,'baris dengan jenis belum dikenali'],[counts.conflicts,'konflik identitas atau versi'],
+    [counts.duplicateRows,'baris daftar berulang'],[counts.missing,'baris dengan keterangan belum lengkap'],
+    [counts.drafts,'baris pada daftar SPT belum dilaporkan'],[counts.failedIndexPages,'halaman daftar gagal dibaca'],
+    [counts.unmatchedParts,'bagian tanpa pasangan pada daftar']
+  ].filter(([count])=>count>0);
+  if(notes.length) {
+    const note=document.createElement('p');
+    note.textContent=notes.map(([count,label])=>count+' '+label).join(' · ');
+    box.append(note);
+  }
+  if(!documents.length)return;
+  const panel=disclosure('Rincian versi SPT dan bagian yang tersedia');
+  box.append(panel);
+  panel.addEventListener('toggle',()=>{
+    if(!panel.open || panel.querySelector('table'))return;
+    const hint=document.createElement('p');
+    hint.textContent='Setiap versi memerlukan induk. Lampiran ikut dihitung jika namanya tersedia di sumber yang ditambahkan.';
+    panel.append(hint);
+    const body=captureTable(panel,'Versi SPT yang ditemukan',['Jenis SPT','Masa atau tahun','Pembetulan','Bagian tersedia','Perlu diambil','Perlu diulang']);
+    const labels=new Map(forms);
+    let cursor=0;
+    const more=button('Tampilkan versi berikutnya',appendRows);
+    function appendRows() {
+      const end=Math.min(cursor+100,documents.length);
+      for(;cursor<end;cursor++) {
+        const doc=documents[cursor];
+        const parts=status=>doc.parts.filter(part=>part.status===status).map(part=>part.name).join(', ') || '—';
+        captureRow(body,[labels.get(doc.type) || doc.type,doc.period,doc.revision,parts('ready'),parts('pending'),parts('retry')]);
+      }
+      more.hidden=cursor===documents.length;
+    }
+    panel.append(more);
+    appendRows();
+  });
 }
 function jobButtons() {
   const disabled=busy || !$('consent').checked || !val('ids') || !$('ids').validity.valid;

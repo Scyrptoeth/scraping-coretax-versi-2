@@ -1,5 +1,13 @@
 # Riwayat Scraping Coretax Versi 2
 
+## 18 November 2026 · Prarilis 0.4.0
+
+Daftar SPT memakai versi terakhir sebagai pilihan awal. Pemutar menampilkan dasar nilai untuk tiap jenis formulir, memilih tanggal penerimaan yang valid saat tanggal utama masih berisi tahun penanda, dan memisahkan batas sumber dari batas setelah akhir pekan. Rekap PPN dan PPh menyajikan masa, jumlah, dan rujukan untuk menelusuri perbedaan. Dasbor WP Badan menyertakan enam indikator dan berkas sumbernya.
+
+Penarik dapat mengikuti halaman berikut pada daftar SPT yang menampilkan identitas WP di panel halaman. Penarik memeriksa identitas dan bentuk tabel saat berpindah. Uji ekstensi terpasang memakai Coretax fiktif dengan beberapa masa, penggantian WP dan perubahan struktur tabel. Pencocokan seluruh lampiran hasil tarikan operasional Versi 2 masih terbuka. [Penarik](SCRAPING.md) · [Analisis](ANALISIS.md) · [Matriks kesetaraan](KESETARAAN.md)
+
+Pratinjau memperinci versi SPT dalam antrean dan bagian yang masih perlu diambil. Dalam uji ZIP fiktif, VERITAX Studio 1.32.0 berhasil membaca kembali enam sumber termasuk arsip SPT, saldo, induk PPN dan lampiran A2. KKP Badan menampilkan kode pilihan pengembalian sebagai keterangan dan menyimpan hasil telaah terdahulu dalam riwayat. [Format ZIP](FORMAT.md) · [KKP](ANALISIS.md)
+
 ## 18 November 2026 · Prarilis 0.3.0
 
 Setiap tarikan memakai satu NPWP. Ketika satu tabel memuat beberapa jenis SPT, penarik mengenali jenis pada setiap baris, menerapkan pilihan pengguna dan mempertahankan urutan kolom sumber. Antrean lama dapat dilanjutkan per WP. Pemutar menambah rincian mutu, pencocokan CSV, buku besar gabungan, rasio pembanding, garis waktu dan peta hubungan. KKP per indeks terhubung ke KKA dan SP2DK. Penggabungan berkas kerja memakai pratinjau dan menampilkan konflik sebelum isian digabung.

@@ -1,8 +1,14 @@
 # Pemutar paket dan kertas kerja
 
-Pada prarilis 0.3.0, pilih **Buka di Analisis** sesudah penarikan atau buka beberapa paket ZIP lokal dari tab **Muat paket**. Pilih **WP aktif**, periksa periode dan hasil pemeriksaan integritas, lalu pilih tahun pada bagian yang akan digunakan. Paket dan isian kerja berada di memori tab. Unduh berkas kerja jika isian perlu dibuka kembali bersama paket yang sama. [Format dan pemeriksaan integritas](FORMAT.md)
+Pada prarilis 0.4.0, pilih **Buka di Analisis** sesudah penarikan atau buka beberapa paket ZIP lokal dari tab **Muat paket**. Pilih **WP aktif**, periksa periode dan hasil pemeriksaan integritas, lalu pilih tahun pada bagian yang akan digunakan. Paket dan isian kerja berada di memori tab. Unduh berkas kerja jika isian perlu dibuka kembali bersama paket yang sama. [Format dan pemeriksaan integritas](FORMAT.md)
 
 ## Profil, SPT dan data mentah
+
+Pada **Dasbor → Ringkasan**, paket dengan SPT Badan menampilkan enam indikator. Klik **Perhitungan dan sumber indikator** untuk melihat angka rupiah, rumus dan berkas asal. Nilai PPN kurang bayar disetor di kartu bersumber dari posisi positif di induk SPT. Cocokkan dengan buku besar untuk memeriksa pembayaran aktual.
+
+**SPT → Daftar & isi SPT** mula-mula menampilkan versi terakhir. Lepaskan centang **Versi terakhir** untuk melihat normal beserta setiap pembetulan. **Dasar nilai** menjelaskan isian yang dipakai tiap formulir, termasuk jumlah disetor pada Unifikasi. Tanggal lapor menggunakan tanggal pengganti yang valid jika sumber memberi tahun penanda 0001. Batas pada sumber dan batas setelah akhir pekan ditampilkan terpisah. Kalender ini belum mencakup seluruh hari libur atau relaksasi.
+
+Pada **Ringkasan SPT**, rekap PPN menyediakan 17 ukuran per bulan dan rekap PPh potong/pungut merinci pasal yang tersedia. Tabel dapat diekspor ke Excel. Buka **Sumber angka PK** atau **Sumber per pasal** untuk melihat asal angka. Jika nilai PK utama nol dan penyerahan terutang menyediakan angka pengganti, rekap menampilkan hasil pengganti serta kedua nilainya. Rincian induk tetap menampilkan angka dari masing-masing isian. Kompensasi serta posisi kurang/lebih bayar PPN dibaca per masa. Untuk PPh, jumlah nilai tersedia dapat bernilai nol pada kolom tanpa isian bulanan.
 
 | Bagian | Cara membaca hasil |
 | --- | --- |

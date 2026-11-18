@@ -77,6 +77,23 @@ try{
     await page.locator('input[type=file][accept=".json"]').setInputFiles({name:'Uji-indeks.json',mimeType:'application/json',buffer:save});
     await page.getByRole('button',{name:'Ganti isi sesi ini'}).click();
     await table.getByText(/DOK.1 · Perincian uji · EVID-FIKTIF-025/).waitFor();
+    const refund=index.groups.find(g=>g.key==='BADAN/B').lines.find(l=>Object.hasOwn(l,'refundCode'));
+    const legacy={...saved,kkpLine:refund.id,kkpPeriod:refund.period,topik:'B · PPh lebih bayar · '+refund.period,
+      sumber:refund.source+' · ARSIP-KODE-002',document:'ARSIP-KODE-002',kkpNote:'Pengujian lama pada isian kode.',
+      menurutWp:refund.legacyCodeAmount,menurutPetugas:2,principal:100,evidence:'verified'};
+    await page.locator('input[type=file][accept=".json"]').setInputFiles({name:'Berkas-lama.json',mimeType:'application/json',
+      buffer:Buffer.from(JSON.stringify({...parsed,rows:[...parsed.rows,legacy]}))});
+    await page.getByRole('button',{name:'Ganti isi sesi ini'}).click();
+    await page.getByLabel('Pilih indeks KKP').selectOption('BADAN/B');
+    const refundRow=table.getByRole('row').filter({hasText:'Kode pilihan pengembalian'}).filter({hasText:'ARSIP-KODE-002'});
+    await refundRow.getByRole('button',{name:'Buka'}).click();
+    await dialog.getByRole('table',{name:'Riwayat pengujian kode pilihan'}).waitFor();
+    assert.equal(await dialog.locator('input[type=number]').count(),0);
+    await dialog.getByLabel('Catatan penelaahan kode').fill('Arsip telah dicek pada induk.');
+    await dialog.getByRole('button',{name:'Simpan telaah kode'}).click();
+    const revised=JSON.parse(await download('Unduh berkas kerja')).rows.find(r=>r.kkpLine===refund.id);
+    assert.equal(revised.status,'Selesai');assert.equal(revised.principal,null);assert.equal(revised.evidence,'none');
+    assert.equal(revised.legacyOptionReview.principal,100);assert.equal(revised.legacyOptionReview.document,'ARSIP-KODE-002');
     await page.getByRole('button',{name:'KKA',exact:true}).click();
     await page.getByRole('heading',{name:'Kertas Kerja Analisis',exact:true}).waitFor();
     await page.getByRole('searchbox',{name:'Cari di tabel Daftar temuan'}).fill('EVID-FIKTIF-025');

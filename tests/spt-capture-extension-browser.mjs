@@ -6,12 +6,26 @@ import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {readPackage} from '../extension/archive/package.js';
 import {rowsOf} from '../extension/analisis/model.js';
+import {visibleTables} from '../extension/app-data.js';
 
 const {chromium}=createRequire(import.meta.url)(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const extension=fileURLToPath(new URL('../extension/',import.meta.url));
 const temp=await mkdtemp(path.join(tmpdir(),'scv2-spt-fixture-'));
 const fixtureUrl='https://coretax.intranet.pajak.go.id/__local_synthetic_fixture__/spt';
 const owner='0000000000000001';
+const officialUrl='https://coretax.intranet.pajak.go.id/returnsheets/id-ID/submitted-returnsheets/00000000-0000-4000-8000-000000000001';
+function submittedPage(){
+  const id=new URL(officialUrl).pathname.split('/').at(-1);
+  return '<!doctype html><html lang="id"><meta charset="utf-8"><header>Petugas '+owner+'</header>'+
+    '<aside><div><b id="owner">'+owner+'</b><div>Nama perusahaan fiktif</div></div><ul>'+
+    '<li><a href="'+officialUrl+'">SPT Dilaporkan</a></li><li><a href="/registration/id-ID/general-information/'+id+'">Informasi Umum Wajib Pajak</a></li>'+
+    '<li><a href="/returnsheets/id-ID/taxpayer-search">Pilih Wajib Pajak Lain</a></li></ul></aside>'+
+    '<div class="p-datatable"><table id="sptlist"><thead><tr>'+
+    ['Jenis Pajak','Jenis Surat Pemberitahuan Pajak','Masa Pajak','Model SPT','Status SPT'].map(s=>'<th>'+s+'</th>').join('')+
+    '</tr></thead><tbody><tr><td>PPN</td><td>SPT Masa PPN</td><td>Januari 2016</td><td>Normal</td><td>Dilaporkan</td></tr></tbody></table>'+
+    '<div class="p-paginator"><button class="p-paginator-prev" type="button" disabled>‹</button><button type="button">1</button>'+
+    '<button class="p-paginator-next" type="button" onclick="document.querySelector(\'tbody tr\').cells[2].textContent=\'Januari 2025\';this.classList.add(\'p-disabled\')"><i aria-hidden="true">›</i></button></div></div></html>';
+}
 const headings=['','Jenis Pajak','Jenis Surat Pemberitahuan Pajak','Masa Pajak','NOP','Nama Objek Pajak','Model SPT','Tanggal Jatuh Tempo',
   'Tanggal Dibuat','Status SPT','Kanal','Tanggal Penerimaan','Nomor Bukti Penerimaan','Tanggal Resi Pos','Tanggal Submit SPT','Nama Pegawai','ID Petugas'];
 const types=['SPT Masa PPN','SPT PPh Badan Rupiah','VAT_VATTRNTEVATC','ICT_WITR','ICT_WTR','ICT_PITR','FIKTIF-JENIS-LAIN'];
@@ -43,6 +57,7 @@ try{
     args:['--disable-extensions-except='+extension,'--load-extension='+extension],acceptDownloads:true});
   let fixtureHits=0;
   await context.route(/^https?:\/\//,async route=>{
+    if(route.request().url()===officialUrl)return route.fulfill({status:200,contentType:'text/html; charset=utf-8',body:submittedPage()});
     if(route.request().url()!==fixtureUrl) return route.abort();
     fixtureHits++;return route.fulfill({status:200,contentType:'text/html; charset=utf-8',body:mockPage()});
   });
@@ -73,6 +88,14 @@ try{
     const preview=capture.getByRole('table',{name:'Pratinjau penarikan',exact:true});
     await preview.waitFor();
     assert.equal(await preview.locator('tbody tr td').last().innerText(),String(values.length));
+    if(fixtureRows===small) {
+      const plan=capture.getByRole('table',{name:'SPT dalam periode terpilih',exact:true});
+      assert.deepEqual(await plan.locator('tbody tr > *').allInnerTexts(),['1','1','0','1','0']);
+      await capture.getByText('Rincian versi SPT dan bagian yang tersedia',{exact:true}).click();
+      const version=capture.getByRole('table',{name:'Versi SPT yang ditemukan',exact:true});
+      await version.locator('tbody tr').first().waitFor();
+      assert.deepEqual(await version.locator('tbody tr > *').allInnerTexts(),['Masa PPN','2025-01','1','—','induk','—']);
+    }
     if(omitted)assert.match(await capture.locator('#status').textContent(),new RegExp(omitted+' baris di luar'));
     await capture.locator('#start').click();
     await capture.waitForFunction(()=>!document.querySelector('#queue .item'));
@@ -128,5 +151,41 @@ try{
   const original=await readPackage(await readFile(await (await historicFile).path()));
   assert.equal(original.report.valid,true);assert.equal(rowsOf(original.entries[0]).length,5);
   assert.equal(fixtureHits,3);
-  console.log('PASS: installed MV3 capture to viewer, synthetic 5 × 17 SPT table, six supported types, unknown and filtered rows, source order, native pagination, ZIP and every visible cell.');
+  await source.goto(officialUrl);
+  for(const code of codes)await capture.locator('#forms input[value="'+code+'"]').check();
+  await capture.locator('#scope-ok').check();await capture.locator('#batch summary').click();await capture.locator('#batch-scan').click();
+  const resultRow=capture.locator('#batch-rows .batch-row');
+  await resultRow.first().waitFor();assert.equal(await resultRow.locator('select').first().inputValue(),'sptdaftar');
+  await capture.locator('#batch-page-limit').fill('5');await capture.locator('#batch-add').click();
+  await capture.locator('#batch-status').filter({hasText:'1 tabel masuk antrean, 0 dilewati'}).waitFor();
+  await capture.locator('#start').click();await capture.waitForFunction(()=>!document.querySelector('#queue .item'));
+  await capture.getByRole('table',{name:'Tarikan terakhir per WP',exact:true}).getByRole('button',{name:'Unduh paket'}).click();
+  const newFile=capture.waitForEvent('download');await capture.locator('#package-dialog button[value=ok]').click();
+  const indexPkg=await readPackage(await readFile(await (await newFile).path()));
+  assert.deepEqual(rowsOf(indexPkg.entries[0]).map(r=>r['Masa Pajak']),['Januari 2016','Januari 2025']);
+  const proof=indexPkg.entries[0].cap.halamanSumber[0].pencocokan;
+  assert.deepEqual(proof.pageRows,[1,1]);assert.equal(proof.morePagesAvailable,false);
+  assert.equal(proof.ownerEvidence,'Panel WP pada SPT Dilaporkan');assert.equal(proof.indexScope,'Daftar SPT lintas masa');
+  const scope={source:'sptdaftar',wp:owner,from:'2025-01',to:'2025-12',periodRequired:true};
+  await source.reload();
+  const [listed]=await source.evaluate(visibleTables,null),selector={...listed,url:officialUrl,scope};
+  assert.equal(listed.canAdvance,true);
+  const other=await source.evaluate(visibleTables,{...selector,scope:{...scope,source:'bb'}});
+  assert.match(other.skip,/Kategori sumber/);
+  const before=await source.evaluate(visibleTables,selector);
+  await source.locator('.p-paginator-next').evaluate(b=>b.addEventListener('click',()=>{document.querySelector('#owner').textContent='0000000000000002';}));
+  await assert.rejects(source.evaluate(visibleTables,{...selector,advance:true,expected:JSON.stringify(before.rows)}),/NPWP tampilan berubah/);
+  const wrong=await source.evaluate(visibleTables,selector);assert.match(wrong.skip,/Panel WP/);
+  await source.reload();await source.locator('#owner').evaluate(el=>el.parentElement.remove());
+  const absent=await source.evaluate(visibleTables,selector);assert.match(absent.skip,/Panel WP/);
+  await source.reload();await source.locator('a[href*="general-information"]').evaluate(el=>el.href=el.href.slice(0,-1)+'2');
+  const inconsistent=await source.evaluate(visibleTables,selector);assert.match(inconsistent.skip,/Panel WP/);
+  await source.reload();await source.locator('.p-paginator-next').evaluate(b=>b.addEventListener('click',()=>document.querySelector('th').textContent='Tabel lain'));
+  await assert.rejects(source.evaluate(visibleTables,{...selector,advance:true,expected:JSON.stringify(before.rows)}),/Kolom tabel sumber berubah/);
+  await source.reload();await source.locator('.p-paginator-next').evaluate(b=>b.addEventListener('click',()=>history.replaceState({},'','?different-source')));
+  await assert.rejects(source.evaluate(visibleTables,{...selector,advance:true,expected:JSON.stringify(before.rows)}),/Alamat halaman berubah/);
+  await source.goto(officialUrl);
+  await source.locator('.p-paginator-next').evaluate(b=>b.setAttribute('aria-disabled','true'));
+  assert.equal((await source.evaluate(visibleTables,null))[0].canAdvance,false);
+  console.log('PASS: installed MV3 capture to viewer, synthetic 5 × 17 SPT table, mixed types, native pagination, cross-year index, WP-panel checks, disabled icon and changed source, columns or URL.');
 }finally{if(context)await context.close();await rm(temp,{recursive:true,force:true});}

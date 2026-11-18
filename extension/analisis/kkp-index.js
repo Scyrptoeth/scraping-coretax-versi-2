@@ -7,8 +7,7 @@ const annualCompany=[
   ['B','Induk PPh Badan','Laba sebelum pajak','MainFormData.NetIncomeBeforeTax'],
   ['B','Induk PPh Badan','Penghasilan neto fiskal','MainFormData.FiscalNetIncomeAfterTax'],
   ['B','Induk PPh Badan','Penghasilan kena pajak','MainFormData.TaxableIncome'],
-  ['B','Induk PPh Badan','PPh kurang bayar','MainFormData.UnderpaymentIncomeTax'],
-  ['B','Induk PPh Badan','PPh lebih bayar','MainFormData.OverpaymentIncomeTax'],
+  ['B','Induk PPh Badan','PPh kurang/(lebih) bayar','MainFormData.UnderpaymentIncomeTax'],
   ['B.10','Kompensasi kerugian','Kompensasi tercantum','MainFormData.TotalCarriedForward'],
   ['B.11','PPh terutang','PPh terutang setahun','MainFormData.IncomeTaxInAYear'],
   ['B.13','Angsuran PPh','Angsuran PPh pada induk','MainFormData.InstallmentOfIncome']
@@ -66,13 +65,17 @@ export function buildIndex(pkg,year) {
       const id=entry.path+'#'+field;
       const line={id,ref,groupKey:key,period:form.period,version:form.version,topic,tax,source:pathText(entry.path,field),
         amount:Number.isFinite(amount)?amount:null,partial:entry.cap?.lengkap===false};
-      groups.get(key).lines.push(line);byId.set(id,line);
+      groups.get(key).lines.push(line);byId.set(id,line);return line;
     }
     const entry=form.parts.get('induk'), parents=entry?rowsOf(entry):[], row=parents.length===1?parents[0]:null;
     if(parents.length>1)warnings.push(kind+' '+form.period+' memuat beberapa baris induk. Periksa berkas sumber.');
     if(row){
       for(const [ref,title,topic,field] of formFields[form.type]||[])add(ref,title,topic,entry,field,readValue(row,field));
       if(form.type==='BADAN'){
+        const optionField='MainFormData.OverpaymentIncomeTax',option=readValue(row,optionField);
+        const line=add('B','Induk PPh Badan','Kode pilihan pengembalian',entry,optionField,null);
+        line.refundCode=(typeof option==='string'||Number.isFinite(option))?String(option):null;
+        line.legacyCodeAmount=Number.isFinite(option)?option:null;
         const matches=new Map();
         const visit=(nodes,prefix)=>{
           if(!Array.isArray(nodes))return;
@@ -124,6 +127,7 @@ export function buildIndex(pkg,year) {
 }
 
 export function assessLine(line,{value,document,note='',officer,classification='indicative',principal=null}){
+  if(line&&Object.hasOwn(line,'refundCode'))throw Error('Kode pilihan hanya dapat ditelaah sebagai keterangan.');
   if(!line||!Number.isFinite(value)||!document?.trim()||!officer?.trim())throw Error('Isi nilai hasil uji, rujukan bukti dan nama penguji.');
   if(!['verified','indicative'].includes(classification))throw Error('Pilih klasifikasi pengujian.');
   const delta=line.amount===null?null:value-line.amount;
@@ -137,15 +141,49 @@ export function assessLine(line,{value,document,note='',officer,classification='
     status:'Selesai',principal:delta===0?null:principal,evidence:delta===0?'none':classification,review:'Dalam pengujian'};
 }
 
+function historicalOptionReview(old,line){
+  const fields=['topik','sumber','fakta','simpulan','status','petugas','document','kkpNote','review','evidence'];
+  if(!old||fields.some(field=>typeof old[field]!=='string')||old.menurutWp!==line.legacyCodeAmount||
+    !Number.isFinite(old.menurutPetugas)||old.principal!==null&&(!Number.isFinite(old.principal)||old.principal<0))
+    throw Error('Riwayat pengujian kode pilihan tidak sesuai dengan berkas sumber.');
+  return Object.fromEntries([...fields,'menurutWp','menurutPetugas','principal'].map(field=>[field,old[field]]));
+}
+
+export function reviewRefundCode(line,{document,note,officer},previous=null){
+  if(!line||!Object.hasOwn(line,'refundCode')||!document?.trim()||!note?.trim()||!officer?.trim())
+    throw Error('Isi rujukan, catatan telaah kode dan nama petugas.');
+  return {kkpLine:line.id,kkpPeriod:line.period,refundCode:line.refundCode,document:document.trim(),kkpNote:note.trim(),
+    topik:line.ref+' · '+line.topic+' · '+line.period,sumber:line.source+' · '+document.trim(),
+    fakta:note.trim(),simpulan:'Kode pilihan telah ditelaah.',menurutWp:null,menurutPetugas:null,
+    petugas:officer.trim(),tax:line.tax,status:'Selesai',principal:null,evidence:'none',review:'Dalam pengujian',
+    ...(previous?{legacyOptionReview:historicalOptionReview(previous,line)}:{})};
+}
+
+function restoreRefundCode(raw,row,line){
+  if(!Object.hasOwn(raw,'refundCode')){
+    const history=historicalOptionReview({...row,document:raw.document,kkpNote:raw.kkpNote},line);
+    return {...row,kkpLine:line.id,kkpPeriod:line.period,refundCode:line.refundCode,document:history.document,kkpNote:history.kkpNote,
+      topik:line.ref+' · '+line.topic+' · '+line.period,simpulan:'Perlu telaah ulang. Berkas lama memperlakukan kode pilihan sebagai nominal.',
+      menurutWp:null,menurutPetugas:null,principal:null,evidence:'none',status:'Perlu tindak lanjut',legacyOptionReview:history};
+  }
+  if(raw.refundCode!==line.refundCode||row.menurutWp!==null||row.menurutPetugas!==null||row.principal!==null||row.evidence!=='none'||
+    typeof raw.document!=='string'||typeof raw.kkpNote!=='string')
+    throw Error('Telaah kode pilihan berbeda dari sumber atau memuat nominal.');
+  return {...row,kkpLine:line.id,kkpPeriod:line.period,refundCode:line.refundCode,document:raw.document,kkpNote:raw.kkpNote,
+    ...(raw.legacyOptionReview?{legacyOptionReview:historicalOptionReview(raw.legacyOptionReview,line)}:{})};
+}
+
 export function restoreIndexedRows(rawRows,rows,index){
   const seen=new Set();
   return rows.map((row,i)=>{
     const raw=rawRows[i];
     if(raw.kkpLine===undefined)return row;
     const line=index.byId.get(raw.kkpLine);
-    if(!line||seen.has(raw.kkpLine)||raw.kkpPeriod!==line.period||row.menurutWp!==line.amount)
+    if(!line||seen.has(raw.kkpLine)||raw.kkpPeriod!==line.period)
       throw Error('Indeks atau nilai SPT pada berkas kerja berbeda dari sumber.');
     seen.add(raw.kkpLine);
+    if(Object.hasOwn(line,'refundCode'))return restoreRefundCode(raw,row,line);
+    if(row.menurutWp!==line.amount)throw Error('Indeks atau nilai SPT pada berkas kerja berbeda dari sumber.');
     const result=assessLine(line,{value:row.menurutPetugas,document:raw.document,note:raw.kkpNote,officer:row.petugas,
       classification:row.evidence==='none'?'indicative':row.evidence,principal:row.principal});
     return {...result,review:row.review};
@@ -190,7 +228,7 @@ export function indexStatus(group,reviewed){
   let tested=0,changed=0;
   for(const line of group.lines){
     const row=reviewed.get(line.id);
-    if(!row)continue;
+    if(!row||row.legacyOptionReview&&row.status==='Perlu tindak lanjut')continue;
     tested++;
     if(line.amount!==null&&row.menurutPetugas!==line.amount)changed++;
   }
@@ -201,12 +239,24 @@ export function indexSheets(group,reviewed,notes={},documents=[]){
   const meta=notes[group.key]||{}, version=meta.revision?' (P'+meta.revision+')':'';
   const rows=[['Indeks',group.ref+version],['Kertas kerja',group.title],['UP2',meta.unit],['Dibuat oleh',meta.preparer],
     ['Ditelaah oleh',meta.reviewer],['Masa','P SPT','Uraian','Menurut SPT/WP','Menurut petugas','Koreksi','Status','Sumber SPT','Rujukan bukti','Penguji','Penjelasan']];
+  const history=[];
+  if(group.lines.some(l=>Object.hasOwn(l,'refundCode')))rows.at(-1).push('Kode pilihan pengembalian');
   for(const line of group.lines){
     const row=reviewed.get(line.id), value=row?.menurutPetugas??null;
     const delta=line.amount===null||value===null?null:value-line.amount;
-    rows.push([line.period,line.version,line.topic,line.amount,value,differenceCell(rows.length+1,4,5,delta),
+    const isCode=Object.hasOwn(line,'refundCode');
+    rows.push([line.period,line.version,line.topic,line.amount,value,isCode?null:differenceCell(rows.length+1,4,5,delta),
       row?row.simpulan:'Belum diuji',line.source,row?.document,row?.petugas,row?.kkpNote]);
+    if(isCode){
+      rows.at(-1).push(line.refundCode);
+      const old=row?.legacyOptionReview;
+      if(old)history.push([line.period,old.topik,old.status,old.review,old.sumber,old.document,old.petugas,old.kkpNote,
+        old.menurutWp,old.menurutPetugas,old.principal,old.evidence,old.fakta,old.simpulan]);
+    }
   }
+  if(history.length)rows.push([],['Riwayat pengujian kode pada berkas lama. Angka disimpan untuk penelusuran.'],
+    ['Masa','Butir lama','Status lama','Telaah lama','Sumber lama','Rujukan lama','Penguji','Catatan lama','Isian WP lama',
+      'Isian petugas lama','Pokok lama','Klasifikasi lama','Fakta lama','Simpulan lama'],...history);
   const linked=documents.filter(d=>d.index===group.key);
   if(linked.length)rows.push([],['Dokumen pendukung'],...documentRows(linked));
   return {name:group.ref+' '+group.title,rows};
@@ -224,7 +274,7 @@ export function completeIndexBook(pkg,year,index,reviewed,notes,documents=[],sim
     for(const l of group.lines){
       source.push([group.ref,group.tax,l.period,l.version,l.topic,l.amount,l.source,l.partial]);
       const r=reviewed.get(l.id);
-      if(r)main.push([group.tax,group.ref,l.period,l.topic,l.amount,r.menurutPetugas,
+      if(r&&!Object.hasOwn(l,'refundCode'))main.push([group.tax,group.ref,l.period,l.topic,l.amount,r.menurutPetugas,
         differenceCell(main.length+1,5,6,l.amount===null?null:r.menurutPetugas-l.amount),r.principal,r.document]);
       if(r&&l.amount!==null&&l.amount!==r.menurutPetugas)findings.push([group.ref,l.period,l.topic,l.amount,r.menurutPetugas,
         differenceCell(findings.length+1,4,5,r.menurutPetugas-l.amount),r.document,l.source]);

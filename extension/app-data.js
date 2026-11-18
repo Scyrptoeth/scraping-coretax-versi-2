@@ -135,7 +135,8 @@ export function rowsInColumnOrder(rows,columns) {
 // This function runs in the tab's isolated world and must remain self-contained.
 export async function visibleTables(selected) {
   const visible = el => el.checkVisibility ? el.checkVisibility({visibilityProperty:true,opacityProperty:true}) && el.getClientRects().length > 0 : el.getClientRects().length > 0;
-  const tables = [...document.querySelectorAll('table,[role=table],[role=grid]')].filter(visible);
+  const listTables=()=>[...document.querySelectorAll('table,[role=table],[role=grid]')].filter(visible);
+  const tables=listTables();
   const ownerKeys=['npwp','npwpwp','npwpwajibpajak','npwpwajibpajakpusat','maintaxpayertin','taxpayeridentificationnumber','taxpayeridentificationno'];
   const tableTitle = (table,index) => table.caption?.innerText?.trim() || table.getAttribute('aria-label') ||
     (table.getAttribute('aria-labelledby') || '').split(/\s+/).map(id=>document.getElementById(id)).filter(el=>el && visible(el)).map(el=>el.innerText.trim()).join(' ') || 'Tabel '+(index+1);
@@ -195,18 +196,20 @@ export async function visibleTables(selected) {
     return {data,cells,labels};
   }
   function nextButton(table) {
-    const host = table.closest('.p-datatable,[data-pc-name="datatable"],[role=region]');
+    const host = table.closest('.p-datatable,[data-pc-name="datatable"],p-table,[role=region]');
     const controls = table.id ? [...document.querySelectorAll('button[aria-controls]')].filter(b => b.getAttribute('aria-controls')===table.id) : [];
     if (host && [...host.querySelectorAll('table,[role=table],[role=grid]')].filter(visible).length===1) {
-      controls.push(...host.querySelectorAll('.p-paginator button,[data-pc-name="paginator"] button,nav[aria-label] button,[role=navigation][aria-label] button'));
+      controls.push(...host.querySelectorAll('.p-paginator button,p-paginator button,[data-pc-name="paginator"] button,nav[aria-label] button,[role=navigation][aria-label] button'));
     }
     const candidates=[...new Set(controls)].filter(b => {
       const namedNav=b.closest('nav[aria-label],[role=navigation][aria-label]');
       const ownsPager=b.matches('button[aria-controls]') && table.id && b.getAttribute('aria-controls')===table.id ||
-        !!b.closest('.p-paginator,[data-pc-name="paginator"]') || /pagin|halaman/i.test(namedNav?.getAttribute('aria-label')||'');
+        !!b.closest('.p-paginator,p-paginator,[data-pc-name="paginator"]') || /pagin|halaman/i.test(namedNav?.getAttribute('aria-label')||'');
       const name=(b.getAttribute('aria-label') || b.title || b.innerText).trim();
-      return ownsPager && visible(b) && !b.disabled && b.getAttribute('aria-disabled')!=='true' &&
-        (!b.form || b.type==='button') && /^(next( page)?|(halaman )?(berikut(nya)?|selanjutnya))$/i.test(name);
+      const nextIcon=b.closest('.p-paginator,p-paginator,[data-pc-name="paginator"]') &&
+        b.matches('.p-paginator-next,[data-pc-section="nextpagebutton"],[data-pc-section="next"]');
+      return ownsPager && visible(b) && !b.matches(':disabled,.p-disabled,[aria-disabled="true"],[data-p-disabled="true"]') &&
+        (!b.form || b.type==='button') && (nextIcon || /^(next( page)?|(halaman )?(berikut(nya)?|selanjutnya))$/i.test(name));
     });
     return candidates.length===1 ? candidates[0] : null;
   }
@@ -237,9 +240,44 @@ export async function visibleTables(selected) {
       return ownerKeys.includes(key) && /^\d{15,16}$/.test(id) && id.padStart(16,'0')===wp;
     }));
   }
+  const submitted=location.origin==='https://coretax.intranet.pajak.go.id' &&
+    /^\/returnsheets\/id-ID\/submitted-returnsheets\/[a-f\d]{8}(?:-[a-f\d]{4}){3}-[a-f\d]{12}\/?$/i.test(location.pathname);
+  const indexColumns=['jenis pajak','jenis surat pemberitahuan pajak','masa pajak','model spt','status spt'];
+  const isIndex=labels=>submitted && indexColumns.every(k=>labels.some(s=>s.toLowerCase()===k));
+  function panelOwner() {
+    const links=[...document.querySelectorAll('a[href]')].filter(a=>visible(a) && a.origin===location.origin);
+    const pick=links.filter(a=>a.pathname==='/returnsheets/id-ID/taxpayer-search' && a.innerText.trim()==='Pilih Wajib Pajak Lain');
+    const current=links.filter(a=>a.pathname===location.pathname && a.innerText.trim()==='SPT Dilaporkan');
+    if(pick.length!==1 || current.length!==1)return '';
+    const routeId=location.pathname.split('/').filter(Boolean).at(-1);
+    for(let panel=pick[0].parentElement;panel && panel!==document.body;panel=panel.parentElement){
+      if(panel.querySelector('table,[role=table],[role=grid]'))break;
+      if(!panel.contains(current[0]))continue;
+      const details=links.filter(a=>panel.contains(a) && /^\/(?:registration\/id-ID\/general-information|accounting\/id-ID\/balancesheet|returnsheets\/id-ID\/(?:archieved|waiting-for-payment|rejected|canceled)-returnsheets)\//i.test(a.pathname));
+      if(!details.length)continue;
+      if(details.some(a=>a.pathname.split('/').filter(Boolean).at(-1)!==routeId))return '';
+      const ids=new Set(),walker=document.createTreeWalker(panel,NodeFilter.SHOW_TEXT);
+      while(walker.nextNode()){
+        const node=walker.currentNode,el=node.parentElement;
+        if(!visible(el) || el.closest('a,button,input,textarea,select,ul,ol') ||
+            !(node.compareDocumentPosition(current[0]) & Node.DOCUMENT_POSITION_FOLLOWING))continue;
+        const text=node.textContent.trim(),raw=text.replace(/^NPWP\s*:?\s*/i,'').replace(/[.\s-]/g,'');
+        if(!/^\d{15,16}$/.test(raw))continue;
+        for(let card=el;card && card!==panel && !card.querySelector('a,button,table');card=card.parentElement){
+          const caption=card.innerText.trim();
+          if(/^NPWP\s*:?\s*\d/i.test(text) || (caption.startsWith(text) && /\p{L}/u.test(caption.slice(text.length)))){
+            ids.add(raw.padStart(16,'0'));break;
+          }
+        }
+      }
+      if(ids.size)return ids.size===1 ? [...ids][0] : '';
+    }
+    return '';
+  }
   if (selected == null) return tables.map((table,index) => {
     const {data,labels} = shape(table);
-    return {index,rows:data.length,labels,tableId:table.id,canAdvance:!!nextButton(table),title:tableTitle(table,index)};
+    return {index,rows:data.length,labels,tableId:table.id,canAdvance:!!nextButton(table),title:tableTitle(table,index),
+      ...(isIndex(labels)?{indexSource:'sptdaftar'}:{})};
   });
   if (!tables[selected.index]) throw new Error('Tabel berubah. Periksa ulang tab.');
   const currentTable=tables[selected.index], current=shape(currentTable);
@@ -263,11 +301,16 @@ export async function visibleTables(selected) {
       const value=year+'-'+String(month).padStart(2,'0');return [value,value];
     }
     if(!rows.length) return {skip:'Tabel kosong.'};
-    if(!ownerColumns.length || !rows.every(row=>ownerColumns.every(col=>{
+    const index=isIndex(labels);
+    if(submitted && ((selected.scope.source==='sptdaftar')!==index))return {skip:'Kategori sumber berbeda dari tabel SPT Dilaporkan.'};
+    if(index && (panelOwner()!==selected.scope.wp || listTables().filter(t=>isIndex(shape(t).labels)).length!==1))
+      return {skip:'Panel WP pada daftar SPT berbeda atau tidak dapat dipastikan.'};
+    if((!ownerColumns.length && !index && !selected.scope.manual) || !rows.every(row=>ownerColumns.every(col=>{
       const id=row[col].replace(/[.\s-]/g,'');
       return /^\d{15,16}$/.test(id) && id.padStart(16,'0')===selected.scope.wp;
     }))) return {skip:'Identitas WP di setiap baris belum cocok.'};
-    if(selected.scope.periodRequired || periodColumns.length) {
+    if(index)return {rows,ownerColumns,periodColumns,indexScope:'Daftar SPT lintas masa',ownerEvidence:'Panel WP pada SPT Dilaporkan'};
+    if(!selected.scope.manual && (selected.scope.periodRequired || periodColumns.length)) {
       if(!periodColumns.length || !rows.every(row=>periodColumns.every(col=>{
         const bounds=interval(row[col]);
         return bounds && bounds[0]>=selected.scope.from && bounds[1]<=selected.scope.to;
@@ -280,7 +323,7 @@ export async function visibleTables(selected) {
     if(checked.skip || !selected.advance) return {...checked,canAdvance:!!nextButton(currentTable)};
   }
   if (!selected.advance) return currentRows;
-  if (!sameOwner(currentRows,selected.owner)) throw new Error('Paginasi membutuhkan kolom NPWP pemilik yang cocok pada setiap baris. Lanjutkan per halaman.');
+  if (!selected.scope && !sameOwner(currentRows,selected.owner)) throw new Error('Paginasi membutuhkan kolom NPWP pemilik yang cocok pada setiap baris. Lanjutkan per halaman.');
   if (JSON.stringify(currentRows)!==selected.expected) throw new Error('Isi tabel berubah sejak pengambilan. Pilih ulang tabel.');
   const next=nextButton(currentTable);
   if (!next) return {end:true};
@@ -289,10 +332,16 @@ export async function visibleTables(selected) {
   while(Date.now()<deadline) {
     await new Promise(resolve=>setTimeout(resolve,120));
     if (location.href!==selected.url) throw new Error('Alamat halaman berubah. Pilih ulang sumber sebelum melanjutkan.');
-    const table=[...document.querySelectorAll('table,[role=table],[role=grid]')].filter(visible)[selected.index];
-    if(!table || table.id!==selected.tableId || tableTitle(table,selected.index)!==selected.title) continue;
+    if(selected.scope && isIndex(selected.labels) && panelOwner()!==selected.scope.wp)
+      throw new Error('NPWP tampilan berubah atau panel WP tidak tersedia. Halaman berikut tidak ditambahkan.');
+    const table=listTables()[selected.index];
+    if(!table)continue;
+    if(table.id!==selected.tableId || tableTitle(table,selected.index)!==selected.title)
+      throw new Error('Tabel sumber berubah. Halaman berikut tidak ditambahkan.');
     const changed=shape(table);
-    if(JSON.stringify(changed.labels)!==JSON.stringify(selected.labels)) continue;
+    if(!changed.labels.length)continue;
+    if(JSON.stringify(changed.labels)!==JSON.stringify(selected.labels))
+      throw new Error('Kolom tabel sumber berubah. Halaman berikut tidak ditambahkan.');
     const rows=records(changed);
     if(!rows.length || JSON.stringify(rows)===selected.expected) continue;
     if(selected.scope) return {...checkScope(rows,changed.labels),canAdvance:!!nextButton(table)};

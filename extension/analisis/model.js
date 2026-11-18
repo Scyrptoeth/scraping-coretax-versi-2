@@ -53,16 +53,39 @@ export function worksheet(rows) {
   const keys = [...new Set(rows.flatMap(r => Object.keys(r)))];
   return [keys, ...rows.map(r => keys.map(k => typeof r[k] === 'object' && r[k] !== null ? serialize(r[k]) : r[k] ?? null))];
 }
+export function sptDay(value) {
+  if (typeof value !== 'string') return '';
+  const day = value.slice(0, 10);
+  // Legacy Coretax records can contain placeholder years such as 0001 and 1900.
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day) || day < '1990-01-01') return '';
+  const utc = new Date(day + 'T00:00:00Z');
+  return Number.isFinite(utc.getTime()) && utc.toISOString().slice(0, 10) === day ? day : '';
+}
+export function submittedDay(row) {
+  return sptDay(row?.ReturnDate) || sptDay(row?.ReceiptDate) || sptDay(row?.EnteredDate) || sptDay(row?.DateOfSubmit);
+}
+function afterWeekend(day) {
+  if (!day) return '';
+  const utc = new Date(day + 'T00:00:00Z');
+  const weekday = utc.getUTCDay();
+  if (weekday !== 0 && weekday !== 6) return day;
+  utc.setUTCDate(utc.getUTCDate() + (weekday === 6 ? 2 : 1));
+  return utc.toISOString().slice(0, 10);
+}
 export function indexPackage(pkg) {
   const forms = new Map();
-  const submitted = pkg.entries.filter(e => /^spt\/daftar(?:[-/].*)?\.json$/i.test(e.path)).flatMap(rowsOf);
-  const byId = new Map(submitted.filter(row => row.RecordId).map(r => [r.RecordId, r]));
+  const byId = new Map();
+  for (const entry of pkg.entries.filter(e => /^spt\/daftar(?:[-/].*)?\.json$/i.test(e.path))) {
+    for (const row of rowsOf(entry)) {
+      if (row.RecordId) byId.set(row.RecordId, {row, path:entry.path});
+    }
+  }
   for (const entry of pkg.entries) {
     const match = filePattern.exec(entry.path);
     if (!match) continue;
     const [,type,period,version,id,part] = match;
     const key = entry.path.slice(0, entry.path.lastIndexOf('/'));
-    if (!forms.has(key)) forms.set(key, {key, type, period, year: period.slice(0,4), version: Number(version), id, parts: new Map(), meta: byId.get(id) || {}});
+    if (!forms.has(key)) forms.set(key, {key, type, period, year: period.slice(0,4), version: Number(version), id, parts: new Map(), meta: byId.get(id)?.row || {}});
     forms.get(key).parts.set(part, entry);
   }
   const list = [...forms.values()].sort((a,b) => compare(b.period,a.period) || compare(a.type,b.type) || b.version-a.version);
@@ -72,9 +95,16 @@ export function indexPackage(pkg) {
     if (!latest.has(key)) latest.set(key, f);
     f.latest = latest.get(key) === f;
     f.amended = f.version > 0;
-    const {ReturnDate, ExpectedReturnDate} = f.meta;
-    f.late = !f.amended && /^\d{4}-\d{2}-\d{2}/.test(ReturnDate || '') && /^\d{4}-\d{2}-\d{2}/.test(ExpectedReturnDate || '') ?
-      ReturnDate.slice(0,10) > ExpectedReturnDate.slice(0,10) : null;
+    const part = f.parts.get('induk') || f.parts.values().next().value;
+    const context = part.cap?.konteks?.spt;
+    const fromList = submittedDay(f.meta);
+    f.reportDate = fromList || sptDay(context?.tanggal);
+    f.reportSource = fromList ? byId.get(f.id).path : part.path;
+    f.dueDate = sptDay(f.meta.ExpectedReturnDate) || sptDay(context?.batas);
+    f.late = !f.amended && f.reportDate && f.dueDate ? f.reportDate > f.dueDate : null;
+    // The filing list adjusts weekends; the source deadline and its comparison remain available for review.
+    f.filingDueDate = afterWeekend(f.dueDate);
+    f.filingLate = !f.amended && f.reportDate && f.filingDueDate ? f.reportDate > f.filingDueDate : null;
   }
   const years = new Set(list.map(x => x.year));
   for (const e of pkg.entries) {
@@ -110,7 +140,7 @@ export function periodFacts(pkg, year) {
 export function issues(pkg, year) {
   const out = [];
   for (const f of pkg.forms.filter(f => !year || f.year === year)) {
-    if (f.late) out.push({Butir:'Pelaporan melewati tanggal pada sumber', Periode:f.period, Jenis:typeNames[f.type] || f.type, Fakta:f.meta.ReturnDate.slice(0,10) + ' / batas ' + f.meta.ExpectedReturnDate.slice(0,10), Sumber:'spt/daftar.json'});
+    if (f.late) out.push({Butir:'Pelaporan melewati tanggal pada sumber', Periode:f.period, Jenis:typeNames[f.type] || f.type, Fakta:f.reportDate + ' / batas ' + f.dueDate, Sumber:f.reportSource});
     if (f.amended) out.push({Butir:'Pembetulan SPT', Periode:f.period, Jenis:typeNames[f.type] || f.type, Fakta:'Pembetulan ' + f.version, Sumber:f.key});
   }
   for (const e of pkg.entries.filter(e => e.cap?.lengkap === false)) out.push({Butir:'Berkas ditandai belum lengkap', Periode:'', Jenis:'Mutu data', Fakta:e.cap.label || e.path, Sumber:e.path});

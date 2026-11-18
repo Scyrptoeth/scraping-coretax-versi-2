@@ -2,7 +2,7 @@ import {forms as selectableForms, rowsOf, sources} from './app-data.js';
 
 const profiles={info:'informasi-umum',pihak:'pihak-terkait',bank:'rekening-bank',flag:'flag-wp',jenispajak:'jenis-pajak',
   alamat:'alamat',klu:'klu',nomorlain:'nomor-identitas-lain',sertel:'sertifikat-elektronik',pbb:'tanah-bangunan',login:'login-terakhir',dokumen:'dokumen'};
-const lists={sptdaftar:'daftar',sptbelum:'belum-dilaporkan',sptarsip:'arsip'};
+const lists={sptdaftar:'daftar',sptbelum:'belum-dilaporkan',sptarsip:'daftar-arsip'};
 const typeFields=new Set(['jenisspt','jenissuratpemberitahuanpajak','returnsheettypecode','taxreturntypecode']);
 const typeText=value=>String(value).trim().toLowerCase().replace(/\s+/g,' ');
 const typeLabels=new Map();
@@ -12,7 +12,7 @@ for(const [code,label] of selectableForms) {
 typeLabels.set('spt pph badan rupiah','ICT_RCITR');
 export const isSptList=source=>Object.hasOwn(lists,source);
 
-function listRowType(row) {
+export function listRowType(row) {
   const matched=new Set();
   for(const [key,value] of Object.entries(row || {})) {
     if(!typeFields.has(key.toLowerCase().replace(/[^a-z]/g,'')) || value==null || value==='')continue;
@@ -61,6 +61,8 @@ function consistentField(rows, labels) {
 function periodLabel(rows) {
   const value=consistentField(rows,['masapajak','periodepajak','taxperiod','taxperiodcode']) ||
     consistentField(rows,['tahunpajak','taxyear']);
+  const code=/^(0[1-9]|1[0-2])(0[1-9]|1[0-2])((?:19|20)\d{2})$/.exec(value);
+  if(code)return code[1]===code[2]?code[3]+'-'+code[1]:code[3];
   if(/^(?:19|20)\d{2}(?:-(?:0[1-9]|1[0-2]))?$/.test(value)) return value;
   let m=value.toLowerCase().match(/^(\d{1,2}|[a-z]+)[ /-]+((?:19|20)\d{2})$/);
   if(!m) return '';
@@ -69,6 +71,7 @@ function periodLabel(rows) {
 }
 export function packagePath(item) {
   if(item.source==='tabelumum') return 'tabel/'+item.id+'.json';
+  if(item.source==='bbsaldo') return 'bukubesar-saldo.json';
   if(Object.hasOwn(profiles,item.source)) return 'profil/'+profiles[item.source]+'.json';
   if(Object.hasOwn(lists,item.source)) return 'spt/'+lists[item.source]+'.json';
   const rows=rowsOf(item.page), period=periodLabel(rows);
@@ -94,8 +97,23 @@ export function appendPackageEntry(groups,item,wp) {
   const path=packagePath(item);
   if(!groups.has(path)) {
     const collectorPart=path.startsWith('spt/PPN-PEMUNGUT/') ? collectorParts[path.split('/').at(-1).replace(/\.json$/,'')] : '';
+    const context={npwp:wp,periode:item.period};
+    if(item.source==='sptisi' && path.startsWith('spt/')) {
+      const [,,period,version,filename]=path.split('/');
+      const [amendment,recordId]=/^p(\d+)_(.+)$/.exec(version).slice(1);
+      const part=filename.slice(0,-5),year=Number(period.slice(0,4)),month=period.slice(5);
+      const nativePeriod=consistentField(rowsOf(item.page),['taxperiodcode']);
+      const masa=/^(0[1-9]|1[0-2])(0[1-9]|1[0-2])((?:19|20)\d{2})$/.test(nativePeriod) ? nativePeriod :
+        month?month+month+year:period;
+      context.spt={recordId,jenis:item.spt,masa,pemb:Number(amendment),tahun:year,npwp:wp};
+      context.bagian=part;
+      context.labelBagian=collectorPart || part.toUpperCase();
+      if(part==='induk')context.jenisBagian='induk';
+      else if(part.endsWith('-total'))context.jenisBagian='footer';
+      else if(Array.isArray(item.page.Payload?.Data) || Array.isArray(item.page.Payload))context.jenisBagian='grid';
+    }
     groups.set(path,{path,cap:{sumber:item.source,label:collectorPart?sources[item.source]+' · '+collectorPart:sources[item.source],baris:0,total:null,lengkap:false,
-      konteks:{npwp:wp,periode:item.period},catatan:['Isi mengikuti halaman atau berkas yang ditambahkan pada penarikan ini.',
+      konteks:context,catatan:['Isi mengikuti halaman atau berkas yang ditambahkan pada penarikan ini.',
         ...(item.period===null?['Sumber tidak mencantumkan masa pajak.']:[])],asal:item.name,halamanSumber:[]},pages:[]});
   }
   const entry=groups.get(path);

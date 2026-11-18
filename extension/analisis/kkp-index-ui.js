@@ -1,9 +1,39 @@
-import {assessLine,completeIndexBook,documentStatuses,indexSheets,indexStatus,validateIndexDocuments} from './kkp-index.js';
+import {assessLine,completeIndexBook,documentStatuses,indexSheets,indexStatus,reviewRefundCode,validateIndexDocuments} from './kkp-index.js';
 import {button,box,card,dataTable,el,exportSheets,field,notice,select,showDialog} from './ui.js';
 import {count} from './model.js';
 import {markEdit,rowIdentity} from './team-work.js';
 
+function editRefundCode(line,work,repaint){
+  const i=work.rows.findIndex(r=>r.kkpLine===line.id),saved=work.rows[i];
+  const form=el('form'),reference=el('input'),note=el('textarea'),officer=el('input'),status=el('p',null,'error');
+  status.setAttribute('role','alert');
+  reference.value=saved?.document||'';note.value=saved?.kkpNote||'';officer.value=saved?.petugas||'';
+  form.append(el('p','Kode pada induk · '+(line.refundCode??'Tidak tercantum')),el('p','Sumber · '+line.source));
+  const old=saved?.legacyOptionReview;
+  if(old){
+    form.append(el('h3','Riwayat pengujian dari berkas lama'),el('p',saved.simpulan),
+      el('p','Angka berikut hanya menunjukkan isian pada berkas lama. Periksa kembali draf yang sudah disimpan apabila memakai pengujian ini.'),
+      dataTable([{'Butir lama':old.topik,'Menurut WP (lama)':old.menurutWp,'Menurut petugas (lama)':old.menurutPetugas,
+        'Pokok (lama)':old.principal,'Klasifikasi lama':old.evidence,'Status lama':old.status,'Telaah lama':old.review,
+        'Rujukan bukti':old.document,Sumber:old.sumber,Catatan:old.kkpNote,Petugas:old.petugas,Fakta:old.fakta,Simpulan:old.simpulan}],
+      {name:'Riwayat pengujian kode pilihan'}));
+  }
+  const save=el('button','Simpan telaah kode');save.type='submit';
+  form.append(field('Dokumen atau rujukan bukti',reference),field('Catatan penelaahan kode',note),field('Nama penelaah',officer),status,save);
+  form.onsubmit=e=>{
+    e.preventDefault();
+    try{
+      const row=reviewRefundCode(line,{document:reference.value,note:note.value,officer:officer.value},old);
+      markEdit(work,'rows',rowIdentity(row),saved,row);
+      if(i<0)work.rows.push(row);else work.rows[i]=row;
+      document.getElementById('dialog').close();repaint();notice('Telaah kode pilihan tersimpan.');
+    }catch(error){status.textContent=error.message;}
+  };
+  showDialog('Telaah kode pilihan pengembalian',form);
+}
+
 export function editIndexLine(line,work,repaint){
+  if(Object.hasOwn(line,'refundCode'))return editRefundCode(line,work,repaint);
   const saved=work.rows.find(r=>r.kkpLine===line.id), form=el('form'), value=el('input');
   const evidence=el('input'), explanation=el('textarea'), officer=el('input'), principal=el('input'), feedback=el('p',null,'hint');
   const status=el('p',null,'error');status.setAttribute('role','alert');
@@ -88,7 +118,8 @@ export function renderIndex(target,state,work,index){
     const r=reviewed.get(l.id);
     return {Masa:l.period,'Versi SPT':'P'+l.version,Uraian:l.topic,'Menurut SPT/WP':l.amount,'Menurut petugas':r?.menurutPetugas??null,
       Koreksi:r&&l.amount!==null?r.menurutPetugas-l.amount:null,Status:r?.simpulan||'Belum diuji',Sumber:l.source,
-      'Cakupan sumber':l.partial?'Ditandai belum lengkap':'','Rujukan bukti':r?.document||''};
+      'Cakupan sumber':l.partial?'Ditandai belum lengkap':'','Rujukan bukti':r?.document||'',
+      ...(Object.hasOwn(l,'refundCode')?{'Kode pilihan pengembalian':l.refundCode}:{})};
   });
   const documents=work.indexDocuments.filter(d=>d.index===group.key);
   const docRows=documents.map(d=>({Nomor:'DOK.'+d.number,Dokumen:d.name,Status:d.status,'Tanggal permintaan':d.date,Tenggat:d.due,Rujukan:d.reference}));

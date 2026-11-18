@@ -1,9 +1,11 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {indexPackage} from '../extension/analisis/model.js';
-import {assessLine,buildIndex,completeIndexBook,indexStatus,restoreIndexedRows,restoreNotes} from '../extension/analisis/kkp-index.js';
+import {assessLine,buildIndex,completeIndexBook,indexSheets,indexStatus,restoreIndexedRows,restoreNotes,reviewRefundCode} from '../extension/analisis/kkp-index.js';
 import {workpaper} from '../extension/analisis/findings.js';
 import {newDraft} from '../extension/analisis/draft-model.js';
+import {progressReport} from '../extension/analisis/team-work.js';
+import {findFields} from '../extension/analisis/spt-forms.js';
 import {createXlsx} from '../extension/archive/table.js';
 import {decodeText,readZip} from '../extension/archive/zip.js';
 
@@ -53,4 +55,41 @@ test('annual Excel carries source, signs, explicit zero, reviewed corrections an
   assert.match(sheet,/N\.3\.1 \(P1\)/);assert.match(sheet,/E7-D7/);assert.match(sheet,/<v>25<\/v>/);assert.match(sheet,/OutputTaxMustBeSelfCollected.VAT/);
   const ts=decodeText(zip.get('xl/worksheets/sheet3.xml').data);
   assert.match(ts,/E2-D2/);assert.match(ts,/Bukti sintetik 001/);assert.equal((ts.match(/<row /g)||[]).length,2);
+});
+
+test('corporate refund option stays textual and legacy monetary reviews survive repeated import as nonfinancial history',()=>{
+  const demo=indexPackage({manifest:{wp:{}},report:{manifestHash:'fictional'},entries:[
+    part('BADAN','2025','p00_fictional',{MainFormData:{UnderpaymentIncomeTax:-70,OverpaymentIncomeTax:2}})
+  ]});
+  const index=buildIndex(demo,'2025'), group=index.groups.find(g=>g.ref==='B');
+  const code=group.lines.find(l=>Object.hasOwn(l,'refundCode')), debit=group.lines.find(l=>l.id.endsWith('UnderpaymentIncomeTax'));
+  assert.equal(code.refundCode,'2');assert.equal(code.amount,null);assert.equal(debit.amount,-70);
+  assert.equal(findFields(demo.forms[0],'kode pilihan pengembalian').find(field=>field['Kode isian']==='MainFormData.OverpaymentIncomeTax').Nilai,2);
+  const details={document:'DEMO-123',officer:'Pemeriksa fiktif',note:'Kode diperiksa pada induk',classification:'verified',principal:10};
+  assert.throws(()=>assessLine(code,{...details,value:12}),/sebagai keterangan/);
+  const fresh=reviewRefundCode(code,details);
+  assert.equal(fresh.menurutWp,null);assert.equal(fresh.principal,null);assert.equal(fresh.evidence,'none');
+  assert.deepEqual(restoreIndexedRows([fresh],[fresh],index),[fresh]);
+  const {refundCode,legacyCodeAmount,...previous}=code;
+  const old={...assessLine({...previous,amount:2,topic:'PPh lebih bayar'},{...details,value:12}),review:'Dalam pengujian'};
+  const [restored]=restoreIndexedRows([old],[old],index);
+  assert.equal(restored.status,'Perlu tindak lanjut');assert.equal(restored.menurutWp,null);assert.equal(restored.menurutPetugas,null);
+  assert.equal(restored.legacyOptionReview.document,details.document);assert.equal(restored.legacyOptionReview.principal,10);
+  assert.equal(restored.legacyOptionReview.menurutWp,2);assert.equal(restored.legacyOptionReview.menurutPetugas,12);
+  assert.equal(restored.legacyOptionReview.status,old.status);assert.equal(restored.legacyOptionReview.sumber,old.sumber);
+  const saved=JSON.parse(JSON.stringify(restored));assert.deepEqual(restoreIndexedRows([saved],[saved],index),[restored]);
+  const reviewed=new Map([[code.id,restored]]);assert.equal(indexStatus(group,reviewed).tested,0);
+  const done=r=>progressReport(demo,'2025',{rows:[r],dispositions:{},editTimes:{}},index).counts.find(c=>c[0]==='Baris KKP berindeks')[1];
+  assert.equal(done(restored),0);
+  const report=workpaper(demo,'2025',{rows:[restored],scopes:{kka:'all'}},'kka','AR');
+  assert.ok(!report.selected.some(f=>f.source===old.sumber));
+  assert.ok(!newDraft('SP2DK',demo,'2025',null,[restored]).findings.some(f=>f.source===old.sumber));
+  const sheet=indexSheets(group,reviewed);
+  const codeRow=sheet.rows.find(r=>r[2]===code.topic);assert.deepEqual(codeRow.slice(3,6),[null,null,null]);assert.equal(codeRow.at(-1),'2');
+  assert.ok(sheet.rows.some(r=>r.includes(details.document)&&r.includes(old.sumber)&&r.includes(10)));
+  const completed=reviewRefundCode(code,{...details,note:'Telaah selesai dengan dokumen pendukung.'},restored.legacyOptionReview);
+  assert.equal(completed.status,'Selesai');assert.deepEqual(completed.legacyOptionReview,restored.legacyOptionReview);
+  assert.equal(done(completed),1);
+  assert.deepEqual(restoreIndexedRows([completed],[completed],index),[completed]);
+  assert.throws(()=>restoreIndexedRows([{...old,menurutWp:3}],[{...old,menurutWp:3}],index),/sesuai/);
 });

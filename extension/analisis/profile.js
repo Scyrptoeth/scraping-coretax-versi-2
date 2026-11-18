@@ -1,4 +1,4 @@
-import {flatten, rowsOf, typeNames, worksheet} from './model.js';
+import {flatten, rowsOf, sptDay, submittedDay, typeNames, worksheet} from './model.js';
 import {box, button, card, dataTable, detail, el, exportSheets} from './ui.js';
 
 const first = rows => rows[0] || {};
@@ -199,7 +199,7 @@ export function profileSections(pkg) {
   const led=packageLedger(pkg);
   const filed=sourceRows(pkg.entries.filter(e=>e.cap?.sumber==='sptdaftar'||e.path==='spt/daftar.json'));
   const dates=filed.map(row=>{
-    const reported=date(row.ReturnDate), deadline=date(row.ExpectedReturnDate);
+    const reported=submittedDay(row), deadline=sptDay(row.ExpectedReturnDate);
     return {Jenis:row.ReturnSheetTypeCode,Masa:row.TaxPeriodCode,Model:row.ReturnSheetModel,BPE:row.DocumentReceiptNumber,'Tanggal lapor':reported,'Batas pada sumber':deadline,
       'Posisi tanggal':row.ReturnSheetModel!=='Normal'?'Pembetulan / model lain':!reported||!deadline?'Belum dapat dibandingkan':reported>deadline?'Lewat tanggal pada sumber':'Dalam tanggal pada sumber','Berkas sumber':row['Berkas sumber']};
   });
@@ -235,7 +235,7 @@ export function profileSections(pkg) {
       ...rowsOf(f.parts.get('keluarga')).flatMap(x=>list(x.FamilyMembers)).map(member=>({'Tahun SPT':f.year,...member,'Berkas sumber':f.parts.get('keluarga').path})),
       ...list(r.PitrL1Form?.ListDependantsFamilyMembers).map(member=>({'Tahun SPT':f.year,...member,'Berkas sumber':f.parts.get('induk')?.path}))
     ]));
-    add('op-riwayat',group,'Riwayat SPT Tahunan OP',forms.filter(f=>f.type==='OP').map(f=>({Jenis:typeNames.OP,Tahun:f.year,Versi:f.version,'Tanggal lapor':date(f.meta.ReturnDate),BPE:f.meta.DocumentReceiptNumber,Sumber:f.key})));
+    add('op-riwayat',group,'Riwayat SPT Tahunan OP',forms.filter(f=>f.type==='OP').map(f=>({Jenis:typeNames.OP,Tahun:f.year,Versi:f.version,'Tanggal lapor':f.reportDate ?? submittedDay(f.meta),BPE:f.meta.DocumentReceiptNumber,Sumber:f.key})));
   }
   return sections;
 }
