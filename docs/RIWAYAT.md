@@ -1,5 +1,9 @@
 # Riwayat Scraping Coretax Versi 2
 
+## 19 November 2026 WIB · Prarilis 0.14.0
+
+Pratinjau satu WP menampilkan profil dan jumlah versi SPT per tahun dan jenis. Penarik menyimpan pilihan penyertaan transaksi buku besar yang dibatalkan serta jejaknya pada tiap halaman. Pemutar mencocokkan saldo per periode. KKA memakai butir yang sama untuk menghitung rekap potensi di L-7 dan rasio kemampuan membayar di L-13. Word menaut ke kedua lembar Excel. [Hasil pengujian dan selisih](KESETARAAN.md#hasil-prarilis-0140)
+
 ## 19 November 2026 WIB · Prarilis 0.13.0
 
 Penarik dapat melanjutkan induk dan lampiran SPT dari hasil sebelumnya untuk satu NPWP. Di pemutar, petugas dapat membuka laporan temuan langsung dan indikatif, menelusuri bukti, menyimpan telaah, dan mengekspor laporan ke Excel atau cetak. Simulasi membedakan kredit yang telah dipasangkan dengan perkiraan yang masih memerlukan rincian Lampiran 3. [Hasil perbandingan dengan Studio](KESETARAAN.md#hasil-prarilis-0130)

@@ -4,22 +4,58 @@ import {rowsOf} from './model.js';
 import {usesOtherCurrency} from './return-source.js';
 import {sourceAmount} from './withholding-forms.js';
 
-export function monthIsComplete(pkg,entry,owner,year,month,period) {
+export function ledgerRowsEvidence(pkg,entry,owner,year,month,period) {
   const cap=entry?.cap,ctx=cap?.konteks,query=cap?.payload||{};
-  if(cap?.lengkap!==true||normalizeId(ctx?.npwp)!==owner||!entry.pages?.length||
+  if(normalizeId(ctx?.npwp)!==owner||!entry?.pages?.length||
     ctx.tahun!=null&&String(ctx.tahun)!==year||ctx.masa!=null&&Number(ctx.masa)!==Number(month)||
     query.First!=null&&query.First!==0||cap.halaman!=null&&cap.halaman!==entry.pages.length||
-    cap.halamanSumber?.some(h=>h.pencocokan?.morePagesAvailable)||
-    pkg.manifest.gagal?.some(f=>[entry.path,'data/'+entry.path].includes(typeof f==='string'?f:f?.path)))return false;
-  const allowed=f=>f.PropertyName==='PeriodCode'&&f.MatchMode==='equals'&&String(f.Value)===period||
+    pkg.manifest.gagal?.some(f=>[entry.path,'data/'+entry.path].includes(typeof f==='string'?f:f?.path)))return null;
+  const allowed=f=>f&&(f.PropertyName==='PeriodCode'&&f.MatchMode==='equals'&&String(f.Value)===period||
     f.PropertyName==='Amount'&&f.MatchMode==='notEquals'&&[0,'0'].includes(f.Value)||
-    f.PropertyName==='IsCancelled'&&f.MatchMode==='equals'&&[false,'false',0,'0'].includes(f.Value);
-  if(query.Filters!=null&&(!Array.isArray(query.Filters)||!query.Filters.every(allowed)))return false;
+    f.PropertyName==='IsCancelled'&&f.MatchMode==='equals'&&[false,'false',0,'0'].includes(f.Value));
+  if(query.Filters!=null&&(!Array.isArray(query.Filters)||!query.Filters.every(allowed)))return null;
   const pages=entry.pages.map(p=>p?.Payload??p);
-  if(entry.pages.some(p=>!p||p.IsSuccessful===false||p.Errors?.length)||!pages.every(p=>Array.isArray(p?.Data)))return false;
-  const totals=[cap.total,...pages.map(p=>p.TotalRecords)].filter(n=>n!=null);
+  if(entry.pages.some(p=>!p||p.IsSuccessful===false||p.Errors?.length)||!pages.every(p=>Array.isArray(p?.Data)))return null;
   const size=pages.reduce((n,p)=>n+p.Data.length,0);
-  return totals.length>0&&totals.every(n=>Number.isSafeInteger(n)&&n===size)&&(cap.baris==null||cap.baris===size);
+  return cap.baris==null||cap.baris===size?{pages,size}:null;
+}
+
+// Used by the original installment and STP comparisons, which expect a matching record count.
+export function monthIsComplete(pkg,entry,owner,year,month,period) {
+  const cap=entry?.cap;
+  if(cap?.lengkap!==true||cap.halamanSumber?.some(h=>h?.pencocokan?.morePagesAvailable))return false;
+  const evidence=ledgerRowsEvidence(pkg,entry,owner,year,month,period);
+  if(!evidence)return false;
+  const {pages,size}=evidence;
+  const totals=[cap.total,...pages.map(p=>p.TotalRecords)].filter(n=>n!=null);
+  return totals.length>0&&totals.every(n=>Number.isSafeInteger(n)&&n===size);
+}
+
+export function ledgerPageCountProven(entry,count){
+  const {cap,pages}=entry,query=cap.payload||{};
+  if(cap.lengkap!==true||!pages.length||cap.halaman!=null&&cap.halaman!==pages.length||
+    cap.baris!=null&&cap.baris!==count||query.First!=null&&query.First!==0||
+    cap.halamanSumber?.some(h=>h?.pencocokan?.morePagesAvailable))return false;
+  const envelopes=pages.map(p=>p?.Payload??p);
+  const lists=envelopes.map(p=>Array.isArray(p)?p:p?.Data??p?.rows);
+  if(pages.some(p=>!p||p.IsSuccessful===false||p.Errors?.length)||!lists.every(Array.isArray)||
+    lists.reduce((n,r)=>n+r.length,0)!==count)return false;
+  const limit=query.Rows,reported=envelopes.map(p=>p.TotalRecords);
+  const isLimit=n=>Number.isSafeInteger(limit)&&limit>0&&n===limit;
+  const ordinaryCount=n=>n!=null&&Number.isSafeInteger(n)&&n===count&&!isLimit(n);
+  // A repeated page size can be a server cap. A short page can precede another short page.
+  if(cap.total!=null&&cap.total!==count||reported.some(n=>n!=null&&n!==count&&!isLimit(n)))return false;
+  const more=(p,i)=>[p.HasMore,p.morePagesAvailable,pages[i].HasMore,pages[i].morePagesAvailable].filter(v=>v!=null);
+  if(more(envelopes.at(-1),pages.length-1).some(v=>v!==false))return false;
+  if(ordinaryCount(cap.total)||reported.every(ordinaryCount))return true;
+  let offset=0;
+  return envelopes.every((p,i)=>{
+    const first=p.First??pages[i].First??(i===0?query.First:undefined);
+    const flags=more(p,i),last=i===pages.length-1;
+    if(first!==offset||!flags.length||!flags.every(v=>v===!last)||!last&&!lists[i].length)return false;
+    offset+=lists[i].length;
+    return true;
+  })&&offset===count;
 }
 
 export function ledgerPayments(pkg,year,revenueCode) {

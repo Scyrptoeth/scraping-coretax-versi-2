@@ -4,6 +4,7 @@ import {renderProfile} from './profile.js';
 import {renderComparison,renderFinancialRatios} from './comparison.js';
 import {renderAdvanced} from './advanced-dashboard.js';
 import {combinedLedger} from './ledger-table.js';
+import {ledgerSelectionText} from '../ledger-status.js';
 import {dashboardMetrics} from './dashboard-metrics.js';
 import {dashboardIndicationReview} from './work.js';
 import {exportControls,financialPosition,indicativeDates,openForm,summaryPanels} from './spt-forms.js';
@@ -123,6 +124,18 @@ export function renderEntries(target,state,profile=false) {
       dataTable(presentation,{wp,name:label(active.path),filename:'Data-'+label(active.path),incremental:true}));
     if(active!==allLedger){
       const source=active,pre=el('pre'),raw=detail('Respons sumber',pre);
+      if(['bb','bbtotal'].includes(source.cap?.sumber)){
+        const selections=[...(source.cap.halamanSumber||[]).map(p=>[p,'Tersimpan']),
+          ...(source.cap.sumberSalinanIdentik||[]).map(p=>[p,'Salinan identik'])].filter(([p])=>p.pemilihanBukuBesar);
+        if(selections.length){
+          const audit=selections.map(([p,usage])=>{
+            const s=p.pemilihanBukuBesar;
+            return {Sumber:p.asal||source.path,Pemakaian:usage,'Sertakan transaksi batal':s.ikutkanBatal?'Ya':'Tidak',
+              'Baris sumber':s.barisSumber,'Baris terpilih':s.barisTersimpan,'Keterangan penarik':ledgerSelectionText(s)};
+          });
+          panel.append(detail('Pemilihan transaksi pada penarik',dataTable(audit,{wp,name:'Cakupan transaksi buku besar',filename:'Cakupan-buku-besar'})));
+        }
+      }
       raw.ontoggle=()=>{if(raw.open && !pre.textContent)pre.textContent=JSON.stringify(source.pages,null,2);};
       panel.append(raw);
     }

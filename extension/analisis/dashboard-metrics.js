@@ -38,7 +38,8 @@ export function dashboardMetrics(pkg,year) {
   const supplies=vat.map(f=>sourceAmount(f,'TotalDeliveryOfGoodsAndServices.SellingPrice'));
   const liabilities=vat.map(f=>sourceAmount(f,'VATUnderOrOverPaid.VAT'));
   const paymentsDue=liabilities.map(value=>value===null ? null : Math.max(0,value));
-  const rows=packageLedger(pkg).filter(r=>r.IsCancelled!=='true' && inLedgerYear(r,year));
+  const available=packageLedger(pkg,{includeUncertain:true}).filter(r=>inLedgerYear(r,year));
+  const rows=available.filter(r=>r['Status pembatalan untuk analisis']!=='Belum diketahui');
   const sources=[...new Set(rows.map(r=>r['Berkas sumber']))].sort();
   const overlap=ambiguousPeriods(rows);
   const ledgerReady=rows.length>0 && !overlap;
@@ -49,8 +50,11 @@ export function dashboardMetrics(pkg,year) {
     ? sum(paidAmounts.map(Math.abs)) : null;
   const openValue=ledgerReady && rows.every(row=>number(row.Amount)!==null) && outstanding.every(Number.isFinite)
     ? sum(outstanding.filter(value=>Math.abs(value)>1).map(Math.abs)) : null;
-  const ledgerNote=overlap ? 'Rincian bulanan dan tahunan bertumpang tindih tanpa ID transaksi.' :
-    rows.length+' transaksi. Tahun mengikuti masa bulanan yang cocok atau tanggal pembukuan (cadangan: tanggal transaksi).';
+  const uncertain=available.length-rows.length,legacy=rows.filter(r=>r['Status pembatalan untuk analisis']==='Belum diketahui pada paket lama').length;
+  const ledgerNote=[overlap?'Rincian bulanan dan tahunan bertumpang tindih tanpa ID transaksi.':
+    rows.length+' transaksi. Tahun mengikuti masa bulanan atau tanggal pembukuan dan transaksi.',
+    uncertain?uncertain+' transaksi dengan status pembatalan belum diketahui tersimpan di data mentah dan di luar jumlah.':'',
+    legacy?'Angka sementara mencakup '+legacy+' transaksi paket lama yang belum mencantumkan status pembatalan.':''].filter(Boolean).join(' ');
   const annualSources=main ? [main.path] : [];
   return [
     {id:'sales',label:'Peredaran usaha',value:annual.values.sales.value,sources:annualSources,
@@ -62,7 +66,7 @@ export function dashboardMetrics(pkg,year) {
     {id:'vatDue',label:'PPN kurang bayar disetor',value:vat.length ? sum(paymentsDue) : null,sources:vatSources,
       detail:vat.length+' masa. Jumlah nilai kurang bayar positif pada induk terakhir tiap masa. Bukti setoran diperiksa di buku besar.'},
     {id:'payments',label:'Pembayaran (buku besar)',value:payValue,sources,
-      detail:ledgerNote+' Jumlah nilai absolut transaksi Payment yang aktif.'},
+      detail:ledgerNote+' Nilai pembayaran berasal dari jumlah absolut transaksi Payment.'},
     {id:'outstanding',label:'Kewajiban belum lunas',value:openValue,sources,
       detail:ledgerNote+' Jumlah sisa absolut di atas Rp1 pada transaksi debit. Saldo ini mengikuti catatan buku besar.'}
   ];

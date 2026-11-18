@@ -75,7 +75,7 @@ export function periodLabel(rows,ledger=false) {
 export function packagePath(item) {
   if(item.source==='tabelumum') return 'tabel/'+item.id+'.json';
   if(item.source==='bbsaldo') return 'bukubesar-saldo.json';
-  const month=item.proof?.pratinjauSumber?.masa;
+  const month=item.proof?.pratinjauSumber?.masa || item.ledgerPeriod;
   if(['bb','bbtotal'].includes(item.source) && /^(?:19|20)\d{2}-(?:0[1-9]|1[0-2])$/.test(month))
     return (item.source==='bb'?'bukubesar/':'bukubesar-total/')+month+'.json';
   if(Object.hasOwn(profiles,item.source)) return 'profil/'+profiles[item.source]+'.json';
@@ -148,7 +148,8 @@ export function appendPackageEntry(groups,item,wp) {
   entry.cap.total=entry.pages.length===1 ? item.total : null;
   const type=isSptList(item.source)?'':item.spt;
   entry.cap.halamanSumber.push({asal:item.name,metode:item.origin,baris:item.rows,total:item.total,jenisSpt:type || '',
-    ...(item.sptSelection?{klasifikasiSpt:item.sptSelection}:{}),...(item.proof?{pencocokan:item.proof}:{})});
+    ...(item.sptSelection?{klasifikasiSpt:item.sptSelection}:{}),
+    ...(item.ledgerSelection?{pemilihanBukuBesar:item.ledgerSelection}:{}),...(item.proof?{pencocokan:item.proof}:{})});
   if(entry.pages.length===1 && type) entry.cap.konteks.jenisSpt=type;
   else if(entry.cap.konteks.jenisSpt!==type) delete entry.cap.konteks.jenisSpt;
   return entry;

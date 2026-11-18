@@ -4,6 +4,8 @@ Pilih **Buka di Analisis** sesudah penarikan atau buka beberapa paket ZIP lokal 
 
 ## Profil, SPT dan data mentah
 
+Di **Muat paket → Rincian mutu data → Saldo buku besar per periode**, periksa jumlah transaksi bertanda positif dan negatif, saldo pembanding Coretax, dan selisih. Jika sumber menyimpan total keseluruhan dan total setelah filter, pemutar memakai baris **Filtered** untuk pasangan dengan lingkup yang cocok. Tiap bulan dan tahun ditampilkan sendiri. Pada paket penarik yang memuat pilihan pembatalan, buka berkas buku besar di **Data mentah** lalu lihat **Pemilihan transaksi pada penarik** untuk mengetahui jumlah yang disimpan dan dilewati.
+
 Di menu **Tampilan**, pilihan **Identitas WP pada nama berkas** menentukan nama unduhan Excel, Word, dan berkas kerja untuk satu WP. Pilihan bawaan **NPWP saja** mempertahankan nol di depan nomor. Pilih **NPWP dan nama WP** untuk menyertakan nama pada unduhan berikutnya. Berkas perbandingan beberapa WP dan katalog umum memakai nama laporannya. **Kembali ke bawaan** mengembalikan ukuran ke Otomatis, tema ke Terang, mematikan kontras tinggi, dan memilih NPWP saja. Peran petugas tetap mengikuti pilihan terakhir.
 
 Pada **Dasbor → Ringkasan**, paket dengan SPT Badan menampilkan enam indikator. Klik **Perhitungan dan sumber indikator** untuk melihat angka rupiah, rumus dan berkas asal. Nilai PPN kurang bayar disetor di kartu bersumber dari posisi positif di induk SPT. Cocokkan dengan buku besar untuk memeriksa pembayaran aktual.
@@ -54,6 +56,12 @@ Pada tab **Probis**, katalog menyediakan KBLI 2020 dan 2025 serta 60 kode KLU ka
 **Cakupan SPT PPN.** Buka satu versi SPT PPN, lalu pilih **Cakupan SPT PPN** untuk melihat induk, A1, A2, B1, B2, B3, C dan total C. Daftar menunjukkan berapa berkas diterima dan berapa bagian yang kelengkapannya dapat diverifikasi. Untuk tabel, pemutar mencocokkan jumlah baris tersimpan dengan total yang dinyatakan sumber. Respons total C tanpa isian ditandai kosong terverifikasi hanya jika lampiran C juga terverifikasi kosong. Nominal footer tetap kosong. **Excel cakupan PPN** menyimpan hasil untuk WP, masa, ID rekaman dan pembetulan yang sedang dibuka.
 
 ## Kertas kerja
+
+Di **Kertas Kerja → KKA**, buka **Dasar angka KKA · L-13** untuk menelusuri perbandingan SPT dua tahun, rasio keuangan, dan kemampuan membayar. Simpan Word dan Excel di folder yang sama dengan nama unduhan semula. Dua tautan Word membuka rekap dan rincian potensi di L-7. Tiga tautan lainnya membuka perbandingan SPT, rasio, dan kemampuan membayar di L-13.
+
+Tabel 5 memisahkan pokok hasil uji, sisa pokok yang sudah tercatat di buku besar, dan pokok skenario. Tabel 5.1 menunjukkan butir serta sumbernya. Untuk melihat bukti per butir, buka L-8 untuk temuan langsung atau L-9 untuk indikasi yang disertakan. Pilihan **Temuan yang dimasukkan** menentukan butir yang masuk rekap dan jumlah yang dipakai pada Tabel 5.3. Angka nol menunjukkan nilai yang diketahui. Sel kosong berarti data belum cukup untuk menghitungnya.
+
+Jika buku besar hanya membuktikan sebagian pembayaran, Tabel 5.3 menampilkan **Subtotal pembayaran teramati dalam 12 bulan**. Total lengkap menunggu bukti jumlah seluruh transaksi. Tabel 4.1 juga memberi keterangan jumlah masa bila bruto dan penerima PPh 21 hanya dapat dihitung untuk sebagian tahun.
 
 Di **KKP → Keluaran → TL**, pilih tahun pajak dan isi tanggal rencana ketetapan untuk melihat perhitungan yang memiliki dasar waktu. Tabel menampilkan angka SPT, jumlah yang teramati, masa, dan sumber. Bila kredit dalam negeri dan luar negeri masih tergabung pada induk, pemutar menampilkan asumsi yang diperlukan untuk simulasi. Untuk memastikan selisih kredit, periksa rincian Lampiran 3, bukti potong dan buku besar.
 

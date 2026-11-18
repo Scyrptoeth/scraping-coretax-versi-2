@@ -403,7 +403,8 @@ export async function visibleTables(selected) {
       const slices=[];
       for(const [month,rows] of groups){
         const canonical=rows.map(r=>JSON.stringify(Object.keys(r).sort().map(k=>[k,r[k]]))).sort();
-        slices.push({month,count:rows.length,hash:await digest(canonical),...(selected.quick.expect && selected.quick.includeRows?{rows}:{})});
+        const signature=position.filtered && ['bb','bbtotal'].includes(selected.scope?.source)?[canonical,position.filterState]:canonical;
+        slices.push({month,count:rows.length,hash:await digest(signature),...(selected.quick.expect && selected.quick.includeRows?{rows}:{})});
       }
       const latest=shape(currentTable),latestRows=records(latest);
       if(location.href!==selected.url || listTables()[selected.index]!==currentTable || tableTitle(currentTable,selected.index)!==selected.title ||

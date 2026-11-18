@@ -3,12 +3,14 @@ import * as vault from './app-vault.js';
 import {putHandoff, removeExpiredHandoffs} from './app-handoff.js';
 import {createPackage,sha256} from './archive/package.js';
 import {batchCollector} from './app-batch.js';
-import {appendPackageEntry,isSptList,metaForSelection,selectSptListRows} from './app-package-entries.js';
+import {appendPackageEntry,isSptList,metaForSelection,packagePath,selectSptListRows} from './app-package-entries.js';
+import {checkLedgerScope,ledgerSelectionText,selectLedgerRows} from './ledger-status.js';
 import {planSptDetails} from './app-spt-plan.js';
 import {stageSptSource,finishSptSources} from './app-spt-snapshots.js';
 import {sptNavigation} from './app-spt-navigation.js';
 import {collectSptQueue,sptDirectory} from './app-spt-directory.js';
 import {findSubmittedTab,readSubmittedPreview} from './app-spt-preview.js';
+import {wpPreview,renderWpPreview} from './app-wp-preview.js';
 import {previewKind,sameScope,wholePreview,coversRows,savedPages,removePreview,previewWriter} from './app-spt-progress.js';
 import {openSourcePreview} from './app-open-sources.js';
 import {resultAssignment,sameSptAssignment,verifiedIndexItems,recoverSptResult,remainingSptChecks,readPreviousSptPackage} from './app-spt-results.js';
@@ -108,6 +110,7 @@ function captureOwner() {
 }
 function sourceChanged() {
   const allowed = checked('sources');
+  $('ledger-options').hidden=!allowed.some(id=>id==='bb' || id==='bbtotal');
   choices($('source'),Object.entries(sources).filter(([id]) => allowed.includes(id)));
   choices($('spt'),forms.filter(([id]) => checked('forms').includes(id)));
   $('spt-field').hidden = val('source')!=='sptisi';
@@ -154,6 +157,7 @@ function addEntry(info,page,name,origin) {
   if(!rows.length && !((info.detailProof || info.source==='sptdaftar' && info.proof?.daftarPratinjau) && info.proof?.nolPadaSumber && page.Payload?.TotalRecords===0))
     throw Error('Tabel kosong. Belum ada baris yang dapat ditambahkan.');
   checkIdentity(rows,info.wp);
+  checkLedgerScope(info,page);
   if(info.period===null && rows.some(row=>row && typeof row==='object' && Object.entries(row).some(([key,value])=>
     ['masapajak','periodepajak','taxperiod','taxperiodcode','tahunpajak','taxyear'].includes(key.toLowerCase().replace(/[^a-z]/g,'')) && value!=null && String(value).trim()!==''))) {
     throw Error('Sumber ini memuat masa atau tahun pajak. Lepaskan pilihan tanpa masa dan cocokkan periode.');
@@ -164,7 +168,11 @@ function renderQueue() {
   $('ids').readOnly = queue.length>0 || busy;
   $('id-file').disabled = queue.length>0 || busy;
   const box = $('queue'); box.replaceChildren();
-  queue.forEach(entry => line(box,entry.wp+' · '+sources[entry.source]+' · '+entry.name+' · '+entry.rows+' baris'+(entry.period===null?' · Masa tidak tercantum':''),[
+  const included=new Set(checked('sources'));
+  queue.forEach(entry => {
+    const selection=included.has(entry.source)?selectLedgerRows(entry,$('ledger-cancel').checked).ledgerSelection:null;
+    line(box,entry.wp+' · '+sources[entry.source]+' · '+entry.name+' · '+entry.rows+' baris'+(entry.period===null?' · Masa tidak tercantum':'')+
+      (selection?' · '+ledgerSelectionText(selection):''),[
     button('Keluarkan',() => {
       if(busy || autoSpt || paging || batch.active || otherSources?.active)throw Error('Selesaikan pembacaan yang sedang berjalan.');
       queue.splice(queue.indexOf(entry),1);
@@ -177,7 +185,8 @@ function renderQueue() {
       }
       scopeChanged();
     })
-  ]));
+    ]);
+  });
   if(queue.length) {
     const hint=document.createElement('small');hint.textContent='Untuk mengganti NPWP, selesaikan tarikan atau keluarkan semua sumber dari antrean.';box.append(hint);
   }
@@ -299,23 +308,37 @@ function prepare({preview=false,allowEmpty=false}={}) {
     throw Error('Penugasan atau pilihan SPT berbeda dari pratinjau tersimpan yang ada di antrean. Pulihkan pilihan semula atau keluarkan daftar itu.');
   if(inPeriod.some(e=>e.sptAssignment && !sameSptAssignment(e.sptAssignment,previewScope())))
     throw Error('Penugasan untuk bagian SPT di antrean berbeda. Pulihkan penugasan semula atau keluarkan sumber terkait.');
-  const relevant=inPeriod.map(e=>selectSptListRows(e,types)).filter(Boolean);
+  const byType=inPeriod.map(e=>selectSptListRows(e,types)).filter(Boolean);
+  const includeCancelled=$('ledger-cancel').checked;
+  const relevant=byType.map(e=>selectLedgerRows(e,includeCancelled));
   if (!allowEmpty && !relevant.length && !(preview && inPeriod.some(item=>isSptList(item.source)))) {
     if(inPeriod.length) throw Error('Tidak ada baris untuk jenis SPT terpilih. Pilih semua jenis untuk menyertakan baris yang belum dikenali.');
     throw new Error('Tambahkan tabel atau berkas yang sesuai dengan WP, periode, dan sumber terpilih.');
   }
   const meta = {penugasan:{peran:val('role'),jenis:val('basis'),nomor:val('letter'),tanggal:val('date')},penarik:{nama:val('officer'),nip:val('nip')},periode:range,
     opsi:{metode:'Tabel yang terlihat atau ekspor lokal',jenisSpt:types,sumber:allowed,lewatiDuplikat:$('dedupe').checked,
+      ...(allowed.some(id=>id==='bb' || id==='bbtotal')?{bbBatal:includeCancelled}:{}),
       periode:{from:{y:Number(val('year-start')),m:Number(val('month-start'))},to:{y:Number(val('year-end')),m:Number(val('month-end'))}}}};
-  const omittedRows=inPeriod.reduce((sum,e)=>sum+e.rows,0)-relevant.reduce((sum,e)=>sum+e.rows,0);
+  const omittedRows=inPeriod.reduce((sum,e)=>sum+e.rows,0)-byType.reduce((sum,e)=>sum+e.rows,0);
   return {plan:{wp,entries:relevant},meta:metaForSelection(meta,relevant),inPeriod,excluded:queue.length-relevant.length,omittedRows};
 }
 function showPreview() {
-  const {plan,meta,inPeriod,excluded,omittedRows}=prepare({preview:true}), box=$('preview-box');
+  const {plan,meta,inPeriod,excluded,omittedRows}=prepare({preview:true,allowEmpty:true}), box=$('preview-box');
   box.replaceChildren();
+  const scope=previewScope();
+  const previous=stored.filter(r=>r.kind==='result'&&sameSptAssignment(resultAssignment(r.meta),scope)&&
+    r.entries?.some(e=>['info','klu','cari2'].includes(e.cap?.sumber))).sort((a,b)=>b.when-a.when)[0];
+  const available=queue.filter(e=>e.wp===plan.wp&&e.period===scope.period&&
+    (!e.previewBinding||sameScope(e.previewBinding.scope,scope))&&(!e.sptAssignment||sameSptAssignment(e.sptAssignment,scope)));
+  const range=meta.opsi.periode||{from:{y:Number(val('year-start')),m:Number(val('month-start'))},to:{y:Number(val('year-end')),m:Number(val('month-end'))}};
+  const summaryWp=wpPreview({wp:plan.wp,period:range,types:meta.opsi.jenisSpt,items:available,previous});
+  const {profile,spt}=summaryWp;
   const rows=plan.entries.reduce((sum,entry)=>sum+entry.rows,0);
-  const body=captureTable(box,'Pratinjau penarikan',['NPWP','Nama WP','Periode','Sumber dalam antrean','Baris terpilih']);
-  captureRow(body,[plan.wp,taxpayerName(plan.entries) || null,meta.periode,plan.entries.length,rows]);
+  const body=captureTable(box,'Pratinjau penarikan',['NPWP','Nama WP','Jenis WP','Status WP','KLU utama','SPT dalam periode','Periode','Sumber dalam antrean','Baris terpilih']);
+  captureRow(body,[plan.wp,profile.name,profile.type,profile.status,profile.klu,spt.total===null?'Belum diketahui':
+    spt.complete?spt.total:spt.total+' teridentifikasi',meta.periode||scope.period,plan.entries.length,rows]);
+  renderWpPreview(box,summaryWp,captureTable,captureRow);
+  if(!inPeriod.length){message('Tambahkan tabel atau berkas yang sesuai jika ingin menarik data.',true);return;}
   const details=disclosure('Rincian sumber terpilih');
   const sourceBody=captureTable(details,'Sumber yang akan dirakit',['Sumber','Tabel atau berkas','Cara pengambilan','Baris']);
   for(const entry of plan.entries)captureRow(sourceBody,[sources[entry.source],entry.name,entry.origin,entry.rows]);
@@ -861,13 +884,16 @@ async function run(resume) {
         await vault.save([{id,value:job}],'Mulai tarik',{jumlahWP:1,penarik:job.meta.penarik.nama,dasar:job.meta.penugasan.nomor,npwp:plan.wp});
       }
       jobButtons();
-      const seen = new Set(), grouped = new Map(), sections=new Map(), checks=[],indexReports=new Set();
+      const seen = new Set(), ledgerCopies=new Map(), ledgerNotes=new Map(), grouped = new Map(), sections=new Map(), checks=[],indexReports=new Set();
       const progress=$('progress'); progress.max=plan.entries.length; progress.value=0;
       for (const queued of plan.entries) {
         while (paused && !stop) await sleep(100);
         if(stop) break;
         if(queued.wp!==plan.wp) throw Error('Antrean tersimpan memuat sumber untuk WP yang berbeda.');
-        const source=selectSptListRows(queued,queued.spt?[queued.spt]:job.meta.opsi.jenisSpt || forms.map(([code])=>code));
+        if(queued.source==='bb' || queued.source==='bbtotal'){
+          checkIdentity(rowsOf(queued.page),plan.wp);checkLedgerScope(queued,queued.page);
+        }
+        const source=selectLedgerRows(selectSptListRows(queued,queued.spt?[queued.spt]:job.meta.opsi.jenisSpt || forms.map(([code])=>code)),job.meta.opsi.bbBatal);
         const indexReport=queued.proof?.daftarPratinjau;
         if(indexReport && !indexReports.has(indexReport.id)){
           checks.push({tingkat:indexReport.note || indexReport.filtered?'SEDANG':'INFO',kode:'DAFTAR-SPT-PRATINJAU',pesan:describeSubmitted(indexReport)});
@@ -879,19 +905,38 @@ async function run(resume) {
         if(!source) continue;
         checkIdentity(rowsOf(source.page),plan.wp);
         const sptTracked=stageSptSource(sections,source,plan.wp);
-        if(!sptTracked) {
+        let ledgerKey;
+        if(source.ledgerSelection){
+          const selection=source.ledgerSelection;
+          const insufficient=selection.cakupanOpsi!=='sesuai' && (selection.jenis==='total' || selection.ikutkanBatal || selection.filterPembatalanSumber==='batal');
+          if(selection.tidakDiketahui || selection.konflikStatus || insufficient || selection.filterLainPadaSumber){
+            const note=selection.jenis==='total'?'Periksa filter sumber total pembanding buku besar.':
+              'Periksa status pembatalan dan filter pada rincian sumber buku besar.';
+            ledgerNotes.set(note,{tingkat:'SEDANG',kode:'BUKU-BESAR-FILTER',pesan:note});
+          }
+          if(job.meta.opsi.lewatiDuplikat){
+            const contents=rowsOf(source.page).map(r=>Object.entries(r||{}).sort(([a],[b])=>a<b?-1:a>b?1:0));
+            ledgerKey=await vault.digest(JSON.stringify([packagePath(source),contents,source.page.IsSuccessful ?? null,source.page.Errors ?? null]));
+          }
+        }else if(!sptTracked) {
           const key=await vault.digest(JSON.stringify([source.source,source.spt,source.detailProof?.docKey,source.detailProof?.part,source.page]));
           if(seen.has(key) && job.meta.opsi.lewatiDuplikat) continue;
           seen.add(key);
         }
-        const reported=source.sptSelection?.totalDilaporkanSumber ?? source.total;
-        const received=source.sptSelection?.barisSumber ?? source.rows;
+        const reported=source.ledgerSelection?.totalDilaporkanSumber ?? source.sptSelection?.totalDilaporkanSumber ?? source.total;
+        const received=source.ledgerSelection?.barisSumber ?? source.sptSelection?.barisSumber ?? source.rows;
         if(reported!=null && reported!==received) {
           const issue={tingkat:'TINGGI',pesan:sources[source.source]+' melaporkan '+reported+' baris. Yang diterima '+received+'.'};
           checks.push(issue); message(plan.wp+' · '+issue.pesan,true);
         }
         if(!sptTracked){
+          const previous=ledgerCopies.get(ledgerKey);
+          if(previous){
+            (previous.entry.cap.sumberSalinanIdentik ||= []).push({halamanAsal:previous.page,asal:source.name,metode:source.origin,pemilihanBukuBesar:source.ledgerSelection});
+            continue;
+          }
           const entry=appendPackageEntry(grouped,source,plan.wp);
+          if(ledgerKey)ledgerCopies.set(ledgerKey,{entry,page:entry.pages.length});
           if(source.source==='sptdaftar' && source.sptObservedParts?.length){
             const observations=source.sptObservedParts.filter(n=>job.meta.opsi.jenisSpt.includes(n.cap.konteks.spt.jenis));
             if(observations.length)(entry.cap.bagianSptTeramati ||= []).push(...observations);
@@ -903,6 +948,7 @@ async function run(resume) {
         await vault.save([],'Tarikan dihentikan',{npwp:plan.wp});
         $('status').textContent='Antrean NPWP '+plan.wp+' tersimpan dan dapat dilanjutkan.'; return;
       }
+      checks.push(...ledgerNotes.values());
       finishSptSources(sections,grouped,checks,job.meta.opsi.lewatiDuplikat);
       checks.push(...remainingSptChecks(plan.entries,plan.wp,job.meta.opsi));
       if(plan.entries.some(e=>e.sptLegacyNotes))checks.push({tingkat:'INFO',kode:'SPT-CATATAN-LAMA',
@@ -1047,11 +1093,12 @@ function init() {
     for(const input of $(id).querySelectorAll('input')) input.checked=preferences[id].includes(input.value);
   }
   if(typeof preferences.dedupe==='boolean') $('dedupe').checked=preferences.dedupe;
+  $('ledger-cancel').checked=preferences.bbBatal===true;
   function savePreferences() {
     const prefs=Object.fromEntries(preferenceFields.map(id=>[id,val(id)]));
-    localStorage.setItem(preferenceKey,JSON.stringify({...prefs,sources:checked('sources'),forms:checked('forms'),dedupe:$('dedupe').checked}));
+    localStorage.setItem(preferenceKey,JSON.stringify({...prefs,sources:checked('sources'),forms:checked('forms'),dedupe:$('dedupe').checked,bbBatal:$('ledger-cancel').checked}));
   }
-  for(const id of [...preferenceFields,'sources','forms','dedupe']) action(id,savePreferences,'change');
+  for(const id of [...preferenceFields,'sources','forms','dedupe','ledger-cancel']) action(id,savePreferences,'change');
   for(const id of ['ids','id-file','role','basis','letter','date','officer','nip','sources','forms','month-start','month-end','year-start','year-end']){
     const event=['ids','letter','date','officer','nip'].includes(id)?'input':'change';
     $(id).addEventListener(event,()=>{
@@ -1078,7 +1125,7 @@ function init() {
   for (const id of ['sources','forms','source']) action(id,sourceChanged,'change');
   for (const id of ['spt','month-start','month-end','year-start','year-end']) action(id,() => {$('scope-ok').checked=false; scopeChanged();},'change');
   action('undated-general',()=>{$('scope-ok').checked=false;scopeChanged();},'change');
-  for (const id of ['consent','dedupe']) action(id,scopeChanged,'change');
+  for (const id of ['consent','dedupe','ledger-cancel']) action(id,scopeChanged,'change');
   action('tab',() => {chosenPreviewTab=Number(val('tab'));tables=[]; $('table-pick').hidden=true; $('scope-ok').checked=false;},'change');
   action('recheck',checkTabs); action('open-coretax',() => ext.tabs.create({url:coretax+'/'}));
   action('list-tables',tableList); action('add-table',addTable); action('source-files',importFiles,'change');

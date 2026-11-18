@@ -1,4 +1,4 @@
-import {emptyFinding, findingKey, findingsFor, reviewOptions, selectedFindings} from './findings.js';
+import {emptyFinding, findingReview, findingsFor, reviewOptions, selectedFindings} from './findings.js';
 
 export const draftTitles = {
   SP2DK: "Surat Permintaan Penjelasan atas Data dan/atau Keterangan",
@@ -14,7 +14,7 @@ export const allowedDrafts = role => {
 export const blankFinding = emptyFinding;
 export function draftFindings(pkg, year, workRows, dispositions = {}, source = null) {
   const findings = source?.findings || findingsFor(pkg, year, workRows)
-    .filter(row => !dispositions[findingKey(row)] || dispositions[findingKey(row)] === reviewOptions[0]);
+    .filter(row => findingReview({dispositions},row,year)===reviewOptions[0]);
   return findings.map(row=>({...row,taxpayer:'',discussed:'',agreed:''}));
 }
 export function newDraft(type, pkg, year, source = null, workRows = [], dispositions = {}) {

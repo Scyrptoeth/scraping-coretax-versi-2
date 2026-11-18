@@ -140,7 +140,7 @@ function availableSlips(entries,id,year,failed){
 
 export function withoutReturnIndices(pkg,year){
   year=String(year);
-  const entries=pkg.entries.filter(e=>e.cap.sumber==='bplawan'||e.path.startsWith('bukti-potong-lawan/'));
+  const entries=pkg.entries.filter(e=>e.cap?.sumber==='bplawan'||e.path.startsWith('bukti-potong-lawan/'));
   const none={groups:[],warnings:[]},id=normalizeId(text(pkg.manifest.wp?.npwp));
   if(!id||!entries.length||!entries.some(e=>sourceIdentity(e).years.includes(year)))return none;
   const aggregate=ownerProfile(pkg,id);

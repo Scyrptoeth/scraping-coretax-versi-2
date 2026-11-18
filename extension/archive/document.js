@@ -4,6 +4,7 @@ const wordNs = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
 const contentNs = "http://schemas.openxmlformats.org/package/2006/content-types";
 const relationshipNs = "http://schemas.openxmlformats.org/package/2006/relationships";
 const documentRel = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument";
+const hyperlinkRel = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink";
 
 function escapeXml(value) {
   return String(value ?? "").replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\uFFFE\uFFFF]/gu, "")
@@ -39,19 +40,29 @@ function tableFor(rows) {
     "<w:tblGrid>" + grid.repeat(columns) + "</w:tblGrid>" + content + "</w:tbl>";
 }
 
-export async function createDocx({ title, paragraphs = [], tables = [] }) {
-  const body = [];
+export async function createDocx({ title, paragraphs = [], tables = [], companionWorkbook }) {
+  const body = [],workbookLinks=[];
   if (title) body.push(paragraph(title, { bold: true, size: 32, after: 220, keep: true }));
   for (const text of paragraphs) body.push(paragraph(text));
   for (const table of tables) {
     if (table.title) body.push(paragraph(table.title, { bold: true, size: 24, after: 100, keep: true }));
+    if(companionWorkbook&&table.workbookTarget){
+      const targetSheet=/^KKA_L(7|13)_[0-9_]+$/.exec(table.workbookTarget);
+      if(!/^[^/\\:#?]+\.xlsx$/i.test(companionWorkbook)||!targetSheet)
+        throw Error('Nama berkas atau tujuan tautan KKA tidak dikenali.');
+      const id='workbook'+(workbookLinks.length+1);
+      const target=encodeURIComponent(companionWorkbook)+'#'+table.workbookTarget;
+      workbookLinks.push('<Relationship Id="'+id+'" Type="'+hyperlinkRel+'" Target="'+target+'" TargetMode="External"/>');
+      body.push('<w:p><w:hyperlink r:id="'+id+'"><w:r><w:rPr><w:color w:val="0563A1"/><w:u w:val="single"/></w:rPr><w:t>Buka dasar perhitungan di Excel KKA · L-'+targetSheet[1]+'</w:t></w:r></w:hyperlink></w:p>');
+    }
     body.push(tableFor(table.rows), paragraph("", { after: 30 }));
   }
   body.push('<w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440"/></w:sectPr>');
   const members = [
     { name: "[Content_Types].xml", data: '<Types xmlns="' + contentNs + '"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>' },
     { name: "_rels/.rels", data: '<Relationships xmlns="' + relationshipNs + '"><Relationship Id="doc" Type="' + documentRel + '" Target="word/document.xml"/></Relationships>' },
-    { name: "word/document.xml", data: '<w:document xmlns:w="' + wordNs + '"><w:body>' + body.join("") + '</w:body></w:document>' }
+    { name: "word/document.xml", data: '<w:document xmlns:w="' + wordNs + '" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><w:body>' + body.join("") + '</w:body></w:document>' }
   ];
+  if(workbookLinks.length)members.push({name:"word/_rels/document.xml.rels",data:'<Relationships xmlns="'+relationshipNs+'">'+workbookLinks.join('')+'</Relationships>'});
   return writeZip(members, { type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" });
 }

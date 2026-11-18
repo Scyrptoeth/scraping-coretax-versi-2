@@ -80,6 +80,31 @@ export function signedSumCell(terms, column, cached, roundTaxableIncome = false)
     cached: Number.isFinite(cached) ? cached : null };
 }
 
+export function ratioCell(numerator,denominator,cached,{percentageChange=false}={}){
+  const a=addressOf(numerator.row,numerator.column),b=addressOf(denominator.row,denominator.column);
+  const expression=percentageChange?a+'/ABS('+b+')*100':a+'/'+b;
+  return {[trustedFormula]:'IF(AND(COUNT('+a+','+b+')=2,'+b+'<>0),'+expression+',"")',cached:Number.isFinite(cached)?cached:null};
+}
+
+// Criteria come from worksheet cells so a tax name cannot become an Excel expression or wildcard.
+export function groupedAmountCell({first,last,groupRow,kindColumn,amountColumn,basisColumn,basis},operation,cached){
+  const range=column=>addressOf(first,column)+':'+addressOf(last,column);
+  const amounts=range(amountColumn),conditions=[];
+  if(groupRow)conditions.push('--('+range(kindColumn)+'='+addressOf(groupRow,kindColumn)+')');
+  if(basis!=null){
+    if(typeof basis!=='string'||!basis.length)throw Error('Kategori pokok pada rekap belum diisi.');
+    conditions.push('--('+range(basisColumn)+'="'+basis.replaceAll('"','""')+'")');
+  }
+  const product=parts=>'SUMPRODUCT('+[...conditions,...parts].join(',')+')';
+  const valid=['--ISNUMBER('+amounts+')','--('+amounts+'>=0)','--('+amounts+'<=9007199254740991)','--(IFERROR(MOD('+amounts+',1),1)=0)'];
+  const known=product(valid);
+  const count=conditions.length?product([]):'ROWS('+amounts+')';
+  const sum=product([...valid,amounts]);
+  const expressions={count,unpriced:count+'-'+known,sum:'IF(AND('+known+'>0,'+sum+'<=9007199254740991),'+sum+',"")'};
+  if(!Object.hasOwn(expressions,operation))throw Error('Operasi rekap tidak dikenal.');
+  return {[trustedFormula]:expressions[operation],cached:Number.isFinite(cached)?cached:null};
+}
+
 function worksheet(rows, names, back, contents) {
   if (!Array.isArray(rows) || rows.length > 1048576) throw new Error("Jumlah baris melebihi batas lembar Excel.");
   const hyperlinks = [];
@@ -143,6 +168,12 @@ export async function createXlsx({ sheets, contentsName = "Daftar Isi" }) {
     links.push('<Relationship Id="rId' + id + '" Type="' + relNs + '/worksheet" Target="' + file + '"/>');
     types.push('<Override PartName="/xl/' + file + '" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>');
     let back = null;
+    for(const target of sheet.targets||[]){
+      if(!/^[A-Za-z_][A-Za-z0-9_]*$/.test(target.name)||!Number.isInteger(target.row)||target.row<1||target.row>sheet.rows.length)
+        throw Error("Tujuan lembar Excel tidak valid.");
+      const location="'"+name.replaceAll("'","''")+"'!$A$"+target.row;
+      printAreas.push('<definedName name="'+target.name+'">'+xml(location)+'</definedName>');
+    }
     if (contents && sheet !== contents && Array.isArray(sheet.rows)) {
       const width = sheet.rows.reduce((n,row)=>Math.max(n,Array.isArray(row)?row.length:0),1);
       if (width < 16384) {

@@ -31,7 +31,10 @@
         <label>Dari bulan<select id="month-start"></select></label><label>Dari tahun<select id="year-start"></select></label>
         <label>Sampai bulan<select id="month-end"></select></label><label>Sampai tahun<select id="year-end"></select></label>
       </div><p class="hint" id="period-info"></p><h3>Jenis SPT</h3><div id="forms" class="chips"></div></div>
-      <div><h3>Sumber data</h3><div id="sources"></div></div></div>
+      <div><h3>Sumber data</h3><div id="sources"></div>
+        <div id="ledger-options" hidden><label class="check"><input id="ledger-cancel" type="checkbox" aria-describedby="ledger-help">Sertakan transaksi buku besar yang dibatalkan</label>
+          <p class="hint" id="ledger-help">Pilihan ini berlaku untuk transaksi yang tersedia pada sumber. Baris dengan status pembatalan yang belum diketahui tetap disimpan. Total pembanding mengikuti filter pada sumbernya.</p></div>
+      </div></div>
     </section>
     <section><h2><span>3</span>Cara menarik</h2><p class="hint">Tambahkan tabel yang terlihat di Coretax atau berkas ekspor JSON/CSV. Jika tombol halaman berikutnya dapat dikenali, Anda bisa mengambil beberapa halaman sekaligus. Untuk tabel lain, tambahkan satu halaman setiap kali.</p>
       <div class="double"><label>Sumber yang ditambahkan<select id="source"></select></label><label id="spt-field" hidden>Jenis SPT sumber<select id="spt"></select></label></div>

@@ -1,4 +1,5 @@
 import {lookupKbliCorrespondence} from '../kbli-correspondence.js';
+import {ledgerCancellation} from '../ledger-status.js';
 import {flatten, ledgerDocumentReference, receiptFields, rowsOf, sptDay, submittedDay, typeNames, worksheet} from './model.js';
 import {box, button, card, dataTable, detail, el, exportSheets} from './ui.js';
 
@@ -57,14 +58,31 @@ export function compareShareholders(registry, reported, {hasRegistry, hasReport,
 function sourceRows(entries) {
   return entries.flatMap(e=>rowsOf(e).map(r=>({...r,'Berkas sumber':e.path})));
 }
-function ledgerRows(entries) {
-  const seen=new Set(), monthly=new Set();
+function ledgerRows(entries,includeUncertain) {
+  const seen=new Set(), monthly=new Set(),statuses=new Map(),conflicts=new Set();
+  const records=[];
   for(const e of entries) {
     const hit=/^bukubesar\/(\d{4}-\d{2})\.json$/.exec(e.path);
     if(hit && e.cap?.lengkap===true && e.pages?.every(p=>p.IsSuccessful!==false)) monthly.add(hit[1]);
   }
-  return sourceRows([...entries].sort((a,b)=>Number(a.path.includes('setahun'))-Number(b.path.includes('setahun')))).filter(row=>{
-    if(row.IsCancelled===true) return false;
+  for(const entry of [...entries].sort((a,b)=>Number(a.path.includes('setahun'))-Number(b.path.includes('setahun')))){
+    for(const [i,page] of entry.pages.entries()){
+      const selection=entry.cap?.halamanSumber?.[i]?.pemilihanBukuBesar;
+      const copies=(entry.cap?.sumberSalinanIdentik||[]).filter(p=>p.halamanAsal===i+1).map(p=>p.pemilihanBukuBesar);
+      for(const raw of rowsOf({pages:[page]})){
+        const primary=ledgerCancellation(raw,selection);
+        const status=copies.some(s=>ledgerCancellation(raw,s)!==primary)?'unknown':primary;
+        const row={...raw,'Berkas sumber':entry.path};
+        records.push({row,status,hasSelection:Boolean(selection)||copies.some(Boolean)});
+        if(!row.RecordId||status==='unknown')continue;
+        if(statuses.has(row.RecordId)&&statuses.get(row.RecordId)!==status)conflicts.add(row.RecordId);
+        statuses.set(row.RecordId,status);
+      }
+    }
+  }
+  return records.filter(({row,status,hasSelection})=>{
+    if(conflicts.has(row.RecordId)||status==='cancelled'||hasSelection&&status==='unknown'&&!includeUncertain)return false;
+    if(status==='unknown'&&statuses.has(row.RecordId))return false;
     if(row.RecordId) {
       if(seen.has(row.RecordId)) return false;
       seen.add(row.RecordId);
@@ -72,10 +90,11 @@ function ledgerRows(entries) {
     }
     const p=String(row.PeriodCode ?? ''),month=/^\d{8}$/.test(p)?p.slice(4)+'-'+p.slice(0,2):'';
     return !(row['Berkas sumber'].includes('setahun') && monthly.has(month));
-  });
+  }).map(({row,status,hasSelection})=>({...row,'Status pembatalan untuk analisis':status==='active'?'Aktif':
+    hasSelection?'Belum diketahui':'Belum diketahui pada paket lama'}));
 }
-export function packageLedger(pkg) {
-  return ledgerRows(pkg.entries.filter(e=>e.cap?.sumber==='bb'||e.path.startsWith('bukubesar/')));
+export function packageLedger(pkg,{includeUncertain=false}={}) {
+  return ledgerRows(pkg.entries.filter(e=>e.cap?.sumber==='bb'||e.path.startsWith('bukubesar/')),includeUncertain);
 }
 function relate(pkg) {
   const grouped=new Map();

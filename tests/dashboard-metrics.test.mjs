@@ -50,3 +50,18 @@ test('ledger cards distinguish unknown amount or overlapping unidentified rows f
   assert.equal(result([entry('bukubesar/2025-01.json',{Data:[{...r,Amount:null}]})]).payments.value,null);
   assert.equal(result([entry('bukubesar/2025-01.json',{Data:[{...r,Amount:-7,AmountLeft:null}]})]).outstanding.value,null);
 });
+
+test('flagged, inferred and unclassified payments stay distinct when a package carries a cancellation selection',()=>{
+  const pay=(id,Amount,flags={})=>({RecordId:id,Amount,PeriodCode:'01012025',AccountingTypeCode:'Payment',...flags});
+  const e=entry('bukubesar/2025-01.json',{Data:[pay('confirmed',19,{IsCancelled:'false'}),
+    pay('cancelled',40,{Dibatalkan:'Ya'}),pay('unknown',80),pay('odd',90,{IsCancelled:'tergantung'})]});
+  e.cap.halamanSumber=[{pemilihanBukuBesar:{jenis:'rincian',filterPembatalanSumber:'tanpa-filter-pembatalan',ikutkanBatal:true}}];
+  let report=result([e]);assert.equal(report.payments.value,19);assert.match(report.payments.detail,/2 transaksi dengan status/);
+  e.pages[0].Payload.Data.splice(1,1);
+  e.cap.halamanSumber[0].pemilihanBukuBesar.filterPembatalanSumber='aktif';
+  report=result([e]);assert.equal(report.payments.value,99);assert.match(report.payments.detail,/1 transaksi dengan status/);
+  e.cap.sumberSalinanIdentik=[{halamanAsal:1,pemilihanBukuBesar:{filterPembatalanSumber:'batal'}}];
+  assert.equal(result([e]).payments.value,null);
+  delete e.cap.sumberSalinanIdentik;
+  delete e.cap.halamanSumber;report=result([e]);assert.equal(report.payments.value,189);assert.match(report.payments.detail,/Angka sementara/);
+});

@@ -54,7 +54,6 @@ export function eventsFor(pkg,year) {
     add(reported,group,[kinds[r.ReturnSheetTypeCode]||r.ReturnSheetTypeCode,r.TaxPeriodCode,r.ReturnSheetModel].filter(Boolean).join(' · '),r['Berkas sumber'],periodYear(r.TaxPeriodCode),Object.values(receiptFields(r)).join(' · '));
   }
   for(const r of packageLedger(pkg)){
-    if(r.IsCancelled===true||r.IsCancelled==='true')continue;
     if(r.AccountingTypeCode!=='TaxNotice'&&!['TaxAssessment','NoticeOfTaxCollection'].includes(r.ReferenceType))continue;
     add(r.PostingDate||r.TransactionDate,'Ketetapan dan tagihan',[r.ReferenceType||r.AccountingTypeCode,r.RevenueCode].filter(Boolean).join(' · '),
       r['Berkas sumber'],periodYear(r.PeriodCode),r.ReferenceNumber);

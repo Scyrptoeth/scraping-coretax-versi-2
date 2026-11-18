@@ -1,6 +1,7 @@
 import {rowsOf, worksheet} from './model.js';
 import {box,button,card,dataTable,el,exportSheets,select} from './ui.js';
 import {parseDelimited,sources as sourceNames} from '../app-data.js';
+import {reconcileLedgerTotals} from './ledger-reconciliation.js';
 
 const severity = ['Kritis','Peringatan','Info'];
 const safeCount = value => typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
@@ -68,10 +69,15 @@ export function qualityNotes(pkg) {
       const proof=origin.pencocokan || {};
       if(proof.morePagesAvailable) add('Peringatan',path,'Batas halaman tercapai',origin.asal || 'Masih ada halaman berikutnya.',
         'Ada baris setelah halaman terakhir yang dipilih.');
-      if(Array.isArray(proof.pageRows) && proof.pageRows.every(safeCount) && safeCount(origin.baris) &&
-          proof.pageRows.reduce((n,x)=>n+x,0)!==origin.baris) add('Peringatan',path,'Rincian baris per halaman',
-          proof.pageRows.join(' + ')+' dibandingkan dengan '+origin.baris+' baris.','Periksa kembali tabel yang masuk ke paket.');
+      const observed=origin.pemilihanBukuBesar?.barisSumber??origin.baris;
+      if(Array.isArray(proof.pageRows) && proof.pageRows.every(safeCount) && safeCount(observed) &&
+          proof.pageRows.reduce((n,x)=>n+x,0)!==observed) add('Peringatan',path,'Rincian baris per halaman',
+          proof.pageRows.join(' + ')+' dibandingkan dengan '+observed+' baris.','Periksa kembali tabel yang masuk ke paket.');
     }
+  }
+  for(const row of reconcileLedgerTotals(pkg)){
+    if(row.Hasil==='Saldo berbeda')add('Peringatan',row['Berkas sumber'],'Saldo buku besar',
+      'Selisih rincian dan saldo pembanding Rp'+row['Selisih (Rp)'].toLocaleString('id-ID')+'.',row.Cakupan);
   }
   const counts=new Map();
   for(const group of limitGroups.values()) {
@@ -168,6 +174,9 @@ export function renderQuality(root,pkg,back) {
   const show=level=>rows.replaceChildren(dataTable(notes.filter(n=>!level || n.Tingkat===level),{wp,name:'Catatan mutu',filename:'Catatan-mutu',empty:'Tidak ada catatan pada pilihan ini.'}));
   show('');
   root.append(card('Rincian mutu data',box('toolbar',button('Kembali ke Muat paket',back),
-    select([['','Semua tingkat'],...severity],'',show,'Tingkat catatan')),rows),
-    card('Cocokkan tabel dengan ekspor Coretax',sourceComparison(pkg)));
+    select([['','Semua tingkat'],...severity],'',show,'Tingkat catatan')),rows));
+  const ledger=reconcileLedgerTotals(pkg);
+  if(ledger.length)root.append(card('Saldo buku besar per periode',el('p','Jumlah transaksi bertanda positif dan negatif dibandingkan dengan saldo pada filter sumber yang sama. Setiap masa dan tahun diperiksa sendiri.','hint'),
+    dataTable(ledger,{wp,name:'Pencocokan saldo buku besar',filename:'Saldo-buku-besar'})));
+  root.append(card('Cocokkan tabel dengan ekspor Coretax',sourceComparison(pkg)));
 }

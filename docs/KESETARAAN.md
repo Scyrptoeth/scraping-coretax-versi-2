@@ -1,6 +1,18 @@
 # Matriks kesetaraan terhadap VERITAX v1.32.0
 
-Prarilis 0.13.0, 19 November 2026 WIB. Penarik dan pemutar masih memiliki perbedaan dengan VERITAX. **Terverifikasi** berlaku untuk perilaku dan masukan yang disebutkan. **Berbeda** berarti ada selisih yang telah diketahui. **Belum teruji** berarti bukti pembandingan belum tersedia.
+Prarilis 0.14.0, 19 November 2026 WIB. Penarik dan pemutar masih memiliki perbedaan dengan VERITAX. **Terverifikasi** berlaku untuk perilaku dan masukan yang disebutkan. **Berbeda** berarti ada selisih yang telah diketahui. **Belum teruji** berarti bukti pembandingan belum tersedia.
+
+## Hasil prarilis 0.14.0
+
+| Alur | Hasil pada contoh fiktif | Batas |
+| --- | --- | --- |
+| Pratinjau satu WP | Jenis, status, KLU dan rincian SPT tampil dengan rujukan ke sumber yang tersedia. Pada dua contoh lama, pratinjau menemukan 76 versi Badan dan tiga versi OP, termasuk masing-masing tiga dan satu pembetulan. [Uji model](../tests/wp-preview.test.mjs) · [Uji di Chrome](../tests/wp-preview-browser.mjs) | Daftar yang baru terbaca sebagian diberi keterangan. Sumber yang tidak tersedia belum dapat membuktikan jumlah nol. Pencarian langsung di intranet masih perlu diuji. |
+| Pembatalan transaksi buku besar | Pada empat masa uji, pilihan bawaan menyimpan empat baris rincian dan pilihan menyertakan transaksi batal menyimpan tujuh. Hasil mencatat pilihan, jumlah pada sumber, serta transaksi yang dilewati. [Uji keluarannya di pemutar](../tests/scraper-ledger-browser.mjs) | Status yang belum diketahui tetap ditandai. Total pembanding bergantung pada filter saat sumber dibuka. |
+| Mutu data | Pada contoh Badan, saldo yang dihitung dari baris tersimpan cocok dengan saldo pembanding pada 26 periode, sesuai hitungan pada manifest acuan. Setiap periode dapat diperiksa dan diekspor. [Uji pencocokan saldo](../tests/ledger-reconciliation.test.mjs) | Kecocokan saldo bersih masih memungkinkan dua selisih transaksi yang saling meniadakan. Jika lingkup berbeda atau satuan meragukan, kolom selisih dikosongkan. |
+| KKA · rekap potensi di L-7 | Tabel 5 dan 5.1 menghubungkan pokok hasil uji, sisa pokok tercatat, dan skenario dengan sumbernya. Pada demo Badan dengan asumsi bunga piutang afiliasi 8% yang dipilih petugas, sembilan butir berangka dan rekap keempat jenis pajak cocok dengan Studio. [Uji sumber, lingkup dan telaah](../tests/kka-potentials.test.mjs) | Tanpa acuan bunga, nominal skenario piutang afiliasi tetap kosong. Sebagian pokok masih membutuhkan pembuktian terhadap dokumen WP. |
+| KKA · dasar angka di L-13 | Pada demo Badan, 33 nilai perbandingan SPT, 16 nilai rasio utama, 28 rasio rinci dan tujuh nilai arus kas cocok dengan Studio. Tabel 5.3 cocok pada sembilan dari 12 nilai dengan pilihan awal, dan 12 dari 12 setelah asumsi 8% dipilih. Lima tautan Word membuka rincian di L-7 dan L-13. [Uji layar, tautan, rumus dan telaah](../tests/kka-outputs-browser.mjs) | Pembayaran 12 bulan memerlukan bukti kelengkapan halaman buku besar. Jika hanya sebagian dapat dipastikan, pemutar menyajikan subtotal dengan keterangannya. Cakupan lampiran dan tata letak KKA masih berbeda. |
+
+Rumus Excel diuji melalui penghitungan ulang di LibreOffice. Pada salinan demo, perubahan pokok N.5, perubahan nilai kosong menjadi nol, dan pengosongan semua nominal memperbarui rekap per jenis, jumlah tanpa nominal, serta penyebut dan rasio kemampuan membayar. [Uji penghitungan ulang](../tests/kka-recalculation.mjs)
 
 ## Hasil prarilis 0.13.0
 

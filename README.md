@@ -1,8 +1,8 @@
 # Scraping Coretax Versi 2
 
-**Prarilis 0.13.0.** Setiap tarikan memakai satu NPWP. Pilih satu atau beberapa tabel untuk WP itu di tab Coretax yang sudah terbuka, atau tambahkan ekspor JSON/CSV. Pemutar lokal membantu mencocokkan baris, membandingkan SPT dan memilih temuan untuk kertas kerja. Beberapa paket yang sudah disimpan dapat dibuka untuk perbandingan.
+**Prarilis 0.14.0.** Setiap tarikan memakai satu NPWP. Pilih satu atau beberapa tabel untuk WP itu di tab Coretax yang sudah terbuka, atau tambahkan ekspor JSON/CSV. Pemutar lokal membantu mencocokkan baris, membandingkan SPT dan memilih temuan untuk kertas kerja. Beberapa paket yang sudah disimpan dapat dibuka untuk perbandingan.
 
-[Unduh dan pasang melalui GitHub Pages](https://scyrptoeth.github.io/scraping-coretax-versi-2/) · [Situs Vercel](https://scraping-coretax-versi-2.vercel.app/) · [Paket prarilis GitHub](https://github.com/Scyrptoeth/scraping-coretax-versi-2/releases/tag/v0.13.0)
+[Unduh dan pasang melalui GitHub Pages](https://scyrptoeth.github.io/scraping-coretax-versi-2/) · [Situs Vercel](https://scraping-coretax-versi-2.vercel.app/) · [Paket prarilis GitHub](https://github.com/Scyrptoeth/scraping-coretax-versi-2/releases/tag/v0.14.0)
 
 ## Mencoba ekstensi
 
@@ -16,7 +16,7 @@
 
 Prarilis ini dikembangkan secara mandiri dengan acuan VERITAX v1.32.0. Penarikan seluruh modul Coretax dalam satu perintah, kesetaraan seluruh UI, perhitungan fiskal, dan kelengkapan kertas kerja masih memerlukan pengembangan dan pembandingan.
 
-Di pemutar, filter tahun, jenis dan versi membantu memilih SPT. Di **KKP → Keluaran**, petugas dapat mengelola permintaan dokumen, menelusuri dasar temuan langsung dan sanksi, serta menguji skenario indikatif. Status telaah tersimpan bersama berkas kerja WP dan tahun yang dipilih. [Hasil dan batas pengujian](docs/KESETARAAN.md#hasil-prarilis-0130)
+Pemutar mencocokkan saldo buku besar dengan baris sumber per periode. Di **Kertas Kerja → KKA**, Anda dapat menelusuri angka potensi per jenis pajak sampai ke butir dan bukti yang mendasarinya. Lima tautan di Word membuka rekap potensi, perbandingan SPT, rasio, dan kemampuan membayar di Excel. [Hasil dan batas pengujian](docs/KESETARAAN.md#hasil-prarilis-0140)
 
 - [Matriks kesetaraan dan sumber bukti](docs/KESETARAAN.md)
 - [Penggunaan penarik, paginasi dan simpanan lokal](docs/SCRAPING.md)

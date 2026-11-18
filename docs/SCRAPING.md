@@ -4,6 +4,10 @@ Buka ekstensi melalui ikon Chrome. Pada bagian **Penugasan**, isi nama penarik d
 
 ## Mengambil sumber
 
+Di **Pratinjau WP**, periksa nama, jenis, status, KLU utama, dan jumlah SPT normal serta pembetulan per tahun. Jumlah mengikuti jenis dan periode yang dipilih. Bila baru sebagian daftar yang terbaca, pratinjau menjelaskan batasnya.
+
+Untuk buku besar, pilih **Sertakan transaksi buku besar yang dibatalkan** bila Anda juga memerlukan baris batal. Pilihan bawaan mengeluarkan baris yang terkonfirmasi batal. Baris tanpa status yang dapat dipastikan tetap tersimpan untuk penelusuran. Periksa jumlah pada sumber, jumlah yang masuk paket dan filter total pembanding sebelum menyimpulkan ada perbedaan.
+
 Jika sesi penarikan induk dan lampiran SPT terputus, buka **Pratinjau WP** untuk penugasan, periode, dan daftar yang sama. Pilih hasil tersimpan atau impor paket keluaran Versi 2 yang sudah diunduh. Penarik memeriksa identitas WP, versi SPT dan keutuhan bagian. Bagian terkonfirmasi dapat dipakai kembali. Daftar baru dan lampiran yang masih kurang dapat dibaca ketika tab Coretax tersedia. Hasil pemulihan disimpan sebagai tarikan baru.
 
 Untuk profil, registrasi, daftar dokumen atau buku besar yang sudah terbuka, pilih kategori yang dibutuhkan dan klik **Pratinjau WP**. Penarik mencocokkan identitas, judul dan kolom tabel. Pada buku besar, penarik juga memeriksa masa. Baca status per sumber sebelum menyusun ZIP. Tabel yang berbeda untuk sumber dan masa yang sama perlu dicocokkan oleh petugas. Tabel berfilter membawa keterangan cakupannya sampai ke paket.
