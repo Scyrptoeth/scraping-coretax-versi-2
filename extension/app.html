@@ -37,7 +37,8 @@
       <div class="double"><label>Sumber yang ditambahkan<select id="source"></select></label><label id="spt-field" hidden>Jenis SPT sumber<select id="spt"></select></label></div>
       <p class="hint" id="list-types-hint" hidden>Penarik membaca jenis SPT dari setiap baris daftar. Pilih jenis yang diperlukan pada bagian Data yang ditarik. Bila semua jenis dipilih, baris dengan jenis yang belum dikenali tetap disimpan sesuai sumber.</p>
       <label class="check" id="undated-field" hidden><input type="checkbox" id="undated-general">Sumber tabel umum ini tidak mencantumkan masa pajak.</label>
-      <label class="check"><input id="scope-ok" type="checkbox">Saya sudah mencocokkan WP dan keterangan masa yang tersedia pada sumber.</label>
+      <label class="check"><input id="scope-ok" type="checkbox" aria-describedby="scope-help">Saya sudah mencocokkan WP dan keterangan masa yang tersedia pada sumber.</label>
+      <p id="scope-help" class="issue" hidden>Cocokkan WP dan masa pada tabel atau berkas, lalu centang kotak di atas untuk menambahkan sumber.</p>
       <div class="double"><div><h3>Tabel di tab Coretax</h3><label>Tab yang digunakan<select id="tab"></select></label><button id="list-tables">Daftar tabel di halaman</button>
         <div id="table-pick" hidden><label>Tabel yang terlihat<select id="table"></select></label><button id="add-table">Tambahkan tabel</button>
           <details id="pagination-options" hidden><summary>Ambil beberapa halaman</summary><p class="hint">Pada daftar SPT Dilaporkan, penarik mencocokkan WP di panel Coretax dan menyimpan indeks lintas masa. Tabel lain memerlukan NPWP pemilik pada setiap baris. Hitungan dimulai dari halaman yang terbuka.</p><label>Jumlah halaman maksimal<input id="page-limit" type="number" min="1" max="100" value="5"></label>

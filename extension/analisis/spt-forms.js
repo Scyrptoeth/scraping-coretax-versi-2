@@ -1,4 +1,5 @@
-import {differences,flatten,payloads,receiptNumber,rowsOf,sptDay,submittedDay,typeNames,worksheet} from './model.js';
+import {flatten,payloads,receiptNumber,rowsOf,sptDay,submittedDay,typeNames,worksheet} from './model.js';
+import {amendmentSheets,compareSptPart} from './spt-amendment.js';
 import {box,button,card,dataTable,detail,el,exportSheets,select,showDialog} from './ui.js';
 import {linkedPaymentGroups,packageLedger} from './profile.js';
 import {annualVat} from './annual-vat.js';
@@ -161,10 +162,22 @@ export function openForm(form,pkg,onVersionChange){
       const panel=box('');let selected=part;
       function diff(){
         const all=[...new Set([...sortedParts(form),...sortedParts(other)])];
-        const rows=differences(payloads(other.parts.get(selected)),payloads(form.parts.get(selected)));
+        const comparison=compareSptPart(selected,other.parts.get(selected),form.parts.get(selected));
+        const title=versionName(other)+' → '+versionName(form)+' · '+selected;
         panel.replaceChildren(select(versions.filter(f=>f.key!==form.key).map(f=>[f.key,versionName(f)]),other.key,k=>{other=versions.find(f=>f.key===k);diff();},'Versi pembanding'),
           select(all,selected,v=>{selected=v;diff();},'Bagian yang dibandingkan'),
-          el('p',versionName(other)+' → '+versionName(form)+' · '+selected),dataTable(rows,{wp,name:'Perubahan',empty:'Tidak ada perubahan isian pada dua versi ini.'}));
+          el('p',title));
+        if(comparison.kind==='fields'){
+          panel.append(dataTable(comparison.changes,{wp,name:'Perubahan',empty:'Tidak ada perubahan isian pada dua versi ini.'}));return;
+        }
+        panel.append(button('Excel perbandingan lampiran',()=>exportSheets(amendmentSheets(comparison,title),
+          'Perbandingan-'+form.type+'-'+form.period+'-'+selected+'-P'+other.version+'-P'+form.version,wp)),
+          dataTable([comparison.summary],{wp,name:'Ringkasan perbandingan lampiran'}),
+          ...comparison.notes.map(note=>el('p',note,'hint')),
+          dataTable(comparison.changes,{wp,name:'Perubahan',incremental:true,filename:'Perubahan-'+selected,
+            empty:comparison.unmatched.length||comparison.notes.length?'Belum ditemukan perubahan pada dokumen yang dapat dicocokkan.':'Tidak ada perubahan dokumen pada kedua versi.'}));
+        if(comparison.totals.length)panel.append(dataTable(comparison.totals,{wp,name:'Nominal lampiran'}));
+        if(comparison.unmatched.length)panel.append(dataTable(comparison.unmatched,{wp,name:'Baris yang perlu dicocokkan',incremental:true}));
       }
       diff();content.replaceChildren(panel,button('Kembali ke formulir',paint));
     }));

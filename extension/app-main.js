@@ -116,13 +116,21 @@ function scopeChanged() {
   renderQueue();
   jobButtons();
 }
+function requireSourceConfirmation() {
+  const checkbox=$('scope-ok');
+  if(checkbox.checked)return;
+  $('scope-help').hidden=false;
+  checkbox.setAttribute('aria-invalid','true');
+  checkbox.focus();
+  throw Error('Cocokkan dan centang pernyataan WP serta periode pada sumber.');
+}
 function scope() {
   const wp = captureOwner(), source = val('source');
   if (!source) throw new Error('Pilih sumber data terlebih dahulu.');
   const spt = source==='sptisi' ? val('spt') : '';
   if (source==='sptisi' && !spt) throw new Error('Pilih jenis SPT untuk induk atau lampiran.');
   if (isSptList(source) && !checked('forms').length) throw Error('Pilih sedikitnya satu jenis SPT pada bagian Data yang ditarik.');
-  if (!$('scope-ok').checked) throw new Error('Cocokkan dan centang pernyataan WP serta periode pada sumber.');
+  requireSourceConfirmation();
   const undated=source==='tabelumum' && $('undated-general').checked;
   return {wp,source,spt,period:undated?null:period()};
 }
@@ -606,9 +614,17 @@ function init() {
   action('tab',() => {tables=[]; $('table-pick').hidden=true; $('scope-ok').checked=false;},'change');
   action('recheck',checkTabs); action('open-coretax',() => ext.tabs.create({url:coretax+'/'}));
   action('list-tables',tableList); action('add-table',addTable); action('source-files',importFiles,'change');
+  $('scope-ok').addEventListener('change',()=>{
+    $('scope-help').hidden=true;
+    $('scope-ok').removeAttribute('aria-invalid');
+  });
+  $('source-files').addEventListener('click',event=>{
+    try{requireSourceConfirmation();}
+    catch(error){event.preventDefault();message(error.message,true);}
+  });
   batch=batchCollector({ext,origin:coretax,isBusy:()=>Boolean(busy || paging),enqueue:addEntry,refresh:scopeChanged,log:message,context:()=>{
     const wp=captureOwner(), range=period();
-    if(!$('scope-ok').checked) throw Error('Cocokkan dan centang pernyataan WP serta periode pada sumber.');
+    requireSourceConfirmation();
     const [from,to]=range.split(' s.d. ');
     return {wp,period:range,from,to,allowed:checked('sources'),types:checked('forms')};
   }});

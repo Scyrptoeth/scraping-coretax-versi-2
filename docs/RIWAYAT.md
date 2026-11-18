@@ -1,5 +1,11 @@
 # Riwayat Scraping Coretax Versi 2
 
+## 18 November 2026 · Prarilis 0.5.1
+
+Pada perbandingan pembetulan SPT, pemutar memasangkan faktur dan bukti potong menurut nomor dokumen. Mengurutkan ulang baris saja menghasilkan nol perubahan. Jika nomor kosong atau berulang, layar dan Excel menunjukkan baris sumber yang perlu diperiksa. [Perbandingan lampiran](ANALISIS.md)
+
+Saat pengguna menambahkan sumber sebelum mengonfirmasi WP dan masa, penarik mengarahkan pengguna ke kotak yang perlu dicentang pada **Cara menarik**. [Mengambil sumber](SCRAPING.md)
+
 ## 18 November 2026 · Prarilis 0.5.0
 
 Dari pratinjau satu WP, penarik dapat membuka tampilan SPT melalui tindakan baca yang dapat dikenali pada baris sumber. Penarik mencocokkan dokumen kembali di halaman tujuan dan menyimpan bagian yang tersedia beserta asalnya. Uji Chrome memakai halaman Coretax fiktif dengan navigasi di tab yang sama dan di tab baru. [Penarik](SCRAPING.md)

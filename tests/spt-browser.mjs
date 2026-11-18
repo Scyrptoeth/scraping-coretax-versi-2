@@ -3,7 +3,7 @@ import {createServer} from 'node:http';
 import {readFile,readdir} from 'node:fs/promises';
 import {createRequire} from 'node:module';
 import {resolve} from 'node:path';
-import {readPackage} from '../extension/archive/package.js';
+import {createPackage,readPackage} from '../extension/archive/package.js';
 import {decodeText,readZip} from '../extension/archive/zip.js';
 import {indexPackage} from '../extension/analisis/model.js';
 
@@ -86,5 +86,32 @@ try{
     await page.close();
   }
   assert.equal(seen.size,5);assert.ok(revised>=1);assert.deepEqual(errors,[]);
+  const page=await browser.newPage({acceptDownloads:true});
+  page.on('pageerror',error=>errors.push(error.message));
+  await page.goto('http://127.0.0.1:'+server.address().port+'/analisis/index.html');
+  const first={DocumentNumber:'FAK-A',TIN:'00001',TaxBase:1000,VAT:110},second={DocumentNumber:'FAK-B',TIN:'00002',TaxBase:2000,VAT:220};
+  const sections=[];
+  for(const [i,docs] of [[0,[first,second]],[1,[{...second,VAT:225},first]]]){
+    const base='spt/PPN/2025-01/p0'+i+'_uji'+i+'/';
+    sections.push({path:base+'induk.json',cap:{sumber:'sptisi',lengkap:true},pages:[{Payload:{FormData:'{"VAT":70}'}}]},
+      {path:base+'a2.json',cap:{sumber:'sptisi',lengkap:true,konteks:{jenisBagian:'grid'}},pages:[{Payload:{Data:docs,TotalRecords:2}}]});
+  }
+  const pkg=await createPackage({meta:{wp:{npwp:'0000000000000091',nama:'WP fiktif urutan faktur'}},entries:sections});
+  await page.locator('#filePkg').setInputFiles({name:'uji-urutan.zip',mimeType:'application/zip',buffer:Buffer.from(await pkg.arrayBuffer())});
+  await page.getByText('Konsisten · Seluruh sidik jari yang diperiksa cocok.').waitFor();
+  await page.getByRole('navigation').getByRole('button',{name:'SPT',exact:true}).click();
+  await page.getByRole('table',{name:'Daftar SPT',exact:true}).getByRole('button',{name:'Buka'}).first().click();
+  const dialog=page.getByRole('dialog');
+  await dialog.getByRole('button',{name:'Bandingkan versi'}).click();
+  await dialog.getByLabel('Bagian yang dibandingkan').selectOption('a2');
+  const changes=dialog.getByRole('table',{name:'Perubahan',exact:true}),row=changes.locator('tbody tr');
+  assert.equal(await row.count(),1);
+  for(const v of ['FAK-B','VAT','220','225'])await row.getByRole('cell',{name:v,exact:true}).waitFor();
+  const totals=dialog.getByRole('table',{name:'Nominal lampiran'}).getByRole('row').filter({has:page.getByRole('cell',{name:'PPN',exact:true})});
+  for(const v of ['330','335','5'])await totals.getByRole('cell',{name:v,exact:true}).waitFor();
+  const [download]=await Promise.all([page.waitForEvent('download'),dialog.getByRole('button',{name:'Excel perbandingan lampiran'}).click()]);
+  const saved=await readZip(await readFile(await download.path())),sheet=decodeText(saved.get('xl/worksheets/sheet2.xml').data);
+  assert.match(sheet,/FAK-B/);assert.match(sheet,/<v>220<\/v>/);assert.match(sheet,/<v>225<\/v>/);assert.doesNotMatch(sheet,/FAK-A/);
+  assert.deepEqual(errors,[]);await page.close();
   console.log('SPT UI passed: 4 fictitious archives, 5 form types, annexes, content search, selected and combined export, print, revisions, reporting calendar and 16 VAT columns.');
 }finally{await browser.close();await new Promise(resolve=>server.close(resolve));}

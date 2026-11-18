@@ -48,7 +48,11 @@ try {
   await page.locator('#id-file').setInputFiles(idFile('000000000000001\n0000000000000001'));
   await page.waitForFunction(()=>document.querySelector('#ids').value==='0000000000000001');
   await page.locator('#consent').uncheck();
+  await page.getByText('Tambahkan JSON atau CSV',{exact:true}).click();
+  await page.locator('#scope-help').waitFor();
+  assert.equal(await page.locator('#scope-ok').evaluate(control=>control===document.activeElement),true);
   await page.locator('#scope-ok').check();
+  assert.equal(await page.locator('#scope-help').isHidden(),true);
   await page.locator('#source-files').setInputFiles({name:'keliru.csv',mimeType:'text/csv',buffer:Buffer.from('NPWP,Nilai\n0000000000000002,25')});
   await page.locator('#notice').filter({hasText:'NPWP pada sumber berbeda'}).waitFor();
   const input={name:'contoh.csv',mimeType:'text/csv',buffer:Buffer.from('NPWP,Keterangan,Nilai\n0000000000000001,Uji,0')};

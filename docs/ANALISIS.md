@@ -1,6 +1,6 @@
 # Pemutar paket dan kertas kerja
 
-Pada prarilis 0.5.0, pilih **Buka di Analisis** sesudah penarikan atau buka beberapa paket ZIP lokal dari tab **Muat paket**. Pilih **WP aktif**, periksa periode dan hasil pemeriksaan integritas, lalu pilih tahun pada bagian yang akan digunakan. Paket dan isian kerja berada di memori tab. Unduh berkas kerja jika isian perlu dibuka kembali bersama paket yang sama. [Format dan pemeriksaan integritas](FORMAT.md)
+Pada prarilis 0.5.1, pilih **Buka di Analisis** sesudah penarikan atau buka beberapa paket ZIP lokal dari tab **Muat paket**. Pilih **WP aktif**, periksa periode dan hasil pemeriksaan integritas, lalu pilih tahun pada bagian yang akan digunakan. Paket dan isian kerja berada di memori tab. Unduh berkas kerja jika isian perlu dibuka kembali bersama paket yang sama. [Format dan pemeriksaan integritas](FORMAT.md)
 
 ## Profil, SPT dan data mentah
 
@@ -11,6 +11,8 @@ Pada **Dasbor → Ringkasan**, paket dengan SPT Badan menampilkan enam indikator
 **SPT → Daftar & isi SPT** mula-mula menampilkan versi terakhir. Lepaskan centang **Versi terakhir** untuk melihat normal beserta setiap pembetulan. **Dasar nilai** menjelaskan isian yang dipakai tiap formulir, termasuk jumlah disetor pada Unifikasi. Tanggal lapor menggunakan tanggal pengganti yang valid jika sumber memberi tahun penanda 0001. Batas pada sumber dan batas setelah akhir pekan ditampilkan terpisah. Kalender ini belum mencakup seluruh hari libur atau relaksasi.
 
 Untuk mencari SPT berdasarkan nomor bukti penerimaan elektronik (BPE), masukkan nomornya di pencarian tabel atau tekan **Ctrl+K**. Pemutar mengambil nomor dari kolom `DocumentReceiptNumber` pada daftar SPT. Jika kosong, pemutar memakai `BpsNo`. Nol di depan nomor tetap tampil dan ikut tersimpan di Excel. Jika kedua kolom kosong, formulir tetap bisa ditemukan berdasarkan jenis, masa, dan versinya.
+
+Pilih **Bandingkan versi**, lalu pilih lampiran. Pemutar memasangkan baris memakai nomor dokumen, faktur atau bukti potong yang unik di kedua versi, termasuk saat urutannya berpindah halaman. Ringkasan memisahkan dokumen baru, hilang, serta dokumen yang isiannya berubah. Tabel menampilkan isian yang berubah dan lokasi baris sumber di kedua versi. Nomor yang kosong, berulang atau bertentangan masuk **Baris yang perlu dicocokkan**. Selisih nominal ditampilkan bila angka dan cakupan kedua tabel lengkap. Gunakan **Excel perbandingan lampiran** untuk mengunduh ringkasan beserta rincian yang tersedia.
 
 Pada **Ringkasan SPT**, rekap PPN menyediakan 17 ukuran per bulan dan rekap PPh potong/pungut merinci pasal yang tersedia. Tabel dapat diekspor ke Excel. Buka **Sumber angka PK** atau **Sumber per pasal** untuk melihat asal angka. Jika nilai PK utama nol dan penyerahan terutang menyediakan angka pengganti, rekap menampilkan hasil pengganti serta kedua nilainya. Rincian induk tetap menampilkan angka dari masing-masing isian. Kompensasi serta posisi kurang/lebih bayar PPN dibaca per masa. Untuk PPh, jumlah nilai tersedia dapat bernilai nol pada kolom tanpa isian bulanan.
 
