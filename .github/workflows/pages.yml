@@ -20,6 +20,23 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/configure-pages@v5
       - run: python3 scripts/build-release.py
+      - name: Preserve earlier public ZIP links
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          directory=dist/site/download
+          gh api --paginate "repos/$GITHUB_REPOSITORY/releases" \
+            --jq '.[] | select(.draft == false) | . as $r | .assets[] | select(.name | endswith(".zip")) | [$r.tag_name,.name,.digest] | @tsv' > "$RUNNER_TEMP/published-zips"
+          while IFS=$'\t' read -r tag name digest; do
+            [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || continue
+            [[ "$name" == "scraping-coretax-v2-${tag#v}.zip" ]] || continue
+            if [[ ! -f "$directory/$name" ]]; then
+              gh release download "$tag" --pattern "$name" --dir "$directory"
+            fi
+            [[ "$digest" =~ ^sha256:[a-f0-9]{64}$ ]]
+            printf '%s  %s\n' "${digest#sha256:}" "$directory/$name" | sha256sum --check
+          done < "$RUNNER_TEMP/published-zips"
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist/site
