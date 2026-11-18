@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Unduh ekstensi Scraping Coretax Versi 2 dan ikuti panduan pemasangan prarilis untuk Chrome.">
+  <title>Scraping Coretax Versi 2 · Unduh ekstensi</title>
+  <link rel="stylesheet" href="site.css">
+</head>
+<body>
+  <header><a class="brand" href="#utama"><span class="logo" aria-hidden="true">S2</span> Scraping Coretax</a><nav aria-label="Navigasi utama"><a href="#cakupan">Fitur</a><a href="#pasang">Pemasangan</a></nav></header>
+  <main id="utama">
+    <section class="hero">
+      <div><p class="version"><span></span> Prarilis 0.1.0 untuk Chrome</p>
+        <h1>Scraping Coretax <em>Versi 2</em></h1>
+        <p class="lead">Kumpulkan tabel yang tampil di Coretax atau impor ekspor JSON dan CSV. Buka paket hasilnya di pemutar lokal untuk menelusuri profil, SPT, dan data sumber.</p>
+        <div class="download"><a class="primary" href="download/scraping-coretax-v2-0.1.0.zip" download>Unduh ekstensi <span aria-hidden="true">↓</span></a><a class="under" href="#pasang">Cara memasang</a></div>
+        <p class="detail">ZIP untuk Chrome desktop 116 ke atas · <a href="download/SHA256SUMS.txt">SHA-256</a></p>
+      </div>
+      <figure><div class="frame"><img src="preview.png" alt="Tampilan penarik data dengan bagian koneksi Coretax dan isian penugasan" width="1000" height="770"></div><figcaption>Penarik data · Tampilan ekstensi</figcaption></figure>
+    </section>
+    <section id="cakupan"><div class="section-head"><h2>Cakupan prarilis</h2><p>Versi ini bisa dicoba menggunakan berkas fiktif. Penarikan otomatis seluruh modul dan kesetaraan kertas kerja VERITAX masih dalam pengembangan.</p></div>
+      <div class="features">
+        <article><h3>Penarik data</h3><p>Pilih tabel yang terlihat atau tambahkan berkas ekspor. Periksa WP dan periode, lalu simpan paket terpisah untuk setiap WP.</p></article>
+        <article><h3>Pemutar paket</h3><p>Buka paket lokal, periksa integritasnya, lalu telusuri isi per bagian. Kelengkapan tampilan bergantung pada data dalam paket.</p></article>
+        <article><h3>Katalog offline</h3><p>Cari kode dan nama kegiatan dalam KBLI 2020 dan 2025. Telusuri indeks peraturan atau buka naskah resmi dari tautan sumber.</p></article>
+      </div>
+      <details><summary>Perbedaan dengan VERITAX v1.32.0</summary>
+        <ul><li>Penarik membaca tabel yang dipilih atau ekspor yang diberikan pengguna. Penelusuran otomatis seluruh menu Coretax dan semua lampiran SPT belum tersedia.</li>
+        <li>Pemutar dapat membaca paket contoh. Sebagian analisis khusus WP, aturan pemeriksaan, simulasi sanksi, dan keluaran kertas kerja resmi belum mencapai kesetaraan.</li>
+        <li>Katalog memakai klasifikasi dan metadata publik. Profil pemeriksaan khusus dan seluruh korpus peraturan VERITAX belum tercakup.</li>
+        <li>Pemeriksaan versi ini menggunakan sumber fiktif. Kesesuaian tampilan dan perilaku pada sesi Coretax dinas masih perlu diuji.</li></ul>
+      </details>
+    </section>
+    <section id="pasang"><div class="section-head"><h2>Pasang di Chrome</h2><p>Simpan folder hasil ekstraksi di lokasi tetap agar Chrome dapat membukanya kembali.</p></div>
+      <ol class="steps"><li><h3>Unduh dan ekstrak ZIP</h3><p>Pilih folder yang memuat berkas <code>manifest.json</code>.</p></li>
+      <li><h3>Buka halaman ekstensi</h3><p>Ketik <code>chrome://extensions</code> pada bilah alamat Chrome, lalu aktifkan <strong>Mode developer</strong>.</p></li>
+      <li><h3>Muat ekstensi</h3><p>Klik <strong>Muat yang belum dipaketkan</strong> atau <strong>Load unpacked</strong>, lalu pilih folder hasil ekstraksi.</p></li>
+      <li><h3>Buka ruang kerja</h3><p>Klik ikon Scraping Coretax Versi 2 di menu ekstensi. Pilih halaman penarik atau buka pemutar analisis dari sana.</p></li></ol>
+    </section>
+  </main>
+  <footer><span>Scraping Coretax Versi 2</span><a href="#utama">Kembali ke atas ↑</a></footer>
+</body>
+</html>

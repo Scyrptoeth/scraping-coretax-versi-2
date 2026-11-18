@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Penarik data · Scraping Coretax Versi 2</title>
+  <link rel="stylesheet" href="app-style.css"><script type="module" src="app-main.js"></script>
+</head>
+<body>
+<header>
+  <div class="brand"><span class="mark" aria-hidden="true">C2</span><div><h1>Scraping Coretax Versi 2</h1><p>Penarik data Coretax · Baca-saja</p></div></div>
+  <div class="actions"><span id="connection" role="status">Memeriksa tab…</span><button id="recheck">Cek ulang</button><button id="open-coretax" hidden>Buka Coretax</button><a href="analisis/index.html">Buka Analisis</a></div>
+</header>
+<main>
+  <section id="unlock-panel" hidden><h2>Simpanan terkunci</h2><form id="unlock-form" class="actions"><label>Kata sandi simpanan<input id="unlock-pass" type="password" autocomplete="current-password" required></label><button class="primary">Buka</button></form></section>
+  <aside class="notice"><strong>Hanya untuk kepentingan dinas.</strong> Ambil data WP yang termasuk dalam penugasan Anda. Simpan berkas hasilnya di perangkat dinas.
+    <details><summary>Keterangan penggunaan</summary><p>Periksa kembali identitas WP, periode, dan isi berkas sebelum menggunakannya sebagai bahan pengawasan atau pemeriksaan. Pengguna menentukan halaman atau ekspor resmi yang akan dimasukkan.</p></details>
+  </aside>
+  <fieldset id="workspace">
+    <section><h2><span>1</span>Penugasan</h2><p class="hint">Nama penarik dan dasar penugasan akan tercantum di berita acara.</p>
+      <div class="triple">
+        <label>Peran<select id="role"><option value="pemeriksa">Pemeriksa (SP2)</option><option value="ar">Account Representative (pengawasan)</option><option value="penelaah">Penelaah / supervisor</option><option value="lain">Lainnya</option></select></label>
+        <label>Jenis dasar penugasan<select id="basis"><option value="SP2">SP2 (Surat Perintah Pemeriksaan)</option><option value="SP2DK">SP2DK / pengawasan</option><option value="ST">Surat tugas</option><option value="ND">Nota dinas</option><option value="RUTIN">Penelaahan rutin</option><option value="LAIN">Lainnya</option></select></label>
+        <label>Nama penarik<input id="officer" autocomplete="off" placeholder="Nama untuk berita acara"></label>
+        <label>NIP (opsional)<input id="nip" autocomplete="off"></label><label>Nomor dasar penugasan (opsional)<input id="letter" autocomplete="off" placeholder="Nomor surat atau alasan penelaahan"></label><label>Tanggal (opsional)<input id="date" type="date"></label>
+      </div>
+      <label>Daftar NPWP yang ditarik<textarea id="ids" rows="4" placeholder="Satu NPWP per baris" autocomplete="off"></textarea></label>
+      <div class="actions"><label class="file">Muat dari file .txt<input type="file" id="id-file" accept=".txt,.csv"></label><small id="id-status">NPWP 15 digit akan dilengkapi menjadi 16 digit.</small></div>
+    </section>
+    <section><h2><span>2</span>Data yang ditarik</h2>
+      <div class="double"><div><h3>Periode (masa pajak)</h3><div class="double compact">
+        <label>Dari bulan<select id="month-start"></select></label><label>Dari tahun<select id="year-start"></select></label>
+        <label>Sampai bulan<select id="month-end"></select></label><label>Sampai tahun<select id="year-end"></select></label>
+      </div><p class="hint" id="period-info"></p><h3>Jenis SPT</h3><div id="forms" class="chips"></div></div>
+      <div><h3>Sumber data</h3><div id="sources"></div></div></div>
+    </section>
+    <section><h2><span>3</span>Cara menarik</h2><p class="hint">Tambahkan tabel yang terlihat di Coretax atau berkas ekspor JSON/CSV. Jika tombol halaman berikutnya dapat dikenali, Anda bisa mengambil beberapa halaman sekaligus. Untuk tabel lain, tambahkan satu halaman setiap kali.</p>
+      <div class="triple"><label>WP pemilik data<select id="owner"></select></label><label>Sumber yang ditambahkan<select id="source"></select></label><label id="spt-field" hidden>Jenis SPT sumber<select id="spt"></select></label></div>
+      <label class="check"><input id="scope-ok" type="checkbox">Saya sudah mencocokkan WP dan periode pada sumber dengan pilihan di atas.</label>
+      <div class="double"><div><h3>Tabel di tab Coretax</h3><label>Tab yang digunakan<select id="tab"></select></label><button id="list-tables">Daftar tabel di halaman</button>
+        <div id="table-pick" hidden><label>Tabel yang terlihat<select id="table"></select></label><button id="add-table">Tambahkan tabel</button>
+          <details id="pagination-options" hidden><summary>Ambil beberapa halaman</summary><p class="hint">Setiap baris harus menampilkan NPWP pemilik yang dipilih. Batas halaman dihitung mulai dari halaman yang sedang terbuka.</p><label>Jumlah halaman maksimal<input id="page-limit" type="number" min="1" max="100" value="5"></label>
+            <div class="actions"><button id="collect-pages">Mulai baca halaman</button><button id="pause-pages" hidden>Jeda pembacaan</button><button id="stop-pages" hidden>Hentikan pembacaan</button></div><p id="page-status" role="status"></p>
+          </details></div>
+      </div><div><h3>Berkas ekspor</h3><label class="file">Tambahkan JSON atau CSV<input type="file" id="source-files" multiple accept=".json,.csv"></label><p class="hint">Berkas diproses di perangkat ini. Satu berkas harus berisi data untuk satu WP dan periode terpilih.</p></div></div>
+      <div id="queue"></div><label class="check"><input id="dedupe" type="checkbox" checked>Lewati salinan identik dari sumber yang sama dalam tarikan ini.</label>
+    </section>
+    <section><h2><span>4</span>Tarik data</h2><details><summary>Bagaimana prosesnya?</summary><p>Ekstensi menyalin teks tabel yang Anda pilih atau membaca ekspor yang Anda tambahkan. Setiap WP mendapat paket terpisah. Seluruh pemrosesan dan penyimpanan hasil berlangsung di perangkat ini.</p></details>
+      <label class="check notice"><input type="checkbox" id="consent">Saya menarik data sesuai penugasan dan akan menjaga kerahasiaannya.</label>
+      <div class="actions"><button id="preview">Pratinjau WP</button><button id="start" class="primary" disabled>Mulai tarik</button><button id="resume" hidden>Lanjutkan tarikan yang terhenti</button><button id="pause" hidden>Jeda</button><button id="stop" class="danger" hidden>Hentikan</button></div>
+      <div id="preview-box"></div><progress id="progress" value="0" max="1" hidden></progress><p id="status" role="status"></p>
+      <div class="actions spread"><h3>Catatan proses</h3><label class="check"><input type="checkbox" id="problems">Hanya masalah</label></div><ol id="log"></ol>
+    </section>
+    <section><h2><span>5</span>Hasil &amp; paket</h2><div id="results"></div>
+      <details><summary>Log penarikan (jejak audit)</summary><p>Log mencatat tarikan, pembuatan paket, dan penghapusan simpanan. Setiap entri memuat sidik jari entri sebelumnya.</p><button id="audit">Unduh log (CSV)</button></details>
+      <details open><summary>Keamanan simpanan di Chrome ini</summary><p id="security"></p><div id="encryption"><div class="double"><label>Kata sandi baru (min. 10 karakter)<input type="password" id="new-pass" autocomplete="new-password"></label><label>Ulangi kata sandi<input type="password" id="repeat-pass" autocomplete="new-password"></label></div><button id="encrypt">Aktifkan enkripsi</button></div>
+        <button id="lock" hidden>Kunci simpanan</button><label class="retention">Hapus otomatis setelah (hari)<input id="retention" type="number" min="7" max="730" value="90"></label><button id="save-retention">Simpan masa retensi</button><hr><button id="wipe" class="danger">Hapus semua data WP</button>
+      </details>
+    </section>
+  </fieldset>
+  <p id="notice" role="alert" aria-live="assertive"></p>
+</main>
+<dialog id="package-dialog"><form method="dialog"><h2>Unduh paket</h2><p>Gunakan ZIP biasa atau masukkan kata sandi untuk mengunci paket .sedotax.</p>
+  <label>Kata sandi paket (opsional)<input type="password" id="package-pass" autocomplete="new-password"></label><label>Ulangi kata sandi<input type="password" id="package-repeat" autocomplete="new-password"></label><p id="package-error" role="alert"></p>
+  <div class="actions"><button value="cancel">Batal</button><button value="ok" class="primary">Unduh</button></div></form></dialog>
+</body></html>

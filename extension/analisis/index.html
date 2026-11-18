@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <title>Analisis · Scraping Coretax Versi 2</title>
+  <link rel="stylesheet" href="viewer.css">
+</head>
+<body>
+  <a class="skip" href="#content">Lewati ke isi</a>
+  <header class="mast"><div class="identity"><span class="mark" aria-hidden="true">S2</span><div><h1>Scraping Coretax Versi 2</h1><p>Analisis paket &amp; kertas kerja · Offline</p></div></div>
+    <div class="selectors"><label for="role">Peran</label><select id="role"><option>Pemeriksa</option><option>AR</option><option>Penelaah</option></select><label for="taxpayer">WP aktif</label><select id="taxpayer"><option value="">Muat paket dahulu</option></select></div>
+  </header>
+  <nav id="navigation" aria-label="Bagian aplikasi"></nav>
+  <main id="content" tabindex="-1"><p id="crumb"></p><p id="status" role="status" hidden></p><div id="screen"></div></main>
+  <footer><strong>Scraping Coretax Versi 2</strong> · Pemutar paket lokal. Data pada halaman ini diproses di komputer Anda.</footer>
+  <dialog id="dialog" aria-labelledby="dialog-title"><h2 id="dialog-title"></h2><div id="dialog-body"></div><button id="close-dialog" class="secondary">Tutup</button></dialog>
+  <script type="module" src="viewer.js"></script>
+</body></html>
