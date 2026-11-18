@@ -27,7 +27,8 @@ jobs:
         id: deploy
         uses: actions/deploy-pages@v4
   prerelease:
-    if: github.event_name == 'push' && startsWith(github.event.head_commit.message, 'release: v')
+    if: >-
+      github.event_name == 'push' && startsWith(github.event.head_commit.message, 'release: v')
     runs-on: ubuntu-latest
     permissions:
       contents: write
