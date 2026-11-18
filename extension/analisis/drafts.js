@@ -1,10 +1,9 @@
 import { createDocx } from "../archive/document.js";
 import { readXlsx } from "../archive/read-table.js";
 import { box, button, card, download, el, exportSheets, field, notice, select, toggleSet } from "./ui.js";
-import { allowedDrafts, blankFinding, draftOutput, draftSheets, draftTitles, importAnswers, newDraft, suggestQuestions, visibleFindings } from "./draft-model.js";
+import { allowedDrafts, blankFinding, draftFindings, draftOutput, draftSheets, draftTitles, importAnswers, newDraft, suggestQuestions, visibleFindings } from "./draft-model.js";
 
-function printDocument(doc, variant) {
-  const spec = draftOutput(doc, variant);
+export function printOutput(spec) {
   const win = window.open("", "_blank", "popup,width=980,height=720");
   if (!win) { notice("Izinkan jendela cetak untuk membuat PDF.", true); return; }
   win.opener = null;
@@ -46,7 +45,7 @@ export function renderDrafts(target, state, pkg, work, onSave) {
   target.append(host);
   let type=allowed.includes(state.draftType)?state.draftType:allowed[0], active=state.draftId || "";
   function choose(doc) { active=doc.id;type=doc.type;state.draftId=active;state.draftType=type;paint(); }
-  function add(source) { const doc=newDraft(type,pkg,year,source,work.rows);work.drafts.push(doc);save();choose(doc); }
+  function add(source) { const doc=newDraft(type,pkg,year,source,work.rows,work.dispositions);work.drafts.push(doc);save();choose(doc); }
   function paint() {
     const available=scope().filter(d=>d.type===type);
     const doc=available.find(d=>d.id===active) || available.at(-1);
@@ -77,7 +76,7 @@ export function renderDrafts(target, state, pkg, work, onSave) {
       try { download(await createDocx(draftOutput(doc,variant)),fileBase+(variant==="main"?"":"-"+variant)+".docx"); }
       catch(e) { notice("Word gagal dibuat. "+e.message,true); }
     };
-    const actions=box("toolbar",button("Unduh Word",()=>word()),button("Cetak / PDF",()=>printDocument(doc,"main")),
+    const actions=box("toolbar",button("Unduh Word",()=>word()),button("Cetak / PDF",()=>printOutput(draftOutput(doc,"main"))),
       button("Unduh Excel",()=>exportSheets(draftSheets(doc),fileBase)));
     if(type==="BAPK")actions.append(button("Surat panggilan (Word)",()=>word("invitation")),button("Naskah tanpa jawaban",()=>word("blank")));
     actions.append(button("Hapus konsep",()=>{
@@ -117,6 +116,11 @@ export function renderDrafts(target, state, pkg, work, onSave) {
     } else {
       const grid=card("Data untuk klarifikasi");
       grid.append(select([["all","Berbukti + indikatif"],["verified","Berbukti saja"]],doc.scope,value=>{
+        if(doc.findings.length && !window.confirm("Susun ulang baris temuan dari sumber? Suntingan pada baris, jawaban WP, dan nilai pembahasan akan diganti. Uraian dan catatan konsep tetap tersimpan.")) {
+          paint();return;
+        }
+        const origin=doc.related && scope().find(d=>d.id===doc.related.id && d.type==='SP2DK');
+        doc.findings=draftFindings(pkg,year,work.rows,work.dispositions,origin);
         doc.scope=value;save();paint();
       },"Temuan yang dimasukkan"),button("Tambah baris",()=>{const r=blankFinding();doc.findings.push(r);doc.scope="all";save();paint();}));
       for(const [index,f] of visibleFindings(doc).entries()) {

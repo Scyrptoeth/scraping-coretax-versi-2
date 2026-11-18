@@ -1,28 +1,44 @@
 # Pemutar paket dan kertas kerja
 
-Buka pemutar dari **Buka di Analisis** pada hasil penarikan, atau buka halaman analisis ekstensi dan pilih satu atau beberapa paket lokal. Setelah berkas terbaca, pilih **WP aktif** dan periksa identitas, periode, serta mutu paket. Berkas paket dan isian kerja berada di memori tab. Unduh berkas kerja sebelum menutup tab jika isian perlu digunakan kembali.
+Pada prarilis 0.2.0, pilih **Buka di Analisis** sesudah penarikan atau buka beberapa paket ZIP lokal dari tab **Muat paket**. Pilih **WP aktif**, periksa periode dan hasil pemeriksaan integritas, lalu pilih tahun pada bagian yang akan digunakan. Paket dan isian kerja berada di memori tab. Unduh berkas kerja jika isian perlu dibuka kembali bersama paket yang sama. [Format dan pemeriksaan integritas](FORMAT.md)
 
-## Acuan dan bukti
+## Profil, SPT dan data mentah
 
-Pembanding lokal untuk Versi 2 adalah navigasi pada berkas distribusi VERITAX v1.32.0 \`ekstensi-veritax/analisis/index.html\`, bab 4–9 dalam \`PANDUAN.txt\`, serta bab 9 dan 11–26 dalam buku panduan PDF. Paket fiktif digunakan sebagai masukan pengujian. Contoh tersebut tetap berada di folder referensi lokal.
+| Bagian | Cara membaca hasil |
+| --- | --- |
+| Profil WP Badan | Pemegang saham pada registrasi dibandingkan dengan SPT Badan. Tabel menunjukkan data yang cocok dan yang hanya muncul pada salah satu sumber. Bagian lain memuat pengurus, penyertaan modal, tahun buku, KLU, relasi transaksi dan pembayaran sesuai isi paket. |
+| Profil WP Orang Pribadi | Pilih bagian rezim, ringkasan SPT, penghasilan dan bukti potong, harta dan utang, atau keluarga dan PTKP. Data memuat tahun serta berkas sumber bila tersedia. **Excel semua bagian** mengekspor bagian profil WP aktif. |
+| Riwayat KLU dan pembayaran | KLU utama per tahun memakai tanggal berlaku registrasi. Untuk pembayaran, pemutar mencari kewajiban buku besar yang merujuk SPT versi terakhir dan membandingkan setoran pada kode akun pajak serta masa yang sama. Petugas masih perlu memeriksa alokasi setoran. |
+| SPT | Saring daftar menurut tahun, jenis atau pembetulan. Buka satu versi, pilih induk atau lampiran, cari nama isian, kode atau nilai, dan bandingkan satu bagian dengan versi lain. Lima jenis yang diuji ialah PPN, PPh Badan, PPh OP, PPh 21/26 dan PPh Unifikasi. Excel dan cetak tersedia untuk satu formulir atau gabungan hasil pilihan. |
+| PPN non-PKP / pemungut | Jenis keenam dapat dibuka dari paket yang menyediakan induk, L1, L2 atau total L2. Ekspor Excel empat bagian diuji dengan paket sintetis. Keempat paket contoh acuan tidak memuat formulir jenis ini. |
+| Ringkasan SPT dan dasbor | **Ringkasan SPT** menampilkan PPN per masa, potong/pungut dan kalender pelaporan. Untuk menilai ketepatan lapor, periksa tanggal batas di sumber, hari libur dan keadaan WP. |
+| Perbandingan antar-WP | Muat dua paket WP yang berbeda, pilih jenis dan masa SPT yang sama. Dasbor menampilkan versi terakhir, nilai, isian asal, mata uang dan bukti penerimaan bila tersedia. Selisih hanya dihitung jika kedua nilai tersedia dan mata uangnya sama. Excel memuat angka pembanding dan sumber kedua WP. |
+| Data mentah | Pilih sumber untuk mencari, mengurutkan dan mengekspor baris. Tabel administratif dengan masa yang tidak tercantum dapat dibuka di sini. Rincian yang tersedia mengikuti bidang pada paket. |
 
-Status **terverifikasi** di tabel berikut berlaku pada perilaku yang disebutkan dalam baris itu. **Berbeda** berarti ada selisih fungsi yang diketahui. **Belum teruji** berarti bukti perbandingan belum tersedia.
+Gunakan **Ctrl+K** untuk mencari bagian profil, tabel sumber, atau formulir menurut jenis SPT, masa, versi, atau BPE. Membuka kembali tautan formulir memerlukan paket asal.
 
-| Bagian | Status | Hasil pada versi ini |
-|---|---|---|
-| Buka dan periksa paket | Terverifikasi | Pemutar menerima keempat paket ZIP fiktif dari acuan. Uji peramban juga membuka paket sintetis terenkripsi dengan kata sandi, menampilkan laporan sidik jari, serta mengganti paket aktif. Rincian format dan verifikasi ada di FORMAT.md. |
-| Navigasi, peran dan tampilan | Berbeda | Sembilan tab utama mengikuti urutan acuan. Tab yang memerlukan data terbuka setelah impor. Ada pilihan Pemeriksa, AR dan Penelaah, Cari cepat, riwayat tab, tema, ukuran, kontras dan pintasan papan ketik. Pencarian lintas indeks kertas kerja dan tautan dalam ke formulir individual belum tersedia. |
-| Profil WP dan data mentah | Berbeda | Berkas dapat dipilih berdasarkan sumber, ditelusuri, disaring, diurutkan, dan diekspor ke Excel. Informasi umum ditampilkan sebagai pasangan isian dan nilai. Pengelompokan 23 bagian profil Badan dan menu khusus OP pada acuan belum direproduksi seluruhnya. |
-| Daftar dan isi SPT | Berbeda | Daftar terstruktur mendukung jenis, tahun, versi terakhir, pembetulan, dan tanggal lapor melewati batas yang dicantumkan sumber. Formulir menampilkan induk, lampiran dan perubahan versi. Excel dan cetak tersedia. Tata letak formulir pajak resmi, penautan pembayaran dan cetak gabungan semua formulir belum setara. |
-| Ringkasan dasbor | Berbeda | Tersedia enam bagian. Angka induk menggunakan pembetulan tertinggi per jenis dan periode. Indikator bersumber dari berkas, mencakup nilai induk PPN, PPh tahunan, potong/pungut, buku besar, lawan transaksi dan akun keuangan yang dikenali. Nilai kosong dipertahankan. Grafik dan panel indikasi belum mencakup seluruh materi acuan. |
-| Butir pengujian dan analisis lanjutan | Berbeda | Pemutar menunjukkan pembetulan, keterlambatan menurut tanggal di sumber dan berkas bertanda belum lengkap. Analisis rasio sektoral, uji 3M, ekualisasi lintas pajak, simulasi sanksi, rekonsiliasi temuan, peta hubungan dan perbandingan antar-WP belum tersedia sebagai mesin pengujian lengkap. |
-| Kertas kerja | Berbeda | Pengguna dapat memasukkan fakta, sumber, dua angka pembanding, simpulan, petugas dan status. Selisih dihitung saat kedua angka terisi. Excel, Word dan cetak tersedia. Isian dan draf berita acara dapat dibawa ke sesi berikutnya melalui JSON yang terikat pada paket dan tahun. Format lengkap SE-08/ND-306, daftar indeks, kalibrasi dan rumus silang acuan memerlukan implementasi lanjutan. |
-| Konsep dokumen dan katalog | Berbeda | Baca KONSEP.md untuk alur SP2DK, BAP2DK, BAPK dan keluaran. Baca KATALOG.md untuk cakupan peraturan, klasifikasi kegiatan ekonomi, profil Probis dan sumbernya. |
-| Bantuan dan mode pengembang | Berbeda | Bantuan menjelaskan alur paket, SPT, kertas kerja, data lokal dan pintasan. Alat eksperimental impor appportal dan sanitasi HAR serta pembaruan aturan melalui berkas tidak disertakan pada prarilis ini. |
-| Perbandingan visual dan hasil fiskal keseluruhan | Belum teruji | Tata letak mengikuti hierarki, kontrol dan alur pada berkas statis serta buku panduan. Kesetaraan tiap piksel dengan dua tab Chrome terpasang dan kesamaan semua perhitungan pajak pada seluruh kombinasi data belum diverifikasi. |
+Pada tab **Probis**, katalog menyediakan KBLI 2020 dan 2025 serta 60 kode KLU kategori Z dari lampiran DJP. Pilih kode untuk melihat jenjang, uraian dan halaman rujukan. Kalkulator memakai omzet tiap kegiatan dan menampilkan langkah penentuan KLU per jenjang. [Cakupan dan sumber katalog](KATALOG.md)
 
-## Jalur pengujian
+## Kertas kerja
 
-- \`node --test tests/viewer.test.mjs\` memeriksa pembetulan tertinggi, batas menurut tanggal sumber, nilai nol, kolom kosong, identitas berawalan nol dan perbedaan isian.
-- \`node tests/viewer-browser.mjs\` menjalankan pemutar baru pada Chromium terisolasi melalui loopback. Cakupannya meliputi profil, pembetulan PPN, kertas kerja manual, unduhan Excel, simpan JSON, navigasi dasbor, pencarian cepat, tampilan ponsel 390 piksel dan paket terenkripsi. Untuk menjalankan kembali perbandingan format dengan keempat contoh, arahkan \`VERITAX_FIXTURES\` ke direktori contoh lokal. Lingkungan memerlukan Playwright dan Chromium. \`PLAYWRIGHT_MODULE\` serta \`CHROMIUM_PATH\` dapat menunjuk instalasi yang sudah tersedia.
-- Dalam pengujian 18 November 2026, kedua uji model dan alur Chromium di atas berhasil, termasuk impor empat paket contoh Badan, Badan migrasi, OP, dan OP pekerjaan bebas.
+1. Di **KKP** atau **KKA**, pilih **Tambah butir**. Catat fakta, sumber, nilai menurut WP dan petugas, simpulan, klasifikasi serta status penelaahan. Pokok hasil pengujian mempunyai isian tersendiri. Klasifikasi berbukti memerlukan fakta dan rujukan.
+2. Periksa **Rincian dan penelaahan temuan**. Tanggal lapor dan sisa tagihan menunjukkan fakta sumber. Faktur dengan nomor, pemasok dan tanggal yang sama di B2 versi terakhir pada beberapa masa merupakan petunjuk untuk pengujian hak pengkreditan. Butir yang ditandai terjelaskan atau tidak relevan dikeluarkan dari keluaran.
+3. Tentukan **Temuan yang dimasukkan**. KKP dimulai dengan **Berbukti saja**. KKA dan konsep SP2DK baru dimulai dengan **Berbukti + indikatif**. Setiap dokumen memiliki pilihannya sendiri.
+4. Gunakan **Excel kertas kerja**, **Word**, atau **Cetak / PDF**. Excel KKP memuat rumus selisih untuk dua nilai pembanding yang terisi. KKA memuat profil, kriteria pemilihan WP, perbandingan SPT dua tahun pada Tabel 4.1, potensi per jenis dan rinciannya pada Tabel 5 dan 5.1, serta usulan petugas. Pilihan indikatif menambahkan Lampiran L-9. [Konsep surat dan berita acara](KONSEP.md)
+5. Gunakan **Unduh berkas kerja** untuk menyimpan pilihan, catatan, draf dan simulasi. **Buka berkas kerja** mencocokkan paket dan tahun. Berkas lama dapat dibuka dengan pilihan awal untuk bidang yang belum ada pada versi sebelumnya.
+
+## Simulasi SKPKB
+
+Di **Kertas Kerja → Simulasi sanksi**, isi tanggal rencana ketetapan dan tambahkan satu baris per jenis pajak dan masa yang diuji. Isi dasar bunga dari hasil pengujian atau salin dari butir berbukti. Untuk simulasi kenaikan atas kompensasi, masukkan masa penerima dan jumlah yang menurut bukti benar-benar digunakan secara tidak semestinya.
+
+Simulator mencakup bunga Pasal 13 ayat (2) untuk penghitungan yang dimulai sesudah masa atau tahun pajak berakhir, serta kenaikan 75% PPN/PPnBM untuk kasus kompensasi yang sesuai. Jika kedua sanksi berlaku pada satu ketetapan PPN/PPnBM, simulator membandingkan keduanya dan memakai nilai tertinggi menurut Pasal 13 ayat (3a). Bunga memakai tarif resmi pada bulan pertama penghitungan, dengan bagian bulan dihitung penuh dan batas 24 bulan. Tarif tersedia untuk Januari 2023–November 2026. [UU HPP](https://pajak.go.id/id/peraturan/harmonisasi-peraturan-perpajakan) · [Penjelasan Pasal 20 PP 50/2022](https://pajak.go.id/index.php/id/peraturan/tata-cara-pelaksanaan-hak-dan-pemenuhan-kewajiban-perpajakan) · [KMK November 2026](https://jdih.kemenkeu.go.id/dok/kmk-52mkef22026)
+
+**Excel simulasi** memuat ringkasan per jenis, rincian per masa, penelusuran kompensasi dan rujukan. Pokok kosong, sumber yang belum diisi atau tarif yang belum tersedia membuat hasil terkait tetap kosong. Nominal yang dapat dihitung merupakan perkiraan sebelum pembulatan rupiah. Penghitungan yang dimulai pada tanggal transaksi dan aliran koreksi otomatis dari seluruh kertas kerja pendukung masih di luar cakupan.
+
+## Pengujian dan batas perbandingan
+
+Uji pemutar menggunakan empat paket fiktif acuan, meliputi Badan, Badan migrasi, OP dan OP pekerjaan bebas. Untuk mengulangi uji, jalankan `node --test tests/*.test.mjs`. Uji peramban profil, formulir, kertas kerja dan draf tersedia di `tests/profile-browser.mjs`, `tests/spt-browser.mjs`, `tests/findings-browser.mjs` dan `tests/drafts-browser.mjs`. Jalankan dengan Node, Playwright dan Chromium. Untuk uji profil dan SPT, arahkan `VERITAX_FIXTURES` ke direktori empat arsip fiktif. Bila perlu, tentukan `PLAYWRIGHT_MODULE` dan `CHROMIUM_PATH` untuk instalasi lokal.
+
+Uji intranet memakai satu baris Daftar Kasus Aktif melalui ekspor resmi di Chrome. Ke-14 bidang data cocok di CSV, ZIP dan pemutar. Pengujian tersebut mencakup alur impor CSV. Paginasi dan pembacaan langsung oleh ekstensi di tab Coretax produksi masih memerlukan pengujian tersendiri.
+
+Urutan sembilan tab, pilihan peran, tampilan dan pintasan mengacu pada distribusi dan buku panduan VERITAX v1.32.0. Perbandingan menyeluruh terhadap dua tab ekstensi rujukan yang terpasang, seluruh tata letak formulir resmi, rumus silang KKP/KKA, analisis sektor serta pembaruan aturan dari berkas masih terbuka. [Matriks kesetaraan](KESETARAAN.md)

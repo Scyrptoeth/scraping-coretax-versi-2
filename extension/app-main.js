@@ -2,13 +2,15 @@ import {forms,catalogue,sources,readIds,filePage,rowsOf,checkIdentity,reportSour
 import * as vault from './app-vault.js';
 import {putHandoff, removeExpiredHandoffs} from './app-handoff.js';
 import {createPackage,sha256} from './archive/package.js';
+import {batchCollector} from './app-batch.js';
+import {appendPackageEntry,metaForSelection} from './app-package-entries.js';
 
 const $ = id => document.getElementById(id);
 const coretax = 'https://coretax.intranet.pajak.go.id';
 const ext = globalThis.chrome?.runtime?.id ? globalThis.chrome : null;
 const queue = [], messages = [];
 let tables = [], tabUrl = '', job, stored = [], busy = false, paused = false, stop = false, noticeTimer;
-let paging=false,pagingPaused=false,pagingStopped=false;
+let paging=false,pagingPaused=false,pagingStopped=false,batch;
 const sleep = ms => new Promise(resolve => setTimeout(resolve,ms));
 const checked = id => [...$(id).querySelectorAll('input:checked')].map(el => el.value);
 const val = id => $(id).value.trim();
@@ -71,10 +73,13 @@ function sourceChanged() {
   choices($('source'),Object.entries(sources).filter(([id]) => allowed.includes(id)));
   choices($('spt'),forms.filter(([id]) => checked('forms').includes(id)));
   $('spt-field').hidden = !val('source').startsWith('spt');
+  $('undated-field').hidden = val('source')!=='tabelumum';
+  $('undated-general').checked=false;
   $('scope-ok').checked = false; scopeChanged();
 }
 function scopeChanged() {
-  try { $('period-info').textContent = 'Periode terpilih · '+period(); }
+  try { $('period-info').textContent = val('source')==='tabelumum' && $('undated-general').checked ?
+    'Tabel umum yang ditambahkan akan disimpan tanpa masa pajak.' : 'Periode terpilih · '+period(); }
   catch(e) { $('period-info').textContent = e.message; }
   $('preview-box').replaceChildren();
   $('preview-box').dataset.key = '';
@@ -89,15 +94,22 @@ function scope() {
   const spt = source.startsWith('spt') ? val('spt') : '';
   if (source.startsWith('spt') && !spt) throw new Error('Pilih jenis SPT untuk sumber ini.');
   if (!$('scope-ok').checked) throw new Error('Cocokkan dan centang pernyataan WP serta periode pada sumber.');
-  return {wp,source,spt,period:period()};
+  const undated=source==='tabelumum' && $('undated-general').checked;
+  return {wp,source,spt,period:undated?null:period()};
 }
 function addEntry(info,page,name,origin) {
-  const rows = rowsOf(page); checkIdentity(rows,info.wp);
+  const rows = rowsOf(page);
+  if(!rows.length) throw Error('Tabel kosong. Belum ada baris yang dapat ditambahkan.');
+  checkIdentity(rows,info.wp);
+  if(info.period===null && rows.some(row=>row && typeof row==='object' && Object.entries(row).some(([key,value])=>
+    ['masapajak','periodepajak','taxperiod','taxperiodcode','tahunpajak','taxyear'].includes(key.toLowerCase().replace(/[^a-z]/g,'')) && value!=null && String(value).trim()!==''))) {
+    throw Error('Sumber ini memuat masa atau tahun pajak. Lepaskan pilihan tanpa masa dan cocokkan periode.');
+  }
   queue.push({...info,page,name,origin,...reportSource(page),id:crypto.randomUUID()});
 }
 function renderQueue() {
   const box = $('queue'); box.replaceChildren();
-  queue.forEach(entry => line(box,entry.wp+' · '+sources[entry.source]+' · '+entry.name+' · '+entry.rows+' baris',[
+  queue.forEach(entry => line(box,entry.wp+' · '+sources[entry.source]+' · '+entry.name+' · '+entry.rows+' baris'+(entry.period===null?' · Masa tidak tercantum':''),[
     button('Keluarkan',() => { if (busy || job) throw new Error('Selesaikan tarikan aktif terlebih dahulu.'); queue.splice(queue.indexOf(entry),1); scopeChanged(); })
   ]));
 }
@@ -128,16 +140,17 @@ function pageOptions() {
   $('pagination-options').hidden=!entry?.canAdvance;
 }
 async function addTable() {
-  if (busy || job || paging) throw new Error('Selesaikan tarikan aktif terlebih dahulu.');
+  if (busy || job || paging || batch.active) throw new Error('Selesaikan tarikan aktif terlebih dahulu.');
   const info = scope(), tab = await tabNow(), entry = tables.find(x => String(x.index) === val('table'));
   if (!entry) throw new Error('Pilih tabel terlebih dahulu.');
+  if (!entry.rows) throw new Error('Tabel kosong. Belum ada baris yang dapat ditambahkan.');
   const [frame] = await ext.scripting.executeScript({target:{tabId:tab.id},func:visibleTables,args:[{...entry,url:tabUrl}]});
   if (!Array.isArray(frame?.result)) throw new Error('Tabel tidak dapat dibaca. Periksa ulang halaman.');
   addEntry(info,{Payload:{Data:frame.result}},entry.title,'Tabel tampak');
   $('scope-ok').checked = false; scopeChanged(); message('Tabel ditambahkan ke antrean.');
 }
 async function collectPages() {
-  if (busy || job || paging) throw new Error('Selesaikan tarikan aktif terlebih dahulu.');
+  if (busy || job || paging || batch.active) throw new Error('Selesaikan tarikan aktif terlebih dahulu.');
   const limit=Number(val('page-limit'));
   if(!Number.isInteger(limit) || limit<1 || limit>100) throw new Error('Pilih batas antara 1 dan 100 halaman.');
   const info=scope(),tab=await tabNow(),entry=tables.find(t=>String(t.index)===val('table'));
@@ -154,7 +167,7 @@ async function collectPages() {
   let added=0;
   try {
     let page=await read(selector);
-    if(!Array.isArray(page)) throw new Error('Halaman pertama tidak tersedia.');
+    if(!Array.isArray(page) || !page.length) throw new Error('Tabel kosong atau halaman pertama tidak tersedia.');
     while(added<limit && !pagingStopped) {
       const serialized=JSON.stringify(page),hash=await vault.digest(serialized);
       if(seen.has(hash)) throw new Error('Halaman berulang. Periksa paginator Coretax sebelum melanjutkan.');
@@ -181,7 +194,7 @@ async function collectPages() {
 async function importFiles() {
   const files = [...$('source-files').files]; $('source-files').value = '';
   if (!files.length) return;
-  if (busy || job) throw new Error('Selesaikan tarikan aktif terlebih dahulu.');
+  if (busy || job || batch.active) throw new Error('Selesaikan tarikan aktif terlebih dahulu.');
   const info = scope();
   for (const file of files) {
     try { addEntry(info,filePage(file.name,await file.text()),file.name,'Ekspor lokal'); }
@@ -190,15 +203,18 @@ async function importFiles() {
   $('scope-ok').checked = false; scopeChanged();
 }
 function prepare() {
-  const ids = readIds(val('ids')), allowed = checked('sources'), types = checked('forms'), range = period();
+  const ids = readIds(val('ids')), allowed = checked('sources'), types = checked('forms');
   if (!ids.length || !val('officer')) throw new Error('Isi daftar NPWP dan nama penarik.');
   if (val('letter') && val('basis') !== 'RUTIN' && (val('letter').length < 6 || !/\d/.test(val('letter')))) throw new Error('Nomor dasar penugasan harus memuat angka dan sedikitnya 6 karakter.');
   if (!$('consent').checked) throw new Error('Centang pernyataan kerahasiaan terlebih dahulu.');
-  const relevant = queue.filter(e => ids.includes(e.wp) && allowed.includes(e.source) && (!e.spt || types.includes(e.spt)) && e.period === range);
+  const matching = queue.filter(e => ids.includes(e.wp) && allowed.includes(e.source) && (!e.spt || types.includes(e.spt)));
+  const range=matching.some(e=>e.period!==null)?period():null;
+  const relevant=matching.filter(e=>e.period===range || (e.source==='tabelumum' && e.period===null));
   if (!relevant.length) throw new Error('Tambahkan tabel atau berkas yang sesuai dengan WP, periode, dan sumber terpilih.');
   const plans = ids.map(wp => ({wp, entries:relevant.filter(e => e.wp === wp)}));
   const meta = {penugasan:{peran:val('role'),jenis:val('basis'),nomor:val('letter'),tanggal:val('date')},penarik:{nama:val('officer'),nip:val('nip')},periode:range,
-    opsi:{metode:'Tabel yang terlihat atau ekspor lokal',jenisSpt:types,sumber:allowed,lewatiDuplikat:$('dedupe').checked}};
+    opsi:{metode:'Tabel yang terlihat atau ekspor lokal',jenisSpt:types,sumber:allowed,lewatiDuplikat:$('dedupe').checked,
+      periode:{from:{y:Number(val('year-start')),m:Number(val('month-start'))},to:{y:Number(val('year-end')),m:Number(val('month-end'))}}}};
   return {plans,meta,excluded:queue.length-relevant.length};
 }
 function showPreview() {
@@ -222,7 +238,7 @@ function jobButtons() {
   if (job) { $('progress').max = job.plans.length; $('progress').value = job.cursor; }
 }
 async function run(fresh) {
-  if (busy || paging) return;
+  if (busy || paging || batch.active) return;
   await navigator.locks.request('scv2-capture-job',{ifAvailable:true},async lock => {
     if (!lock) throw new Error('Tarikan sedang berjalan pada tab penarik lainnya.');
     if (busy) return;
@@ -235,7 +251,7 @@ async function run(fresh) {
         const selected = $('preview-box').dataset.key ? checked('preview-box') : prepared.plans.map(p => p.wp);
         const plans = prepared.plans.filter(p => p.entries.length && selected.includes(p.wp));
         if (!plans.length) throw new Error('Pilih setidaknya satu WP yang memiliki data.');
-        const draft = {id:'pending-job',kind:'job',plans,meta:prepared.meta,cursor:0,runId:crypto.randomUUID()};
+        const draft = {id:'pending-job',kind:'job',plans,meta:metaForSelection(prepared.meta,plans.flatMap(p=>p.entries)),cursor:0,runId:crypto.randomUUID()};
         await vault.save([{id:draft.id,value:draft}],'Mulai tarik',{jumlahWP:plans.length,penarik:draft.meta.penarik.nama,dasar:draft.meta.penugasan.nomor});
         job = draft;
       }
@@ -244,7 +260,7 @@ async function run(fresh) {
       while (job.cursor < job.plans.length) {
         while (paused && !stop) await sleep(100);
         if (stop) break;
-        const plan = job.plans[job.cursor], seen = new Set(), entries = [], checks=[];
+        const plan = job.plans[job.cursor], seen = new Set(), grouped = new Map(), checks=[];
         for (const source of plan.entries) {
           const key = await vault.digest(JSON.stringify([source.source,source.spt,source.page]));
           if (seen.has(key) && job.meta.opsi.lewatiDuplikat) continue;
@@ -253,10 +269,10 @@ async function run(fresh) {
             const issue={tingkat:'TINGGI',pesan:sources[source.source]+' melaporkan '+source.total+' baris. Yang tersimpan '+source.rows+'.'};
             checks.push(issue); message(plan.wp+' · '+issue.pesan,true);
           }
-          entries.push({path:source.source+'/'+source.id+'.json',cap:{sumber:source.source,label:sources[source.source],baris:source.rows,total:source.total,lengkap:false,
-            konteks:{npwp:plan.wp,jenisSpt:source.spt,periode:source.period},catatan:['Cakupan terbatas pada '+source.origin.toLowerCase()+' yang dipilih.'],asal:source.name},pages:[source.page]});
+          appendPackageEntry(grouped,source,plan.wp);
         }
-        const id = crypto.randomUUID(), name=taxpayerName(plan.entries), meta = {...job.meta,wp:{npwp:plan.wp,...(name?{nama:name}:{})},dibuat:new Date().toISOString(),cek:checks};
+        const entries=[...grouped.values()];
+        const id = crypto.randomUUID(), name=taxpayerName(plan.entries), meta = {...metaForSelection(job.meta,plan.entries),wp:{npwp:plan.wp,...(name?{nama:name}:{})},dibuat:new Date().toISOString(),cek:checks};
         const next = {...job,cursor:job.cursor+1};
         await vault.save([{id,value:{kind:'result',meta,entries}},{id:job.id,value:next}],'Tarikan WP',{npwp:plan.wp,berkas:entries.length,dasar:meta.penugasan.nomor,penarik:meta.penarik.nama});
         job = next; jobButtons(); message(plan.wp+' · '+entries.length+' sumber tersimpan.');
@@ -372,10 +388,18 @@ function init() {
   action('id-file',async () => { const [file]=$('id-file').files; if(file){const ids=readIds(await file.text()); $('ids').value=ids.join('\n'); idsChanged();} $('id-file').value=''; },'change');
   for (const id of ['sources','forms','source']) action(id,sourceChanged,'change');
   for (const id of ['owner','spt','month-start','month-end','year-start','year-end']) action(id,() => {$('scope-ok').checked=false; scopeChanged();},'change');
+  action('undated-general',()=>{$('scope-ok').checked=false;scopeChanged();},'change');
   for (const id of ['consent','dedupe']) action(id,scopeChanged,'change');
   action('tab',() => {tables=[]; $('table-pick').hidden=true; $('scope-ok').checked=false;},'change');
   action('recheck',checkTabs); action('open-coretax',() => ext.tabs.create({url:coretax+'/'}));
   action('list-tables',tableList); action('add-table',addTable); action('source-files',importFiles,'change');
+  batch=batchCollector({ext,origin:coretax,isBusy:()=>Boolean(busy || job || paging),enqueue:addEntry,refresh:scopeChanged,log:message,context:()=>{
+    const wp=val('owner'), range=period();
+    if(!wp || !readIds(val('ids')).includes(wp)) throw Error('Pilih WP dari daftar penugasan terlebih dahulu.');
+    if(!$('scope-ok').checked) throw Error('Cocokkan dan centang pernyataan WP serta periode pada sumber.');
+    const [from,to]=range.split(' s.d. ');
+    return {wp,period:range,from,to,allowed:checked('sources'),types:checked('forms')};
+  }});
   action('table',pageOptions,'change'); action('collect-pages',collectPages);
   action('pause-pages',()=>{pagingPaused=!pagingPaused;$('pause-pages').textContent=pagingPaused?'Lanjutkan pembacaan':'Jeda pembacaan';});
   action('stop-pages',()=>{pagingStopped=true;pagingPaused=false;});

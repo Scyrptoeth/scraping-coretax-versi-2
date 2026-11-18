@@ -1,4 +1,6 @@
 import {kbli} from './catalog-data.js';
+import {kluAttachment,kluZ} from './klu-z.js';
+import {codeTitle,hierarchicalKlu,percentage} from './klu-calculator.js';
 import {regulations} from './regulation-data.js';
 import {rowsOf} from './analisis/model.js';
 import {el, box, button, field, select, card, download, showDialog, toggleSet, notice} from './analisis/ui.js';
@@ -80,6 +82,10 @@ function registryList(container, config) {
 const allCodes=Object.entries(kbli).flatMap(([year,records])=>Object.entries(records).map(([code,title])=>({
   year,code,title,cells:[code,title,year,levels[code.length]],lookup:normalize(code+' '+title+' '+year)
 }))).sort((a,b)=>b.year.localeCompare(a.year)||a.code.localeCompare(b.code));
+const zEdition='KLU Z';
+const zRecords=Object.fromEntries(Object.values(kluZ).map(r=>[r.code,{...r,year:zEdition,
+  cells:[r.code,r.title,zEdition,levels[r.code.length]],lookup:normalize(r.code+' '+r.title+' '+zEdition+' PER-12/PJ/2022')}]));
+const businessCodes=[...allCodes,...Object.values(zRecords)];
 const allRegs=regulations.map(cells=>({cells:cells.slice(0,5),url:cells[5],lookup:normalize(cells.slice(0,5).join(' '))}));
 
 export function activityResult(activities, taxpayerKind) {
@@ -96,18 +102,49 @@ export function activityResult(activities, taxpayerKind) {
 
 function calculator() {
   const entries=box(''),kind=select(['WP dengan beberapa kegiatan','Instansi pemerintah','Badan nirlaba'],'WP dengan beberapa kegiatan',()=>{out.textContent='';},'Jenis WP');
-  const out=el('p');out.setAttribute('role','status');
+  const out=box('stack');out.setAttribute('role','status');
   function add() {
-    const name=el('input'),amount=el('input');amount.inputMode='numeric';
-    const row=box('toolbar',field('Kegiatan',name),field('Peredaran bruto atau penghasilan (Rp)',amount));
+    const code=el('input'),name=el('input'),amount=el('input');amount.inputMode='numeric';
+    code.maxLength=5;code.placeholder='Misalnya 28221';
+    const row=box('toolbar',field('Kode kelompok',code),field('Nama kegiatan (opsional)',name),field('Peredaran bruto atau penghasilan (Rp)',amount));
     row.append(button('Hapus baris',()=>{row.remove();out.textContent='';}));entries.append(row);
   }
+  function run(){
+    const activities=[...entries.children].map(row=>{
+      const [code,name,amount]=row.querySelectorAll('input');
+      return {code:code.value.trim(),name:name.value.trim(),amount:amount.value.trim()};
+    });
+    const taxpayerKind=kind.querySelector('select').value;
+    if(taxpayerKind!=='WP dengan beberapa kegiatan'){
+      out.replaceChildren(el('p',activityResult([],taxpayerKind)));return;
+    }
+    if(activities.length && activities.every(a=>!a.code && a.name)){
+      out.replaceChildren(el('p',activityResult(activities,taxpayerKind)),
+        el('p','Lengkapi kode kelompok setiap kegiatan untuk menghitung KLU secara berjenjang.'));return;
+    }
+    const result=hierarchicalKlu(activities);
+    out.replaceChildren(el('p',result.message));
+    if(!result.steps.length)return;
+    out.append(el('p','Total nilai kegiatan · Rp'+result.total.toLocaleString('id-ID')));
+    for(const step of result.steps){
+      const node=el('details');node.open=true;
+      node.append(el('summary',step.title+(step.winner?' · '+step.winner:'')));
+      if(step.note)node.append(el('p',step.note));
+      const table=el('table'),head=el('tr');
+      for(const label of ['Kode atau cabang','Nilai (Rp)',step.divisionShare?'Persen dari golongan pokok':'Persen dari total'])head.append(el('th',label));
+      table.append(head);
+      for(const {code,amount} of step.candidates){
+        const tr=el('tr'),title=codeTitle(code);
+        for(const value of [title?code+' · '+title:code,amount.toLocaleString('id-ID'),percentage(amount,step.base)])tr.append(el('td',value));
+        table.append(tr);
+      }
+      node.append(box('scroll',table));out.append(node);
+    }
+  }
   add();add(); entries.oninput=()=>{out.textContent='';};
-  return card('Uji KLU utama',el('p','Gunakan jumlah per kegiatan dari tahun pajak sebelumnya. Gabungkan tahap kegiatan yang terintegrasi dan perhatikan ketentuan untuk keluarga serta pusat dan cabang.'),kind,entries,
-    box('toolbar',button('Tambah kegiatan',()=>{add();out.textContent='';}),button('Hitung',()=>{
-      const activities=[...entries.children].map(row=>{const [name,amount]=row.querySelectorAll('input');return {name:name.value,amount:amount.value};});
-      out.textContent=activityResult(activities,kind.querySelector('select').value);
-    })),out,link('Baca Pasal 4 dan 5 PER-12/PJ/2022',sourceKLU));
+  return card('Uji KLU utama',el('p','Masukkan kode kelompok KBLI 2020 atau KLU Z dan nilai bruto tiap kegiatan pada tahun pajak sebelumnya. Gabungkan tahap kegiatan yang terintegrasi. Periksa ketentuan keluarga serta pusat dan cabang.'),kind,entries,
+    box('toolbar',button('Tambah kegiatan',()=>{add();out.textContent='';}),button('Hitung',run)),
+    out,link('Contoh perhitungan berjenjang dalam lampiran DJP',kluAttachment+'#page=6'),link('Baca Pasal 4 dan 5 PER-12/PJ/2022',sourceKLU));
 }
 
 function publicGuide(code) {
@@ -126,35 +163,46 @@ function publicGuide(code) {
 function business(container, options) {
   let mode=options.manifest && !options.query?'wp':'search';
   function showRecord(row) {
-    const map=kbli[row.year],rows=[['Edisi KBLI',row.year],['Kode',row.code],['Nama',row.title]];
-    for(let n=2;n<row.code.length;n++){const code=row.code.slice(0,n);if(map[code])rows.push([levels[n],code+' · '+map[code]]);}
+    const isZ=row.year===zEdition;
+    const rows=[[isZ?'Acuan':'Edisi KBLI',isZ?'PER-12/PJ/2022, Lampiran bagian A':row.year],['Kode',row.code],['Nama',row.title]];
+    for(let n=isZ?1:2;n<row.code.length;n++){
+      const code=row.code.slice(0,n);
+      const title=isZ?kluZ[code]?.title:kbli[row.year][code];
+      if(title)rows.push([levels[n],code+' · '+title]);
+    }
+    if(isZ)rows.push(['Halaman lampiran',row.first===row.last?String(row.first):row.first+'–'+row.last]);
     const content=box('stack',...rows.map(([a,b])=>el('p',a+' · '+b)));
-    if(row.code.length>=2) {
+    if(!isZ && row.code.length>=2) {
       const [flow,check]=publicGuide(row.code);
       content.append(card('Panduan penelusuran awal',el('p',flow),el('p',check),el('small','Sesuaikan langkah ini dengan kegiatan dan bukti yang benar-benar tersedia.')));
     }
     if(options.manifest && row.code.length===5) content.append(button('Jadikan acuan WP pada sesi ini',()=>{
       assigned.set(options.manifest,row);document.getElementById('dialog').close();mode='wp';draw();
     }));
-    content.append(exportBar('Rincian KBLI',['Keterangan','Nilai'],rows),link('Kamus klasifikasi BPS',sourceKBLI));
+    content.append(exportBar(isZ?'Rincian KLU Z':'Rincian KBLI',['Keterangan','Nilai'],rows),
+      isZ?link('Buka lampiran resmi DJP',kluAttachment+'#page='+row.first):link('Kamus klasifikasi BPS',sourceKBLI));
     showDialog(row.code+' · '+row.title,content);
   }
   function draw(){
     const panel=box('');container.replaceChildren(el('h1','Proses bisnis dan KLU'),
       toggleSet([['wp','Untuk WP ini'],['search','Cari KLU/KBLI']],mode,m=>{mode=m;draw();}),panel);
     if(mode==='search') {
-      registryList(panel,{title:'Hasil pencarian KBLI',placeholder:'Kode atau nama kegiatan',query:options.query,rows:allCodes,
-        columns:['Kode','Nama kegiatan','Edisi','Tingkat'],filters:[
-          {key:'year',label:'Edisi KBLI',initial:'2025',options:[['','Semua edisi'],'2025','2020']},
-          {key:'level',label:'Tingkat',initial:'5',options:levels.map((v,i)=>[i?String(i):'',v])}],
-        filter:(r,v)=>(!v.year||r.year===v.year)&&(!v.level||r.code.length===Number(v.level)),open:showRecord});
+      registryList(panel,{title:'Hasil pencarian KLU dan KBLI',placeholder:'Kode atau nama kegiatan',query:options.query,rows:businessCodes,
+        columns:['Kode','Nama kegiatan','Acuan','Tingkat'],filters:[
+          {key:'year',label:'Acuan klasifikasi',initial:'current',options:[['current','KBLI 2025 dan KLU Z'],['','Semua acuan'],['2025','KBLI 2025'],['2020','KBLI 2020'],[zEdition,'KLU Z · PER-12/PJ/2022']]},
+          {key:'level',label:'Tingkat',initial:kluZ[String(options.query||'').toUpperCase()]?String(options.query.length):'5',options:levels.map((v,i)=>[i?String(i):'',v])}],
+        filter:(r,v)=>(v.year==='current'?r.year==='2025'||r.year===zEdition:!v.year||r.year===v.year)&&(!v.level||r.code.length===Number(v.level)),open:showRecord});
       return;
     }
     const entries=(options.entries||[]).filter(e=>/(?:^|\/)klu\.json$/i.test(e.path));
     const items=entries.flatMap(rowsOf).filter(r=>r.TradeClassificationCode);
     const picked=options.manifest && assigned.get(options.manifest);
     const detail=card('KLU di paket',el('p',options.manifest?(items.length?'Kode dan periode berikut berasal dari registrasi dalam paket.':'Paket ini belum memuat daftar KLU registrasi.'):'Buka paket untuk melihat KLU WP.'));
-    for(const r of items) detail.append(el('p',[r.TradeClassificationCode,r.ActivityDescription,r.IsMainEconomicCode===true?'Utama sesuai registrasi':'',r.ValidFrom?.slice(0,10),r.ValidTo?.slice(0,10)].filter(Boolean).join(' · ')));
+    for(const r of items) {
+      detail.append(el('p',[r.TradeClassificationCode,r.ActivityDescription,r.IsMainEconomicCode===true?'Utama sesuai registrasi':'',r.ValidFrom?.slice(0,10),r.ValidTo?.slice(0,10)].filter(Boolean).join(' · ')));
+      const z=zRecords[String(r.TradeClassificationCode).trim().toUpperCase()];
+      if(z)detail.append(button('Lihat '+z.code+' di katalog DJP',()=>showRecord(z)));
+    }
     if(picked)detail.append(button('Acuan sesi ini · '+picked.code+' '+picked.title,()=>showRecord(picked)));
     detail.append(button('Pilih acuan dari katalog',()=>{mode='search';draw();}));
     panel.append(detail,calculator());

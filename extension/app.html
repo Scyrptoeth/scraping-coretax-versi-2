@@ -35,13 +35,20 @@
     </section>
     <section><h2><span>3</span>Cara menarik</h2><p class="hint">Tambahkan tabel yang terlihat di Coretax atau berkas ekspor JSON/CSV. Jika tombol halaman berikutnya dapat dikenali, Anda bisa mengambil beberapa halaman sekaligus. Untuk tabel lain, tambahkan satu halaman setiap kali.</p>
       <div class="triple"><label>WP pemilik data<select id="owner"></select></label><label>Sumber yang ditambahkan<select id="source"></select></label><label id="spt-field" hidden>Jenis SPT sumber<select id="spt"></select></label></div>
-      <label class="check"><input id="scope-ok" type="checkbox">Saya sudah mencocokkan WP dan periode pada sumber dengan pilihan di atas.</label>
+      <label class="check" id="undated-field" hidden><input type="checkbox" id="undated-general">Sumber tabel umum ini tidak mencantumkan masa pajak.</label>
+      <label class="check"><input id="scope-ok" type="checkbox">Saya sudah mencocokkan WP dan keterangan masa yang tersedia pada sumber.</label>
       <div class="double"><div><h3>Tabel di tab Coretax</h3><label>Tab yang digunakan<select id="tab"></select></label><button id="list-tables">Daftar tabel di halaman</button>
         <div id="table-pick" hidden><label>Tabel yang terlihat<select id="table"></select></label><button id="add-table">Tambahkan tabel</button>
           <details id="pagination-options" hidden><summary>Ambil beberapa halaman</summary><p class="hint">Setiap baris harus menampilkan NPWP pemilik yang dipilih. Batas halaman dihitung mulai dari halaman yang sedang terbuka.</p><label>Jumlah halaman maksimal<input id="page-limit" type="number" min="1" max="100" value="5"></label>
             <div class="actions"><button id="collect-pages">Mulai baca halaman</button><button id="pause-pages" hidden>Jeda pembacaan</button><button id="stop-pages" hidden>Hentikan pembacaan</button></div><p id="page-status" role="status"></p>
           </details></div>
       </div><div><h3>Berkas ekspor</h3><label class="file">Tambahkan JSON atau CSV<input type="file" id="source-files" multiple accept=".json,.csv"></label><p class="hint">Berkas diproses di perangkat ini. Satu berkas harus berisi data untuk satu WP dan periode terpilih.</p></div></div>
+      <details id="batch"><summary>Ambil beberapa tabel dari tab yang sudah terbuka</summary>
+        <p class="hint">Pilih WP dan masa di atas, lalu pindai tab Coretax. Pilih kategori untuk setiap tabel yang diperlukan. Penarik memeriksa NPWP pada setiap baris. Untuk SPT, buku besar, dan bukti potong, penarik juga mencocokkan masa pajak.</p>
+        <label>Halaman maksimal per tabel<input id="batch-page-limit" type="number" min="1" max="100" value="1"></label><p class="hint">Isi 1 untuk mengambil halaman yang sedang terbuka. Untuk beberapa halaman, penarik menggunakan tombol halaman berikutnya di setiap tabel dan mencatat jumlah baris per halaman.</p>
+        <div class="actions"><button id="batch-scan">Pindai tab Coretax</button><button id="batch-add" disabled>Tambahkan tabel terpilih</button><button id="batch-pause" hidden>Jeda</button><button id="batch-stop" hidden>Hentikan</button></div>
+        <div id="batch-rows"></div><p id="batch-status" role="status"></p>
+      </details>
       <div id="queue"></div><label class="check"><input id="dedupe" type="checkbox" checked>Lewati salinan identik dari sumber yang sama dalam tarikan ini.</label>
     </section>
     <section><h2><span>4</span>Tarik data</h2><details><summary>Bagaimana prosesnya?</summary><p>Ekstensi menyalin teks tabel yang Anda pilih atau membaca ekspor yang Anda tambahkan. Setiap WP mendapat paket terpisah. Seluruh pemrosesan dan penyimpanan hasil berlangsung di perangkat ini.</p></details>

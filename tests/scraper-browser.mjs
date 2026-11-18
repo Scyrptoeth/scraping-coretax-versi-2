@@ -27,12 +27,15 @@ try {
   await page.goto(origin+'/app.html');
   await page.getByText('Belum ada hasil penarikan.').waitFor();
   assert.equal(await page.locator('fieldset section').count(),5);
-  assert.equal(await page.locator('#sources input').count(),20);
+  assert.equal(await page.locator('#sources input').count(),21);
   for (const width of [1280,390]) {
     await page.setViewportSize({width,height:880});
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),true);
   }
-  if(process.env.SCRAPER_SCREENSHOT) await page.screenshot({path:process.env.SCRAPER_SCREENSHOT});
+  if(process.env.SCRAPER_SCREENSHOT) {
+    await page.setViewportSize({width:1000,height:770});
+    await page.screenshot({path:process.env.SCRAPER_SCREENSHOT});
+  }
   await page.locator('#ids').fill('0000000000000001\n0000000000000002');
   await page.locator('#officer').fill('Petugas Fiktif');
   await page.locator('#scope-ok').check();

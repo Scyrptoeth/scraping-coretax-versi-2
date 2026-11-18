@@ -1,0 +1,100 @@
+import assert from 'node:assert/strict';
+import {createServer} from 'node:http';
+import {readFile} from 'node:fs/promises';
+import {createRequire} from 'node:module';
+import {createPackage} from '../extension/archive/package.js';
+import {readZip,decodeText} from '../extension/archive/zip.js';
+
+const {chromium}=createRequire(import.meta.url)(process.env.PLAYWRIGHT_MODULE||'playwright');
+const base=new URL('../extension/',import.meta.url);
+const server=createServer(async(req,res)=>{
+  try{
+    const url=new URL('.'+new URL(req.url,'http://localhost').pathname,base);
+    if(!url.href.startsWith(base.href))throw Error();
+    res.setHeader('Content-Type',url.pathname.endsWith('.js')?'text/javascript':url.pathname.endsWith('.css')?'text/css':'text/html');
+    res.end(await readFile(url));
+  }catch{res.writeHead(404);res.end();}
+});
+await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
+const browser=await chromium.launch({executablePath:process.env.CHROMIUM_PATH||undefined});
+try{
+  const holder=await browser.newPage({acceptDownloads:true}), errors=[];
+  holder.on('pageerror',e=>errors.push(e.message));
+  await holder.goto('http://127.0.0.1:'+server.address().port+'/analisis/index.html');
+  const sample=await createPackage({meta:{wp:{npwp:'0000000000000001',nama:'Contoh uji'},opsi:{periode:{from:{y:2025},to:{y:2025}}}},entries:[
+    {path:'bukubesar/2025-01.json',cap:{lengkap:true},pages:[{Payload:{Data:[{RecordId:'bb1',AccountingTypeCode:'TaxReturn',IsCancelled:false,Amount:-2500,AmountLeft:-500}]}}]}
+  ]});
+  await holder.locator('#filePkg').setInputFiles({name:'Contoh.zip',mimeType:'application/zip',buffer:Buffer.from(await sample.arrayBuffer())});
+  await holder.getByText('Konsisten · Seluruh sidik jari yang diperiksa cocok.').waitFor();
+  await holder.getByRole('navigation').getByRole('button',{name:'Kertas Kerja',exact:true}).click();
+  const scope=holder.getByLabel('Temuan yang dimasukkan');
+  assert.equal(await scope.inputValue(),'verified');
+  await holder.getByRole('button',{name:'Tambah butir',exact:true}).click();
+  await holder.getByLabel('Butir pengujian').fill('Usulan pengujian sintetis');
+  await holder.getByLabel('Klasifikasi butir').selectOption('indicative');
+  await holder.getByLabel('Potensi pokok berdasarkan pengujian (Rp)').fill('125');
+  await holder.getByLabel('Menurut WP',{exact:true}).fill('0');
+  await holder.getByLabel('Menurut petugas',{exact:true}).fill('325');
+  await holder.getByRole('button',{name:'Simpan butir'}).click();
+  await holder.getByText(/1 butir disertakan\. 1 butir indikatif dikeluarkan/).waitFor();
+  const exportFile=async(name)=>{
+    const [download]=await Promise.all([holder.waitForEvent('download'),holder.getByRole('button',{name,exact:true}).click()]);
+    return readFile(await download.path());
+  };
+  const zip=await readZip(await exportFile('Excel kertas kerja'));
+  assert.ok(!decodeText(zip.get('xl/workbook.xml').data).includes('C. Temuan indikatif'));
+  assert.match(decodeText(zip.get('xl/worksheets/sheet2.xml').data),/E2-D2/);
+  await scope.selectOption('all');
+  await holder.getByText(/2 butir disertakan\. 0 butir indikatif dikeluarkan/).waitFor();
+  await holder.getByRole('button',{name:'KKA',exact:true}).click();
+  assert.equal(await scope.inputValue(),'all');
+  await holder.getByLabel('Usulan dan alasan').fill('Tindak lanjut sintetis');
+  await scope.selectOption('verified');
+  const doc=await readZip(await exportFile('Word'));
+  const content=decodeText(doc.get('word/document.xml').data);
+  assert.match(content,/Tindak lanjut sintetis/);assert.ok(!content.includes('Usulan pengujian sintetis'));
+  const saved=JSON.parse((await exportFile('Unduh berkas kerja')).toString());
+  assert.deepEqual(saved.scopes,{kkp:'all',kka:'verified'});assert.equal(saved.rows[0].principal,125);
+  await holder.getByRole('button',{name:'Simulasi sanksi',exact:true}).click();
+  await holder.getByLabel('Tanggal rencana ketetapan').fill('2026-01-18');
+  await holder.getByRole('button',{name:'Tambah masa simulasi'}).click();
+  await holder.getByLabel('Bulan akhir masa atau tahun pajak yang diuji').fill('2025-12');
+  await holder.getByLabel('Dasar pengenaan').selectOption('compare');
+  await holder.getByLabel('Dasar bunga dari hasil pengujian (Rp)').fill('1000000');
+  await holder.getByLabel('Masa penerima 1').fill('2026-01');
+  await holder.getByLabel('Dasar kenaikan (Rp) 1').fill('40000');
+  await holder.getByLabel('Rujukan hasil pengujian').fill('Bukti sintetis');
+  await holder.getByRole('button',{name:'Simpan masa'}).click();
+  const summary=holder.getByRole('table',{name:'Ringkasan simulasi'});
+  await summary.getByText('1.070.000',{exact:true}).waitFor();
+  const simBook=await readZip(await exportFile('Excel simulasi'));
+  assert.match(decodeText(simBook.get('xl/worksheets/sheet1.xml').data),/<v>1070000<\/v>/);
+  assert.match(decodeText(simBook.get('xl/worksheets/sheet3.xml').data),/2026-01/);
+  assert.match(decodeText(simBook.get('xl/worksheets/sheet4.xml').data),/010\/MK\/EF\/2025/);
+  const simSave=await exportFile('Unduh berkas kerja');
+  assert.equal(JSON.parse(simSave).simulation.cases[0].transfers[0].amount,'40000');
+  await holder.getByRole('table',{name:'Penghitungan sanksi'}).getByRole('button',{name:'Buka'}).click();
+  await holder.getByLabel('Dasar bunga dari hasil pengujian (Rp)').fill('');
+  await holder.getByRole('button',{name:'Simpan masa'}).click();
+  await holder.getByText('Isi dasar bunga sesuai hasil pengujian.').waitFor();
+  await holder.locator('input[type=file][accept=".json"]').setInputFiles({name:'Simulasi.json',mimeType:'application/json',buffer:simSave});
+  await holder.getByRole('button',{name:'Ganti isi sesi ini'}).click();
+  await summary.getByText('1.070.000',{exact:true}).waitFor();
+  await holder.getByRole('button',{name:'KKA',exact:true}).click();
+  const legacy={...saved};delete legacy.scopes;delete legacy.analysis;delete legacy.dispositions;delete legacy.simulation;
+  await holder.locator('input[type=file][accept=".json"]').setInputFiles({name:'Riwayat.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(legacy))});
+  await holder.getByRole('button',{name:'Ganti isi sesi ini'}).click();
+  assert.equal(await scope.inputValue(),'all');
+  await holder.locator('#role').selectOption('AR');
+  await holder.getByRole('button',{name:'Berita acara',exact:true}).click();
+  await holder.getByRole('button',{name:'SP2DK baru'}).click();
+  assert.equal(await scope.inputValue(),'all');
+  await holder.getByLabel('Uraian',{exact:true}).fill('Pertahankan narasi');
+  holder.on('dialog',async d=>{if(d.type()==='confirm')await d.accept();});
+  await scope.selectOption('verified');
+  await holder.getByText('Baris 1',{exact:true}).waitFor();
+  assert.equal(await holder.getByLabel('Uraian data').count(),1);
+  assert.equal(await holder.getByLabel('Uraian',{exact:true}).inputValue(),'Pertahankan narasi');
+  assert.deepEqual(errors,[]);
+  console.log('Chrome confirmed workpaper scopes, Excel/Word, simulations, old and new workfile import, and draft regeneration.');
+}finally{await browser.close();server.close();}

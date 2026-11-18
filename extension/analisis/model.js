@@ -3,7 +3,7 @@ const filePattern = /^spt\/([^/]+)\/(\d{4}(?:-\d{2})?)\/p(\d+)_([^/]+)\/([^/]+)\
 const collator = new Intl.Collator('id', {numeric: true, sensitivity: 'base'});
 export const compare = (a, b) => collator.compare(String(a ?? ''), String(b ?? ''));
 export const count = value => new Intl.NumberFormat('id-ID', {maximumFractionDigits: 3}).format(value);
-export const typeNames = {PPN: 'PPN', BADAN: 'PPh Badan', OP: 'PPh Orang Pribadi', PPH2126: 'PPh 21/26', UNIFIKASI: 'PPh Unifikasi'};
+export const typeNames = {PPN: 'PPN', 'PPN-PEMUNGUT': 'PPN non-PKP / Pemungut', BADAN: 'PPh Badan', OP: 'PPh Orang Pribadi', PPH2126: 'PPh 21/26', UNIFIKASI: 'PPh Unifikasi'};
 const own = (o, k) => Object.hasOwn(o, k);
 function decoded(value) {
   if (typeof value !== 'string') return value;
@@ -93,17 +93,17 @@ export function sourceAmount(form, path) {
   for (const k of path.split('.')) value = value?.[k];
   return typeof value === 'number' && Number.isFinite(value) ? value : null;
 }
+export const periodFields = {
+  PPN: {'Penyerahan': 'TotalDeliveryOfGoodsAndServices.SellingPrice', 'PPN keluaran': 'OutputTaxMustBeSelfCollected.VAT', 'PPN masukan': 'InputTaxCanBeCalculated.VAT', 'KB/(LB)': 'VATUnderOrOverPaid.VAT'},
+  PPH2126: {'Bruto': 'Form1A.GrossIncome', 'PPh 21 dipotong': 'A21IncomeTaxWithheld', 'PPh 26 dipotong': 'A26IncomeTaxWithheld'},
+  UNIFIKASI: {'Dipungut/dipotong': 'TotalWithholding','Disetor': 'TotalIncomeTaxPaid'},
+  BADAN: {'Laba sebelum pajak': 'MainFormData.NetIncomeBeforeTax', 'Penghasilan kena pajak': 'MainFormData.TaxableIncome', 'PPh terutang': 'MainFormData.IncomeTaxInAYear'},
+  OP: {'Penghasilan neto': 'AnnualNetIncome', 'PPh terutang': 'IncomeTaxPayable','Harta akhir tahun': 'AssetEndTaxYear','KB/(LB)': 'UnderOrOverPaymentTax'}
+};
 export function periodFacts(pkg, year) {
   return pkg.forms.filter(f => f.latest && (!year || f.year === year)).map(f => {
-    const columns = {
-      PPN: {'Penyerahan': 'TotalDeliveryOfGoodsAndServices.SellingPrice', 'PPN keluaran': 'OutputTaxMustBeSelfCollected.VAT', 'PPN masukan': 'InputTaxCanBeCalculated.VAT', 'KB/(LB)': 'VATUnderOrOverPaid.VAT'},
-      PPH2126: {'Bruto': 'Form1A.GrossIncome', 'PPh 21 dipotong': 'A21IncomeTaxWithheld', 'PPh 26 dipotong': 'A26IncomeTaxWithheld'},
-      UNIFIKASI: {'Dipungut/dipotong': 'TotalWithholding','Disetor': 'TotalIncomeTaxPaid'},
-      BADAN: {'Laba sebelum pajak': 'MainFormData.NetIncomeBeforeTax', 'Penghasilan kena pajak': 'MainFormData.TaxableIncome', 'PPh terutang': 'MainFormData.IncomeTaxInAYear'},
-      OP: {'Penghasilan neto': 'AnnualNetIncome', 'PPh terutang': 'IncomeTaxPayable','Harta akhir tahun': 'AssetEndTaxYear','KB/(LB)': 'UnderOrOverPaymentTax'}
-    };
     const row = {Jenis: typeNames[f.type] || f.type, Periode: f.period, Versi: f.version};
-    for (const [column,path] of Object.entries(columns[f.type] || {})) row[column] = sourceAmount(f,path);
+    for (const [column,path] of Object.entries(periodFields[f.type] || {})) row[column] = sourceAmount(f,path);
     return row;
   });
 }

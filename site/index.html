@@ -11,25 +11,25 @@
   <header><a class="brand" href="#utama"><span class="logo" aria-hidden="true">S2</span> Scraping Coretax</a><nav aria-label="Navigasi utama"><a href="#cakupan">Fitur</a><a href="#pasang">Pemasangan</a></nav></header>
   <main id="utama">
     <section class="hero">
-      <div><p class="version"><span></span> Prarilis 0.1.0 untuk Chrome</p>
+      <div><p class="version"><span></span> Prarilis 0.2.0 untuk Chrome</p>
         <h1>Scraping Coretax <em>Versi 2</em></h1>
         <p class="lead">Kumpulkan tabel yang tampil di Coretax atau impor ekspor JSON dan CSV. Buka paket hasilnya di pemutar lokal untuk menelusuri profil, SPT, dan data sumber.</p>
-        <div class="download"><a class="primary" href="download/scraping-coretax-v2-0.1.0.zip" download>Unduh ekstensi <span aria-hidden="true">↓</span></a><a class="under" href="#pasang">Cara memasang</a></div>
+        <div class="download"><a class="primary" href="download/scraping-coretax-v2-0.2.0.zip" download>Unduh ekstensi <span aria-hidden="true">↓</span></a><a class="under" href="#pasang">Cara memasang</a></div>
         <p class="detail">ZIP untuk Chrome desktop 116 ke atas · <a href="download/SHA256SUMS.txt">SHA-256</a></p>
       </div>
       <figure><div class="frame"><img src="preview.png" alt="Tampilan penarik data dengan bagian koneksi Coretax dan isian penugasan" width="1000" height="770"></div><figcaption>Penarik data · Tampilan ekstensi</figcaption></figure>
     </section>
     <section id="cakupan"><div class="section-head"><h2>Cakupan prarilis</h2><p>Versi ini bisa dicoba menggunakan berkas fiktif. Penarikan otomatis seluruh modul dan kesetaraan kertas kerja VERITAX masih dalam pengembangan.</p></div>
       <div class="features">
-        <article><h3>Penarik data</h3><p>Pilih tabel yang terlihat atau tambahkan berkas ekspor. Periksa WP dan periode, lalu simpan paket terpisah untuk setiap WP.</p></article>
-        <article><h3>Pemutar paket</h3><p>Buka paket lokal, periksa integritasnya, lalu telusuri isi per bagian. Kelengkapan tampilan bergantung pada data dalam paket.</p></article>
-        <article><h3>Katalog offline</h3><p>Cari kode dan nama kegiatan dalam KBLI 2020 dan 2025. Telusuri indeks peraturan atau buka naskah resmi dari tautan sumber.</p></article>
+        <article><h3>Penarik data</h3><p>Pilih tabel dari tab Coretax yang sudah terbuka atau tambahkan berkas ekspor. Periksa WP dan masa yang tercantum di sumber, lalu simpan paket per WP.</p></article>
+        <article><h3>Pemutar paket</h3><p>Periksa profil WP, telusuri induk dan lampiran SPT, lalu bandingkan pembetulan atau dua WP pada masa yang sama. Ekspor formulir ke Excel dan pilih temuan untuk kertas kerja.</p></article>
+        <article><h3>Katalog offline</h3><p>Cari kode dan nama kegiatan dalam KBLI 2020, KBLI 2025, serta kode khusus KLU Z. Telusuri indeks peraturan atau buka naskah resmi dari tautan sumber.</p></article>
       </div>
       <details><summary>Perbedaan dengan VERITAX v1.32.0</summary>
         <ul><li>Penarik membaca tabel yang dipilih atau ekspor yang diberikan pengguna. Penelusuran otomatis seluruh menu Coretax dan semua lampiran SPT belum tersedia.</li>
-        <li>Pemutar dapat membaca paket contoh. Sebagian analisis khusus WP, aturan pemeriksaan, simulasi sanksi, dan keluaran kertas kerja resmi belum mencapai kesetaraan.</li>
+        <li>Simulator SKPKB memerlukan dasar penghitungan yang sudah diperiksa. Pengisian otomatis dari seluruh kertas kerja, analisis sektoral, dan tata letak resmi setiap formulir masih belum lengkap.</li>
         <li>Katalog memakai klasifikasi dan metadata publik. Profil pemeriksaan khusus dan seluruh korpus peraturan VERITAX belum tercakup.</li>
-        <li>Pemeriksaan versi ini menggunakan sumber fiktif. Kesesuaian tampilan dan perilaku pada sesi Coretax dinas masih perlu diuji.</li></ul>
+        <li>Impor satu ekspor CSV dari Daftar Kasus Aktif telah dicocokkan dengan tampilan Coretax dan paket di pemutar. Cakupan modul dan tabel produksi lainnya masih perlu diuji.</li></ul>
       </details>
     </section>
     <section id="pasang"><div class="section-head"><h2>Pasang di Chrome</h2><p>Simpan folder hasil ekstraksi di lokasi tetap agar Chrome dapat membukanya kembali.</p></div>

@@ -38,6 +38,19 @@ function sheetName(value, used) {
 const sheetNs = "http://schemas.openxmlformats.org/spreadsheetml/2006/main";
 const relNs = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
 const packageNs = "http://schemas.openxmlformats.org/package/2006";
+const trustedFormula = Symbol("workbook formula");
+
+// JSON cells and source strings stay literal. Only this builder can supply an expression.
+export function differenceCell(row, leftColumn, rightColumn, cached) {
+  if (!Number.isInteger(row) || row < 1 || row > 1048576 ||
+      ![leftColumn, rightColumn].every(n => Number.isInteger(n) && n >= 1 && n <= 16384)) {
+    throw new RangeError("Alamat sel untuk rumus selisih tidak sah.");
+  }
+  const left = columnName(leftColumn-1) + row, right = columnName(rightColumn-1) + row;
+  return { [trustedFormula]: `IF(COUNT(${left},${right})=2,${right}-${left},"")`,
+    cached: Number.isFinite(cached) ? cached : null };
+}
+
 function worksheet(rows) {
   if (!Array.isArray(rows) || rows.length > 1048576) throw new Error("Jumlah baris melebihi batas lembar Excel.");
   const data = rows.map((row, index) => {
@@ -45,6 +58,11 @@ function worksheet(rows) {
     const cells = row.map((value, col) => {
       if (value == null) return "";
       const address = columnName(col) + (index + 1);
+      if (value[trustedFormula]) {
+        const empty = value.cached === null;
+        return '<c r="' + address + '"' + (empty ? ' t="str"' : '') + '><f>' +
+          xml(value[trustedFormula]) + '</f><v>' + (empty ? '' : value.cached) + '</v></c>';
+      }
       if (typeof value === "number" && Number.isFinite(value)) return '<c r="' + address + '"><v>' + value + '</v></c>';
       if (typeof value === "boolean") return '<c r="' + address + '" t="b"><v>' + (value ? 1 : 0) + '</v></c>';
       const text = cellText(value);

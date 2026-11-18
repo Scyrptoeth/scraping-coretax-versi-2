@@ -1,4 +1,4 @@
-import { issues } from "./model.js";
+import {emptyFinding, findingKey, findingsFor, reviewOptions, selectedFindings} from './findings.js';
 
 export const draftTitles = {
   SP2DK: "Surat Permintaan Penjelasan atas Data dan/atau Keterangan",
@@ -11,33 +11,27 @@ export const allowedDrafts = role => {
   if (name === "ar" || name.includes("account representative") || name === "pengawasan") return ["SP2DK", "BAP2DK"];
   return name === "pemeriksa" ? ["BAPK"] : [];
 };
-export function blankFinding() {
-  return { kind: "", detail: "", period: "", source: "", status: "indikatif", amount: "",
-    taxpayer: "", discussed: "", agreed: "" };
+export const blankFinding = emptyFinding;
+export function draftFindings(pkg, year, workRows, dispositions = {}, source = null) {
+  const findings = source?.findings || findingsFor(pkg, year, workRows)
+    .filter(row => !dispositions[findingKey(row)] || dispositions[findingKey(row)] === reviewOptions[0]);
+  return findings.map(row=>({...row,taxpayer:'',discussed:'',agreed:''}));
 }
-export function newDraft(type, pkg, year, source = null, workRows = []) {
+export function newDraft(type, pkg, year, source = null, workRows = [], dispositions = {}) {
   if (!["SP2DK", "BAP2DK", "BAPK"].includes(type)) throw new Error("Jenis dokumen tidak dikenal.");
   if (source && (source.type !== "SP2DK" || type !== "BAP2DK" || source.year !== String(year) ||
     source.npwp !== (pkg.manifest.wp?.npwp || ""))) throw new Error("SP2DK sumber berbeda WP atau tahun.");
   const m = pkg.manifest;
-  const findings = source?.findings || (type === "BAPK" ? [] : [
-    ...workRows.map(row => ({ ...blankFinding(), detail: [row.topik,row.fakta].filter(Boolean).join(" • "),
-      period: String(year), source: row.sumber, amount: row.menurutPetugas ?? "" })),
-    ...issues(pkg, year).map(item => ({
-      ...blankFinding(), kind: item.Jenis, detail: item.Butir + " • " + item.Fakta, period: item.Periode, source: item.Sumber
-    }))
-  ]);
+  const findings = type === "BAPK" ? [] : draftFindings(pkg,year,workRows,dispositions,source);
   return { id: crypto.randomUUID(), type, year: String(year), npwp: m.wp?.npwp || "", name: m.wp?.nama || "",
     number: "", date: "", office: source?.office || "", officer: source?.officer || m.penarik?.nama || "",
     assignment: source?.assignment || m.penugasan?.nomor || "", recipient: "", place: "", time: "",
     participant: "", agenda: "", narrative: "", conclusion: "", appointmentNumber: "", appointmentDate: "",
     contact: "", related: source ? { id: source.id, number: source.number, date: source.date } : null,
-    scope: source?.scope || "all", questions: [], findings: findings.map(row => ({
-      ...row, taxpayer: "", discussed: "", agreed: ""
-    })) };
+    scope: source?.scope || "all", questions: [], findings };
 }
 export function visibleFindings(doc) {
-  return doc.scope === "verified" ? doc.findings.filter(row => row.status === "berbukti") : doc.findings;
+  return selectedFindings(doc.findings,doc.scope);
 }
 export function suggestQuestions(doc, pkg, workRows = []) {
   const proposals = [{ text: "Bagaimana alur kegiatan usaha pada periode yang diperiksa dan dokumen apa yang mendukung penjelasan tersebut?", source: "Pertanyaan umum" }];

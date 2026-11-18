@@ -49,7 +49,7 @@ export function showDialog(title,content) {
 export function exportSheets(sheets, filename) {
   return createXlsx({sheets}).then(blob=>download(blob,filename+'.xlsx')).catch(error=>notice('Excel gagal dibuat. '+error.message,true));
 }
-export function dataTable(rows, {name='Tabel',openRow,filename='Tabel',empty='Tidak ada baris pada sumber ini.'}={}) {
+export function dataTable(rows, {name='Tabel',openRow,filename='Tabel',empty='Tidak ada baris pada sumber ini.',formatNumber=count}={}) {
   const root=box('table-panel');
   if (!rows.length) {root.append(el('p',empty,'hint'));return root;}
   const search=el('input');search.type='search';search.placeholder='Cari di tabel';search.setAttribute('aria-label','Cari di tabel '+name);
@@ -72,7 +72,7 @@ export function dataTable(rows, {name='Tabel',openRow,filename='Tabel',empty='Ti
       const tr=el('tr');
       if(openRow){const cell=el('td');cell.append(button('Buka',()=>openRow(row)));tr.append(cell);}
       for(const key of keys){
-        const td=el('td');const value=row[key];const txt=typeof value==='number'?count(value):(serialize(value)||'—');
+        const td=el('td');const value=row[key];const txt=typeof value==='number'?formatNumber(value):(serialize(value)||'—');
         if(txt.length>60){
           const b=button(txt.slice(0,50)+'…',()=>showDialog(key,el('pre',txt)));b.title='Lihat nilai lengkap';td.append(b);
         }else td.textContent=txt;

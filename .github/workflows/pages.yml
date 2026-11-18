@@ -26,3 +26,32 @@ jobs:
       - name: Deploy site
         id: deploy
         uses: actions/deploy-pages@v4
+  prerelease:
+    if: github.event_name == 'push' && startsWith(github.event.head_commit.message, 'release: v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Verify and publish the requested prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          version=$(node -p "require('./extension/manifest.json').version")
+          tag="v$version"
+          test "$(git log -1 --format=%s)" = "release: $tag"
+          node --test tests/*.test.mjs
+          python3 scripts/build-release.py
+          cd dist/site/download
+          sha256sum -c SHA256SUMS.txt
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "A release already exists for $tag. Skipping publication."
+            exit 0
+          fi
+          gh release create "$tag" "scraping-coretax-v2-$version.zip" SHA256SUMS.txt \
+            --target "$GITHUB_SHA" --prerelease --title "Scraping Coretax Versi 2 · $tag" \
+            --notes "Prarilis untuk pengujian. [Kemampuan yang diuji dan perbedaan dengan VERITAX](https://github.com/$GITHUB_REPOSITORY/blob/$GITHUB_SHA/docs/KESETARAAN.md)."

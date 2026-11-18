@@ -7,3 +7,59 @@ main,footer{max-width:1400px;margin:0 auto;padding:0 18px}#crumb{font-size:.84re
 .chart .row{display:grid;grid-template-columns:90px minmax(80px,1fr) minmax(100px,auto);padding:.2rem 0}.chart meter{width:100%}.quick input{width:100%}body>.print-catalog{display:none}
 @media print{:root{color-scheme:light;--paper:white;--text:black;--page:white;--muted:#333;--pale:#eee;--border:#aaa}body{background:white;color:black}.mast{background:white;color:black;padding:0 0 10px}.identity p{color:#333}.selectors,nav,button,.upload,.noprint,.toolbar,.chips,.rail,.drop,dialog,footer,.skip,#status{display:none!important}.scroll{max-height:none;overflow:visible}.split{display:block}.card{border:0;padding:0}main{max-width:none;padding:0}.cell{white-space:normal;max-width:none}th{position:static}}
 @media print{body.print-catalog-active>:not(.print-catalog),body.print-dialog>:not(dialog){display:none!important}body.print-catalog-active>.print-catalog,body.print-dialog>dialog{display:block!important}body.print-dialog>dialog{position:static;max-width:none;max-height:none;width:100%;border:0}body.print-dialog dialog::backdrop{display:none}}
+
+@media screen{
+  :root{--tab-mark:#926a21;--link:#125e4b}
+  :root.compact{font-size:13px}
+  :root.dark{--tab-mark:#f1c97e;--link:#a1e6c9}
+  a{color:var(--link);text-underline-offset:.16em}
+  .mast{min-height:84px;background:linear-gradient(112deg,var(--head),#082d27);border-bottom:2px solid #bb9651}
+  .identity .mark{flex:none;background:#eadbb5;color:#153c32}
+  .selectors select{min-height:34px}
+  #taxpayer{width:clamp(16rem,30vw,32rem)}
+  #navigation{padding-inline:clamp(.65rem,1.55vw,1.6rem);align-items:stretch;scroll-padding-inline:.7rem}
+  #navigation button{flex:none;min-height:46px;padding-inline:1.05rem}
+  #navigation button[aria-current=page]{border-color:var(--tab-mark);color:var(--text)}
+  #navigation button:disabled{color:var(--muted);opacity:.8}
+  #navigation .tools,#navigation .tools+button{min-height:32px;align-self:center;border:1px solid var(--border);border-radius:6px;padding:.25rem .7rem}
+  #navigation .tools+button{margin-left:.4rem}
+  #navigation button:focus-visible{outline-offset:-3px}
+  main{max-width:1500px}
+  #screen{grid-template-columns:minmax(0,1fr)}
+  .drop{display:grid;align-content:center;justify-items:center;gap:1rem;min-height:162px;padding:2.4rem 1rem}
+  .drop .headline{margin:0}
+  .drop .hint{max-width:72ch;font-size:1rem}
+  .drop.over{outline:2px solid var(--accent);outline-offset:-4px}
+  #screen>.drop+.hint{margin-block:.45rem .9rem}
+  .split>*,.table-panel,.toolbar>*{min-width:0}
+  .rail{padding:4px;scroll-padding:4px}
+  .rail>strong{padding:.65rem .5rem .2rem;color:var(--muted);font-size:.88rem}
+  .rail>button[aria-current]{border:0;border-left:3px solid transparent;border-radius:4px}
+  .rail>button[aria-current=page]{border-left-color:var(--tab-mark);background:var(--pale);color:var(--text)}
+  .table-panel th{z-index:1}
+  .table-panel td{font-variant-numeric:tabular-nums}
+  .table-panel tbody tr:hover{background:var(--pale)}
+  .quick button,.stack a{min-width:0;overflow-wrap:anywhere}
+  .stack{display:grid;gap:.5rem}
+  .dark .chips button[aria-pressed=true]{color:white}
+  .contrast .rail>button[aria-current=page]{border-left-color:currentColor}
+  footer{margin-top:clamp(2rem,4vw,4rem);padding-block:1.15rem}
+}
+@media screen and (max-width:780px){
+  .mast{gap:10px}
+  .selectors{width:100%;grid-template-columns:max-content minmax(0,1fr);gap:6px 12px}
+  #taxpayer,.selectors select{min-width:0;width:100%;min-height:40px}
+  #navigation button{min-height:46px;padding-inline:.85rem}
+  #navigation .tools,#navigation .tools+button{min-height:38px}
+  .drop{min-height:178px;padding-inline:1.4rem}
+  .toolbar select,.toolbar button,.upload,.pager button{min-height:40px}
+  .pager{flex-wrap:wrap}
+  .toolbar .label,.toolbar .field{max-width:100%;flex-wrap:wrap}
+  .scroll{overscroll-behavior-inline:contain}
+  .chart .row{grid-template-columns:minmax(52px,.8fr) minmax(50px,1fr) minmax(74px,auto)}
+}
+@media screen and (min-width:641px) and (max-width:780px){
+  .selectors{display:flex;width:auto}
+  .selectors select{width:auto}
+  #taxpayer{width:15rem}
+}
