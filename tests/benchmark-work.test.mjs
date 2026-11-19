@@ -5,7 +5,7 @@ import {join} from 'node:path';
 import {execFileSync} from 'node:child_process';
 import {readPackage} from '../extension/archive/package.js';
 import {indexPackage} from '../extension/analisis/model.js';
-import {benchmarkAnalysis,benchmarkSheet,validateBenchmark} from '../extension/analisis/benchmark-work.js';
+import {benchmarkAnalysis,benchmarkSheet,kkaBenchmarkAppendix,validateBenchmark} from '../extension/analisis/benchmark-work.js';
 
 const wp={nama:'WP Fiktif',npwp:'0000000000000017'};
 function sample({sales=100000,profit=10000,tax=2000,partial=false,owner=wp.npwp,dup=false}={}){
@@ -38,6 +38,28 @@ test('preserves explicit zero and losses, missing financial values, integrity an
   }
   assert.equal(benchmarkAnalysis(sample({sales:0}),2025).ratios[0]['WP (%)'],null);
   assert.equal(benchmarkAnalysis(sample({tax:null}),2025).ratios[1]['WP (%)'],null);
+});
+test('KKA appendix summarizes only the saved scenarios and keeps their numeric sources in the workbook',()=>{
+  const pkg=sample(),references=[ref('CTTOR',1,{name:'Uji nol'}),
+    ref('NPM',12,{name:'Uji NPM',taxRate:20,taxRateSource:'Asumsi fiktif'}),
+    ref('CTTOR',4,{name:'Uji luar cakupan',klu:'252'})];
+  const result=kkaBenchmarkAppendix(pkg,2025,references);
+  assert.equal(result.workbook.name,result.title);
+  assert.deepEqual(result.rows.find(r=>r[0]==='CTTOR'),['CTTOR','2%','PPh terutang terhadap penjualan (CTTOR)']);
+  assert.match(result.rows.find(r=>r[0].startsWith('Uji nol'))[1],/Rp 0$/);
+  assert.match(result.rows.find(r=>r[0].startsWith('Uji NPM'))[2],/Contoh fiktif halaman 3.*Asumsi fiktif/);
+  assert.doesNotMatch(result.rows.find(r=>r[0].startsWith('Uji luar cakupan'))[1],/Rp/);
+  assert.deepEqual(result.workbook.rows,benchmarkSheet(pkg,2025,references).rows);
+  assert.ok(result.workbook.rows.some(r=>r[0]==='Uji NPM'&&r.includes(1000)));
+});
+test('KKA benchmark leaves the scope explicit when the reference or company return is missing',()=>{
+  const noReferences=kkaBenchmarkAppendix(sample(),2025);
+  assert.equal(noReferences.rows.find(r=>r[0]==='Acuan sektoral')[1],'Belum diisi');
+  assert.ok(noReferences.workbook.rows.every(r=>r[0]!=='Uji'));
+  assert.equal(kkaBenchmarkAppendix(sample(),2024),null);
+  const incomplete=kkaBenchmarkAppendix(sample({partial:true}),2025,[ref('CTTOR',2)]);
+  assert.equal(incomplete.rows.find(r=>r[0]==='CTTOR')[1],'Belum tersedia');
+  assert.doesNotMatch(incomplete.rows.find(r=>r[0]==='Uji · CTTOR')[1],/Rp/);
 });
 test('imports references atomically and requires documentation for assumptions without counting alternative scenarios twice',()=>{
   assert.deepEqual(validateBenchmark(),[]);const a=ref('CTTOR',0);assert.deepEqual(validateBenchmark([a]),[a]);

@@ -261,9 +261,15 @@ export async function visibleTables(selected) {
     /^\/returnsheets\/id-ID\/submitted-returnsheets\/[a-f\d]{8}(?:-[a-f\d]{4}){3}-[a-f\d]{12}\/?$/i.test(location.pathname);
   const indexColumns=['jenis pajak','jenis surat pemberitahuan pajak','masa pajak','model spt','status spt'];
   const isIndex=labels=>submitted && indexColumns.every(k=>labels.some(s=>s.toLowerCase()===k));
-  function indexPosition(table,count){
+  function paginationHost(table){
     const host=table.closest('.p-datatable,[data-pc-name="datatable"],p-table,[role=region]');
-    const local=host && [...host.querySelectorAll('table,[role=table],[role=grid]')].filter(visible).length===1?host:table;
+    return host && [...host.querySelectorAll('table,[role=table],[role=grid]')].filter(visible).length===1?host:table;
+  }
+  function indexPosition(table,count){
+    const local=paginationHost(table);
+    const activePages=[...local.querySelectorAll('.p-paginator-page.p-highlight,.p-paginator-page[aria-current=page],[data-pc-section=pagebutton][aria-current=page]')].filter(visible);
+    const numberText=activePages.length===1?activePages[0].innerText.trim():'';
+    const pageNumber=/^[1-9]\d*$/.test(numberText)&&Number.isSafeInteger(Number(numberText))?Number(numberText):null;
     const labels=[...local.querySelectorAll('.p-paginator-current,[role=status],[aria-live]')].filter(visible);
     const number='(\\d{1,3}(?:[.,]\\d{3})+|\\d+)';
     const caption=new RegExp('^(?:(?:menampilkan|showing)\\s+)?'+number+'\\s*(?:-|–|s\\.d\\.|sampai|to)\\s*'+number+'\\s*(?:dari|of)\\s*'+number+'(?:\\s+(?:baris|data|entri|entries|records))?\\.?$','i');
@@ -278,8 +284,9 @@ export async function visibleTables(selected) {
     const fields=[...local.querySelectorAll('thead input,thead select,input[type=search],[role=search] input,input[placeholder*="cari" i],input[aria-label*="filter" i],input[aria-label*="cari" i]')];
     const filterInputs=fields.map(el=>el.type==='checkbox'||el.type==='radio'?el.checked:el.value?.trim());
     const filtered=activeColumns.length>0 || filterInputs.some(Boolean);
-    const conflict=Boolean(ranges.length && !range || range && (firstControl && disabled(firstControl)!==(first<=1) || nextControl && disabled(nextControl)!==(last===total)));
-    return {range,atStart:!conflict && (range?first<=1:disabled(firstControl)),atEnd:!conflict && (range?last===total:disabled(nextControl)),
+    const conflict=Boolean(activePages.length>1 || ranges.length && !range ||
+      range && (pageNumber && (pageNumber===1)!==(first<=1) || firstControl && disabled(firstControl)!==(first<=1) || nextControl && disabled(nextControl)!==(last===total)));
+    return {range,pageNumber,atStart:!conflict && (range?first<=1:pageNumber?pageNumber===1:disabled(firstControl)),atEnd:!conflict && (range?last===total:disabled(nextControl)),
       filtered,filterValueHidden:activeColumns.length>0,filterState:JSON.stringify([activeColumns,filterInputs]),conflict};
   }
   function panelOwner(withLinks=false) {
@@ -346,13 +353,10 @@ export async function visibleTables(selected) {
     const host=currentTable.closest('.p-datatable,[data-pc-name="datatable"],p-table,[role=region]')||currentTable;
     if(currentTable.closest('[aria-busy=true]')||[...host.querySelectorAll('.p-datatable-loading-overlay,.p-datatable-loading,[data-pc-section=loadingoverlay],[role=progressbar]')].some(visible))return {loading:true};
     const pos=indexPosition(currentTable,currentRows.length);
-    const pageHost=currentTable.closest('.p-datatable,[data-pc-name="datatable"],p-table,[role=region]');
-    const pageButtons=pageHost&&[...pageHost.querySelectorAll('table,[role=table],[role=grid]')].filter(visible).length===1?
-      [...pageHost.querySelectorAll('.p-paginator-page.p-highlight,.p-paginator-page[aria-current=page],[data-pc-section=pagebutton][aria-current=page]')].filter(visible):[];
-    const pageNumber=pageButtons.length===1 && /^\d+$/.test(pageButtons[0].innerText.trim())?Number(pageButtons[0].innerText.trim()):null;
+    const {pageNumber}=pos;
     if(pos.conflict)return {skip:'Rentang halaman berbeda dengan jumlah baris pada tabel.'};
     const stamp=await digest([current.labels,currentRows,pos,pageNumber]);
-    if(selected.homeRead.expect && selected.homeRead.expect!==stamp)return {skip:'Isi atau filter tabel berubah ketika dibaca.'};
+    if(selected.homeRead.expect && selected.homeRead.expect!==stamp)return {stalePage:true};
     if(selected.homeRead.move){
       const first=selected.homeRead.move==='first',control=nextButton(currentTable,first);
       if(!pos.range && !pageNumber && !first || !control || !selected.homeRead.expect || !currentTable.isConnected || location.href!==selected.url ||
@@ -365,7 +369,7 @@ export async function visibleTables(selected) {
       (el.colSpan>=current.labels.length || el.closest('tr').matches('.p-datatable-emptymessage,[data-pc-section=emptymessage]')) &&
       /^(?:tidak ada data(?: yang ditemukan| yang tersedia)?|data tidak ditemukan|no (?:data|records)(?: (?:available|found))?)[.!]?$/i.test(el.innerText.trim()));
     const hasPaginator=Boolean(nextButton(currentTable,true,true)||nextButton(currentTable,false,true)||
-      [...(pageHost||currentTable.parentElement).querySelectorAll('.p-paginator,p-paginator,[data-pc-name="paginator"],nav[aria-label*="halaman" i],nav[aria-label*="pagin" i]')].some(visible));
+      [...paginationHost(currentTable).querySelectorAll('.p-paginator,p-paginator,[data-pc-name="paginator"],nav[aria-label*="halaman" i],nav[aria-label*="pagin" i]')].some(visible));
     return {rows:currentRows,range:pos.range,pageNumber,atStart:pos.atStart,atEnd:pos.atEnd,canFirst:Boolean(nextButton(currentTable,true)),
       hasPaginator,explicitEmpty:emptyCells.length===1,stamp,filtered:pos.filtered,
       filterHash:await digest(pos.filterState),canAdvance:Boolean(nextButton(currentTable))};
@@ -397,7 +401,8 @@ export async function visibleTables(selected) {
       if(table.closest('[aria-busy=true]') || [...host.querySelectorAll('.p-datatable-loading-overlay,.p-datatable-loading,[data-pc-section=loadingoverlay],[role=progressbar]')].some(visible))
         return {loading:true,skip:selected.quick?'Tabel sumber masih dimuat.':'Daftar SPT masih dimuat.'};
     }
-    if(!rows.length && !(selected.previewIndex && index && indexPosition(table,0).range?.total===0))return {skip:'Tabel kosong atau belum selesai dimuat.'};
+    if(!rows.length && !(selected.previewIndex && index && indexPosition(table,0).range?.total===0))
+      return {skip:'Tabel kosong atau belum selesai dimuat.',...(selected.previewIndex && index?{loading:true}:{})};
     if(selected.quick && !ownerColumns.some(c=>['npwpwp','npwpwajibpajak','npwppemilik','taxpayeridentificationnumber','taxpayeridentificationno'].includes(key(c)) ||
           selected.scope.source==='info' && key(c)==='npwp'))
       return {skip:'Kolom NPWP pemilik tabel belum dapat dipastikan.'};
@@ -466,7 +471,7 @@ export async function visibleTables(selected) {
     }
     if(selected.restartIndex){
       if(checked.skip || !checked.indexScope || selected.scope.source!=='sptdaftar')return {skip:'Daftar dan WP belum cocok.'};
-      location.assign(location.href);
+      location.reload();
       return {returning:true};
     }
     if (selected.openSpt) {
@@ -504,45 +509,79 @@ export async function visibleTables(selected) {
   }
   if (!selected.advance) return currentRows;
   if (!selected.scope && !sameOwner(currentRows,selected.owner)) throw new Error('Paginasi membutuhkan kolom NPWP pemilik yang cocok pada setiap baris. Lanjutkan per halaman.');
-  if (JSON.stringify(currentRows)!==selected.expected) throw new Error('Isi tabel berubah sejak pengambilan. Pilih ulang tabel.');
+  if (JSON.stringify(currentRows)!==selected.expected) {
+    if(selected.previewIndex&&selected.priorPosition&&selected.scope?.source==='sptdaftar')
+      return {staleBeforeAdvance:true};
+    throw new Error('Isi tabel berubah sejak pengambilan. Pilih ulang tabel.');
+  }
   const next=nextButton(currentTable,selected.advance==='first' && selected.scope?.source==='sptdaftar');
   if (!next) return {end:true};
-  next.click();
-  const deadline=Date.now()+5000;
-  let matchingRangeSince=0;
-  while(Date.now()<deadline) {
-    await new Promise(resolve=>setTimeout(resolve,120));
-    if (location.href!==selected.url) throw new Error('Alamat halaman berubah. Pilih ulang sumber sebelum melanjutkan.');
-    if(selected.scope && isIndex(selected.labels) && panelOwner()!==selected.scope.wp)
-      throw new Error('NPWP tampilan berubah atau panel WP tidak tersedia. Halaman berikut tidak ditambahkan.');
-    const table=listTables()[selected.index];
-    if(!table)continue;
-    if(table.id!==selected.tableId || tableTitle(table,selected.index)!==selected.title)
-      throw new Error('Tabel sumber berubah. Halaman berikut tidak ditambahkan.');
-    const changed=shape(table);
-    if(!changed.labels.length)continue;
-    if(JSON.stringify(changed.labels)!==JSON.stringify(selected.labels))
-      throw new Error('Kolom tabel sumber berubah. Halaman berikut tidak ditambahkan.');
-    const rows=records(changed);
-    if(!rows.length)continue;
-    if(JSON.stringify(rows)===selected.expected) {
-      // A complete page can look identical when the UI omits internal record IDs.
-      const prior=selected.priorRange,position=selected.previewIndex && prior && indexPosition(table,rows.length);
-      const range=position?.range,target=selected.advance==='first'?1:prior?.last+1;
-      if(!range || position.conflict || range.total!==prior.total || range.first!==target ||
-          range.last-range.first+1!==rows.length || range.first===prior.first || checkScope(rows,changed.labels,table).loading){
-        matchingRangeSince=0;continue;
-      }
-      if(!matchingRangeSince){matchingRangeSince=Date.now();continue;}
-      if(Date.now()-matchingRangeSince<400)continue;
-    }
-    if(selected.scope){
-      const checked=checkScope(rows,changed.labels,table);
-      if(checked.loading)continue;
-      return {...checked,canAdvance:!!nextButton(table)};
-    }
-    if(!sameOwner(rows,selected.owner)) throw new Error('NPWP tampilan berubah. Halaman berikut tidak ditambahkan.');
-    return {rows,canAdvance:!!nextButton(table)};
+  const prior=selected.priorPosition;
+  if(prior){
+    const position=indexPosition(currentTable,currentRows.length);
+    const positionKey=p=>JSON.stringify([p.range?.first,p.range?.last,p.range?.total,p.pageNumber,
+      p.atStart,p.atEnd,p.filterState,p.conflict]);
+    if(positionKey(prior)!==positionKey(position))throw Error('Posisi atau filter daftar berubah sebelum halaman dipindahkan.');
   }
+  const goFirst=selected.advance==='first';
+  let rowsRefreshed=false,lastSnapshot='',stableSince=0;
+  const observer=prior?new MutationObserver(changes=>{
+    if(changes.some(change=>{
+      const element=change.target.nodeType===1?change.target:change.target.parentElement;
+      return element?.closest('tbody')?.closest('table')===currentTable ||
+        change.target===currentTable && [...change.addedNodes,...change.removedNodes].some(node=>node.nodeName==='TBODY');
+    })){
+      rowsRefreshed=true;
+      stableSince=0;
+    }
+  }):null;
+  observer?.observe(currentTable,{subtree:true,characterData:true,childList:true});
+  try {
+    next.click();
+    const longerWait=selected.workTab===true && selected.previewIndex && prior && selected.scope?.source==='sptdaftar';
+    const deadline=Date.now()+(longerWait?120000:5000);
+    while(Date.now()<deadline) {
+      await new Promise(resolve=>setTimeout(resolve,120));
+      if (location.href!==selected.url) throw new Error('Alamat halaman berubah. Pilih ulang sumber sebelum melanjutkan.');
+      if(selected.scope && isIndex(selected.labels) && panelOwner()!==selected.scope.wp)
+        throw new Error('NPWP tampilan berubah atau panel WP tidak tersedia. Halaman berikut tidak ditambahkan.');
+      const table=listTables()[selected.index];
+      if(!table)continue;
+      if(table.id!==selected.tableId || tableTitle(table,selected.index)!==selected.title)
+        throw new Error('Tabel sumber berubah. Halaman berikut tidak ditambahkan.');
+      const changed=shape(table);
+      if(!changed.labels.length)continue;
+      if(JSON.stringify(changed.labels)!==JSON.stringify(selected.labels))
+        throw new Error('Kolom tabel sumber berubah. Halaman berikut tidak ditambahkan.');
+      const rows=records(changed);
+      if(!rows.length)continue;
+      const position=prior?indexPosition(table,rows.length):null;
+      const rowsChanged=JSON.stringify(rows)!==selected.expected;
+      if(prior) {
+        if(position.filterState!==prior.filterState)throw Error('Filter daftar berubah saat berpindah halaman.');
+        const rangeMoved=prior.range && position.range && position.range.total===prior.range.total &&
+          position.range.first===(goFirst?1:prior.range.last+1) && position.range.first!==prior.range.first;
+        const pageMoved=prior.pageNumber && position.pageNumber===(goFirst?1:prior.pageNumber+1) && position.pageNumber!==prior.pageNumber;
+        const checked=checkScope(rows,changed.labels,table);
+        if(checked.loading || position.conflict || (prior.range? !rangeMoved: Boolean(position.range)) ||
+            (prior.pageNumber? !pageMoved: Boolean(position.pageNumber)) ||
+            !rowsChanged && (!(rangeMoved || pageMoved) || !(rowsRefreshed || table!==currentTable))){
+          stableSince=0;continue;
+        }
+        const snapshot=JSON.stringify([rows,position]);
+        if(snapshot!==lastSnapshot || !stableSince){lastSnapshot=snapshot;stableSince=Date.now();continue;}
+        if(Date.now()-stableSince<240)continue;
+        return {...checked,position,canAdvance:!!nextButton(table)};
+      } else if(!rowsChanged)continue;
+      if(selected.scope){
+        const checked=checkScope(rows,changed.labels,table);
+        if(checked.loading)continue;
+        return {...checked,canAdvance:!!nextButton(table)};
+      }
+      if(!sameOwner(rows,selected.owner)) throw new Error('NPWP tampilan berubah. Halaman berikut tidak ditambahkan.');
+      return {rows,canAdvance:!!nextButton(table)};
+    }
+    if(longerWait)return {loading:true};
+  } finally { observer?.disconnect(); }
   throw new Error('Halaman berikut belum berubah atau mengulang data. Periksa halaman di Coretax.');
 }

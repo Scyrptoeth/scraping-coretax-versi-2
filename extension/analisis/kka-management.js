@@ -7,14 +7,14 @@ const headings=['Peran','Nama','NPWP/NIK','Porsi (%)','Kode jabatan','Berlaku da
 const text=v=>typeof v==='string'?v.trim():Number.isSafeInteger(v)?String(v):'';
 const displayDay=day=>day?day.split('-').reverse().join('-'):'';
 
-function records(pkg,source,file){
+export function kkaRegistryEntries(pkg,source,file){
   const wp=normalizeId(pkg.manifest.wp?.npwp);
   return pkg.entries.filter(e=>wp && normalizeId(e.cap?.konteks?.npwp)===wp &&
     (e.cap?.sumber===source||!e.cap?.sumber&&e.path===file));
 }
-function company(pkg){
+export function isKkaCorporate(pkg){
   const types=new Set();
-  for(const entry of records(pkg,'info','profil/informasi-umum.json'))for(const row of rowsOf(entry)){
+  for(const entry of kkaRegistryEntries(pkg,'info','profil/informasi-umum.json'))for(const row of rowsOf(entry)){
     const g=row.GeneralInformation??row;
     if(g.UniqueIdentificationNumber && normalizeId(g.UniqueIdentificationNumber)!==normalizeId(pkg.manifest.wp?.npwp))return false;
     const kind=text(g.TaxpayerType??g['Jenis Wajib Pajak']).toLowerCase();
@@ -59,15 +59,19 @@ function failedRegistry(manifest,files){
     .some(value=>matches.has(key(value))));
 }
 
+export function relatedPartyRegistryComplete(pkg,files){
+  return files.length>0&&pkg.report?.valid!==false&&!failedRegistry(pkg.manifest,files)&&files.every(e=>e.cap?.lengkap===true && e.pages?.length &&
+    e.pages.every(p=>p&&p.IsSuccessful!==false&&!p.Errors?.length)&&e.cap.baris===rowsOf(e).length&&
+    (e.cap.total==null||e.cap.total===e.cap.baris));
+}
+
 export function kkaManagementSheet(pkg,asOf=new Date().toISOString().slice(0,10)){
-  if(!company(pkg))return null;
-  const files=records(pkg,'pihak','profil/pihak-terkait.json');
+  if(!isKkaCorporate(pkg))return null;
+  const files=kkaRegistryEntries(pkg,'pihak','profil/pihak-terkait.json');
   const items=files.flatMap(e=>rowsOf({...e,pages:e.pages?.filter(p=>!p?.Errors?.length)}));
   const people=items.map(r=>officer(r,asOf)).filter(Boolean)
     .sort((a,b)=>rank(a[0])-rank(b[0])||Number(a[7]==='Berakhir')-Number(b[7]==='Berakhir'));
-  const complete=files.length>0&&pkg.report?.valid!==false&&!failedRegistry(pkg.manifest,files)&&files.every(e=>e.cap?.lengkap===true && e.pages?.length &&
-    e.pages.every(p=>p&&p.IsSuccessful!==false&&!p.Errors?.length)&&e.cap.baris===rowsOf(e).length&&
-    (e.cap.total==null||e.cap.total===e.cap.baris));
+  const complete=relatedPartyRegistryComplete(pkg,files);
   const rows=[['Pengurus dan pihak terkait'],['Status berlaku pada tanggal ekspor '+displayDay(asOf)+' (UTC). Riwayat jabatan yang sudah berakhir tetap ditampilkan.']];
   if(files.length)rows.push(['Sumber registrasi',...new Set(files.map(e=>e.path))]);
   if(people.length){

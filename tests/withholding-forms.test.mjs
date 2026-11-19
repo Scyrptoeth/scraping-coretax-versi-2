@@ -4,8 +4,9 @@ import {readFile,readdir} from 'node:fs/promises';
 import {join} from 'node:path';
 import {readPackage} from '../extension/archive/package.js';
 import {indexPackage,rowsOf} from '../extension/analisis/model.js';
-import {formSheets} from '../extension/analisis/spt-forms.js';
-import {withholdingForm,withholdingPeriods} from '../extension/analisis/withholding-forms.js';
+import {financialPosition,formSheets} from '../extension/analisis/spt-forms.js';
+import {withholdingForm,withholdingPeriods,withholdingSnapshot} from '../extension/analisis/withholding-forms.js';
+import {monthlyWithholding} from '../extension/analisis/monthly-withholding.js';
 const wp={npwp:'0000000000000017',nama:'WP uji'},period='2025-02';
 function captured(type,version,body,annex={}){
   const code=type==='PPH2126'?'ICT_WITR':'ICT_WTR',id='uji-'+version;
@@ -69,6 +70,35 @@ test('unavailable, partial, duplicate, cancelled, wrong-version or unrecognised 
   const f=captured('UNIFIKASI',0,{TotalIncomeTaxByGoverment:0,TotalIncomeTaxByGovernment:1});
   assert.equal(withholdingForm(f,wp).values[0].Nilai,null);
   assert.equal(withholdingForm(f,wp).attachments[0].Status,'Belum ada');
+});
+test('displayed rupiah cells preserve amounts and their location without certifying form or annex coverage',()=>{
+  const id='cuplikan-'+'a'.repeat(64),path='spt/PPH2126/'+period+'/p01_'+id+'/induk.json';
+  const cells=[];
+  const cell=(Tabel,Baris,Kolom,value)=>cells.push({Tabel,Baris,Kolom,'Isian pada formulir':value});
+  for(const [table,article,withheld,balance] of [[2,21,'1.500,50','-25'],[5,26,'0','0']]){
+    cell(table,1,2,'URAIAN');cell(table,1,4,'JUMLAH (Rp)');
+    cell(table,2,2,'PPH PASAL '+article+' YANG DIPOTONG');cell(table,2,3,'105');cell(table,2,4,withheld);
+    cell(table,3,2,'PPH PASAL '+article+' YANG KURANG (LEBIH) DISETOR (1-2-3)');cell(table,3,4,balance);
+  }
+  const entry={path,cap:{sumber:'sptisi',lengkap:false,konteks:{npwp:wp.npwp,cuplikanTampilan:true,bagian:'induk',
+    spt:{jenis:'ICT_WITR',masa:'02022025',pemb:1,nomor:'BPE-UJI-0002'}}},
+    pages:[{Payload:{Data:cells}}]};
+  const f=indexPackage({manifest:{wp},entries:[entry]}).forms[0];
+  const snapshot=withholdingSnapshot(f,wp);
+  assert.deepEqual(snapshot.map(item=>item.value),[1500.5,-25,0,0]);
+  assert.match(snapshot[0].source,/Tabel 2.*Baris 2.*Kolom 4/);
+  const data=withholdingForm(f,wp),sheets=formSheets([f],{manifest:{wp}});
+  assert.equal(data.snapshot,true);
+  assert.equal(data.attachments.every(row=>row.PPh===null),true);
+  assert.ok(sheets[0].rows.some(row=>row.includes('Angka pada cuplikan induk')));
+  assert.ok(sheets[0].rows.some(row=>row.includes(1500.5)&&row.includes(path)));
+  assert.equal(financialPosition(f,wp).amount,-25);
+  assert.equal(withholdingPeriods([f],'2025',wp).rows[0]['Bruto L-I A'],null);
+  assert.equal(monthlyWithholding([f],'2025',wp).total['PPh Pasal 21 · PPh'],1500.5);
+  assert.equal(monthlyWithholding([f],'2025',wp).total['PPh Pasal 21 · objek'],null);
+  cell(5,3,4,'8');
+  assert.equal(financialPosition(f,wp).amount,null);
+  assert.equal(withholdingSnapshot(f,{npwp:'0000000000000028'}).length,0);
 });
 test('all 104 withholding returns in the four fictitious packages preserve amounts from their own parents and details',async t=>{
   const dir=process.env.VERITAX_FIXTURES;if(!dir)return t.skip('Four fictitious examples are optional');

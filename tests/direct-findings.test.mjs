@@ -90,6 +90,19 @@ test('Sisa PPN dan PPh pemotongan ditampilkan sebagai pembukuan, tanpa tambahan 
     assert.equal(directStp(p,'2025',work('2025-11-01')).facts.length,0);
   }
 });
+test('A generic VAT ledger reference needs a matched original return to establish the outstanding amount',()=>{
+  const input=(declared,detail='N')=>demo({balance:40000,filed:'2025-05-18',deadline:'2025-05-20',
+    changeLedger:(_,rows)=>Object.assign(rows[0],{ReferenceType:'TaxReturn',AccountingTypeDetailCode:detail,ReferenceNumber:'PPN-FIKTIF'}),
+    changeParts:entry=>{entry.pages[0].Payload.FormData=JSON.stringify({VATUnderOrOverPaid:{VAT:declared}});}});
+  const facts=directStp(input(100000),'2025').facts;
+  assert.equal(facts.length,1);
+  assert.equal(facts[0].ledgerBalance,40000);
+  assert.equal(facts[0].sanctionAmount,null);
+  assert.match(facts[0].source,/induk\.json · VATUnderOrOverPaid\.VAT/);
+  for(const pkg of [input(99999),input(null),input(100000,'A')]){
+    assert.equal(directStp(pkg,'2025').facts.length,0);
+  }
+});
 test('Buku besar parsial, salah WP, gagal, tembus bulan, tertapis, atau valuta berbeda tidak dianggap bukti setoran',()=>{
   for(const changeLedger of [
     e=>{e.cap.lengkap=false;},e=>{e.cap.konteks.npwp='0000000000000032';},e=>{e.pages[0].IsSuccessful=false;},

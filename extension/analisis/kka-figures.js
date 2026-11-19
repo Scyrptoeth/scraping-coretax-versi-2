@@ -1,5 +1,8 @@
 import {normalizeId} from '../app-data.js';
+import {inPeriod,periodOf,rangeIsValid} from '../app-spt-plan.js';
+import {ledgerCancellation} from '../ledger-status.js';
 import {company,documentState,months} from './indicative-source.js';
+import {ledgerAnalysisRow} from './ledger-table.js';
 import {periodFields,rowsOf,sptDay} from './model.js';
 import {annualRatios,measures} from './peer-analysis.js';
 import {listedReturns,revisionProblem,sourceProblem,usesOtherCurrency} from './return-source.js';
@@ -42,8 +45,7 @@ function annualSource(pkg,year) {
     const found=codes.filter(c=>f?.accounts.has(c));
     return source('L1 akun '+(found.join(' + ')||codes.join(' + ')),sum(found.map(c=>amount(f.accounts.get(c).Amount))));
   };
-  const variant=f&&Object.keys(f.body).find(k=>/^L1[ac]FormData$/.test(k)&&f.body[k]),prefix=variant?.slice(0,3);
-  const liabilities=f?.body[variant]?.[prefix+'LiabilitiesAndEquity']||{};
+  const liabilities=f?.liabilities||{};
   const debts=['AC2102','AC2103'].filter(k=>Object.hasOwn(liabilities,k));
   values.fiscal=source('MainFormData.FiscalNetIncomeAfterTax',f?.main.FiscalNetIncomeAfterTax);
   values.cash=source('L1 aset AC1101',f?.assets.AC1101);
@@ -54,13 +56,13 @@ function annualSource(pkg,year) {
   values.derDeclared=source('L11BFormData.DebtToEquityRatio',f?.body.L11BFormData?.DebtToEquityRatio);
   const notes=[];
   if(mixed)notes.push('Dua jenis SPT Tahunan berbeda tercatat untuk '+year+'. Cocokkan jenis WP sebelum memakai angka tahunan.');
-  else if(hasType('BADAN')&&!f)notes.push('Sumber SPT Badan '+year+' belum memenuhi pemeriksaan versi, identitas, mata uang, atau struktur L1a/L1c.');
+  else if(hasType('BADAN')&&!f)notes.push('Sumber SPT Badan '+year+' belum memenuhi pemeriksaan versi, identitas, mata uang, atau struktur L1a, L1b, atau L1c.');
   return {values,ratios,account,source,op,corporate:f,hasPersonal:hasType('OP'),notes};
 }
 
 function series(pkg,year,type,part,selector,code,indices) {
   const all=months(pkg,year,type,part);
-  return sourceSeries(indices.map(i=>all[i]),selector,code);
+  return coveredSeries(indices.map(i=>all[i]),selector,code);
 }
 
 function sourceSeries(take,selector,code){
@@ -81,7 +83,7 @@ function recipientCount(sources){
   return ids.size;
 }
 
-function payrollSeries(months,selector,basis){
+function coveredSeries(months,selector,basis){
   const annual=sourceSeries(months,selector,basis);
   const available=months.filter(Boolean);
   if(available.length>0&&available.length<months.length){
@@ -123,8 +125,8 @@ function payrollFigures(pkg,year){
     if(!part)return null;
     return {path:part.path+' · GrossIncome',value:part.rows.length?sum(part.rows.map(r=>amount(r.GrossIncome))):0};
   });
-  return {people:payrollSeries(slips,recipientCount,'TIN unik lintas masa · '+basis),
-    salaries:payrollSeries(gross,items=>sum(items.map(s=>s.value)),'GrossIncome langsung pada induk atau bruto bukti pada '+basis)};
+  return {people:coveredSeries(slips,recipientCount,'TIN unik lintas masa · '+basis),
+    salaries:coveredSeries(gross,items=>sum(items.map(s=>s.value)),'GrossIncome langsung pada induk atau bruto bukti pada '+basis)};
 }
 
 const allMonths=Array.from({length:12},(_,i)=>i);
@@ -137,21 +139,33 @@ function monthlyFigures(pkg,year){
 }
 
 function recentDeliveries(pkg){
-  const periods=pkg.forms.filter(f=>f.type==='PPN').map(f=>f.period);
-  for(const e of pkg.entries.filter(e=>e.path==='spt/daftar.json'||e.cap?.sumber==='sptdaftar')){
-    const years=new Set(rowsOf(e).map(r=>String(r.TaxPeriodCode??'').slice(-4)).filter(y=>/^\d{4}$/.test(y)));
-    for(const y of years)periods.push(...listedReturns(pkg,y,'VAT_VATR').keys());
-  }
-  const last=periods.filter(p=>/^\d{4}-(0[1-9]|1[0-2])$/.test(p)).sort().at(-1);
+  const range=pkg.manifest.opsi?.periode, scoped=rangeIsValid(range);
+  const inScope=period=>{
+    const parsed=periodOf(period,false);
+    return parsed&&(!scoped||inPeriod(parsed,false,range));
+  };
+  const listed=listedReturns(pkg,null,'VAT_VATR');
+  const periods=[...listed.keys(),...pkg.forms.filter(f=>f.type==='PPN').map(f=>f.period)];
+  const last=periods.filter(p=>/^\d{4}-(0[1-9]|1[0-2])$/.test(p)&&inScope(p)).sort().at(-1);
   if(!last)return measure(null,'Tiga masa PPN terakhir belum diketahui.');
   const end=new Date(last+'-01T00:00:00Z'),years=new Map(),refs=[],amounts=[];
   for(const offset of [-2,-1,0]){
     const d=new Date(Date.UTC(end.getUTCFullYear(),end.getUTCMonth()+offset,1));
+    const label=d.toISOString().slice(0,7);
+    if(!inScope(label)){
+      refs.push(label+' · di luar periode pilihan');
+      amounts.push(null);
+      continue;
+    }
     const y=String(d.getUTCFullYear()),month=d.getUTCMonth();
     if(!years.has(y))years.set(y,months(pkg,y,'PPN','induk'));
     const s=years.get(y)[month];
-    refs.push(d.toISOString().slice(0,7)+(s?' · '+s.path:' · induk belum terverifikasi'));
-    amounts.push(amount(s?.rows[0].TotalDeliveryOfGoodsAndServices?.SellingPrice));
+    const directory=[...new Set((listed.get(label)||[]).map(item=>item.path))];
+    const value=amount(s?.rows[0].TotalDeliveryOfGoodsAndServices?.SellingPrice);
+    const evidence=s?[s.path,...(value===null?['angka penyerahan belum tersedia']:[])]:
+      ['induk belum terverifikasi',...directory];
+    refs.push([label,...evidence].join(' · '));
+    amounts.push(value);
   }
   return measure(sum(amounts),'TotalDeliveryOfGoodsAndServices.SellingPrice · '+refs.join(' | '));
 }
@@ -164,6 +178,8 @@ function paymentDay(raw,fromPosting){
   return sptDay(match[1]+'-'+match[2].padStart(2,'0')+'-'+match[3].padStart(2,'0'));
 }
 
+const displayedId=value=>typeof value==='string'&&/[^\s–—-]/.test(value)?value.trim():'';
+
 function recentDeposits(pkg) {
   const owner=normalizeId(pkg.manifest.wp?.npwp),end=sptDay(pkg.manifest.dibuat);
   const ledger=pkg.entries.filter(e=>/^bukubesar\/\d{4}-(?:0[1-9]|1[0-2]|setahun)\.json$/.test(e.path));
@@ -173,7 +189,7 @@ function recentDeposits(pkg) {
   cutoff.setUTCDate(cutoff.getUTCDate()-365);
   const begin=cutoff.toISOString().slice(0,10),basis=ref+' · sesudah '+begin+' sampai '+end+' · '+ledger.length+' berkas';
   const failed=new Set((pkg.manifest.gagal||[]).map(f=>String(f?.path??f).replace(/^data\//,'')).filter(p=>p.startsWith('bukubesar/')));
-  const seen=new Map(),paths=new Set(),aggregates=new Set();
+  const seen=new Map(),visible=new Map(),nativePeriods=new Set(),paths=new Set(),aggregates=new Set();
   let relevantSource=false,completeFiles=0;
   for(const e of ledger){
     const [,year,month]=/^bukubesar\/(\d{4})-(.+)\.json$/.exec(e.path);
@@ -190,19 +206,31 @@ function recentDeposits(pkg) {
     if(aggregate)aggregates.add(aggregate);
     const fileIds=new Set();
     let overlaps=false;
-    for(const r of rowsOf(e)){
+    for(const raw of rowsOf(e)){
+      const r=ledgerAnalysisRow(raw);
       if(!r||typeof r!=='object'||[r.TaxpayerTIN,r.TaxpayerTin,r.TIN,r.NPWP].filter(present).some(id=>normalizeId(id)!==owner))
         return measure(null,basis+' · Identitas pada baris buku besar belum dapat dipasangkan.');
       if(r.TaxpayerAggregateIdentifier)aggregates.add(r.TaxpayerAggregateIdentifier);
       if(r.RecordId){if(fileIds.has(r.RecordId))overlaps=true;fileIds.add(r.RecordId);}
       if(!r.AccountingTypeCode&&r.IsCancelled!==true)return measure(null,basis);
       if(r.AccountingTypeCode!=='Payment')continue;
-      const fromPosting=!present(r.TransactionDate);
+      const fromPosting=!present(r.TransactionDate)&&!present(raw['Tanggal Transaksi']);
       const date=paymentDay(fromPosting?r.PostingDate:r.TransactionDate,fromPosting),v=amount(r.Amount);
-      if(typeof r.IsCancelled!=='boolean'||!r.RecordId||!Number.isSafeInteger(v)||v<0||usesOtherCurrency(r))
+      if(typeof r.IsCancelled!=='boolean'||!Number.isSafeInteger(v)||v<0||usesOtherCurrency(r))
         return measure(null,basis+' · Nomor transaksi, status aktif, atau nilai pembayaran belum dapat diverifikasi.');
       const period=String(r.PeriodCode??'');
       if(!/^(?:0[1-9]|1[0-2])(?:0[1-9]|1[0-2])\d{4}$/.test(period)||period.slice(-4)!==year||month!=='setahun'&&period!==code)return measure(null,basis);
+      if(!r.RecordId){
+        // Exclusive period scopes and two visible references support a subtotal of observed rows.
+        const transaction=displayedId(r['Nomor Transaksi']),reference=displayedId(r.Referensi);
+        const key=JSON.stringify([period,transaction,reference]);
+        const status=ledgerCancellation(raw);
+        if(r===raw||period!==code||!transaction||!reference||visible.has(key)||status!==(r.IsCancelled?'cancelled':'active'))
+          return measure(null,basis+' · Baris pembayaran pada tabel tampilan belum dapat dibedakan atau dicocokkan dengan masanya.');
+        visible.set(key,{date,v,cancelled:r.IsCancelled,period,fromPosting,path:e.path});
+        continue;
+      }
+      nativePeriods.add(period);
       const previous=seen.get(r.RecordId);
       if(previous&&(previous.date!==date||previous.v!==v||previous.cancelled!==r.IsCancelled||previous.period!==period))return measure(null,basis+' · Nomor transaksi yang sama memiliki rincian berbeda.');
       seen.set(r.RecordId,{date,v,cancelled:r.IsCancelled,period,fromPosting:fromPosting&&(previous?.fromPosting??true)});
@@ -213,16 +241,24 @@ function recentDeposits(pkg) {
     });
     if(!filtered&&!overlaps&&ledgerPageCountProven(e,evidence.size))completeFiles++;
   }
-  const active=[...seen.values()].filter(r=>!r.cancelled);
+  if([...visible.values()].some(r=>nativePeriods.has(r.period)))
+    return measure(null,basis+' · Sumber tampilan dan sumber dengan ID rekaman memuat masa yang sama.');
+  const active=[...seen.values(),...visible.values()].filter(r=>!r.cancelled);
   const undated=active.filter(r=>!r.date).length;
   const inWindow=active.filter(r=>r.date>begin&&r.date<=end);
   const total=inWindow.reduce((s,r)=>s+r.v,0);
-  const checked=basis+' · '+completeFiles+'/'+ledger.length+' berkas dengan jumlah baris terverifikasi · '+inWindow.length+' transaksi pembayaran unik'+
+  const included=inWindow.filter(r=>r.path);
+  const sourceFiles=[...new Set(included.map(r=>r.path))].sort();
+  const count=included.length?
+    included.length+' baris pembayaran dari kolom tampilan'+(included.length<inWindow.length?' dan '+(inWindow.length-included.length)+' transaksi dengan ID rekaman':''):
+    inWindow.length+' transaksi pembayaran unik';
+  const checked=basis+' · '+completeFiles+'/'+ledger.length+' berkas dengan jumlah baris terverifikasi · '+count+
     ' ('+inWindow.filter(r=>r.fromPosting).length+' memakai tanggal buku)'+(failed.size?' · '+failed.size+' berkas gagal':'')+
-    (undated?' · Tanggal '+undated+' pembayaran aktif belum dapat dipastikan.':'');
+    (undated?' · Tanggal '+undated+' pembayaran aktif belum dapat dipastikan.':'')+
+    (sourceFiles.length?' · Berkas baris tampilan '+sourceFiles.join(', '):'');
   if((!relevantSource&&!inWindow.length)||aggregates.size>1||!Number.isSafeInteger(total))return measure(null,checked);
-  if(completeFiles===ledger.length&&!failed.size&&!undated)return measure(total,checked);
-  return {...measure(null,checked+(completeFiles===ledger.length&&!failed.size?'':' · Kelengkapan halaman atau cakupan baris belum terbukti.')),
+  if(completeFiles===ledger.length&&!failed.size&&!undated&&!visible.size)return measure(total,checked);
+  return {...measure(null,checked+(completeFiles===ledger.length&&!failed.size&&!visible.size?'':' · Kelengkapan halaman atau cakupan baris belum terbukti.')),
     ...(inWindow.length&&{observed:measure(total,checked+' · Hanya transaksi aktif yang tersimpan dan dapat dipasangkan.')})};
 }
 
@@ -231,6 +267,36 @@ const comparison=[
   ['profit','Laba sebelum pajak'],['fiscal','Penghasilan neto fiskal'],['tax','PPh Badan terutang'],
   ['supply','Penyerahan PPN'],['vat','PPN kurang atau lebih bayar'],['salaries','Penghasilan bruto PPh 21'],
   ['people','Penerima penghasilan PPh 21 (orang)']];
+
+export function kkaFilingOverview(pkg){
+  const range=pkg.manifest.opsi?.periode,scoped=rangeIsValid(range);
+  const years=[...new Set(pkg.years??pkg.forms.map(form=>form.year))].map(String).filter(y=>/^\d{4}$/.test(y)&&
+    (!scoped||Number(y)>=range.from.y&&Number(y)<=range.to.y)).sort();
+  if(!years.length||pkg.report?.valid===false)return null;
+  const title='L-5 Ikhtisar SPT';
+  const rows=[['Tahun pajak','Data SPT Tahunan','Data SPT Masa yang dapat dihitung']];
+  const detail=[[title],['Tahun','Uraian','Jumlah','Satuan','Berkas sumber atau batas data']];
+  for(const year of years){
+    const annual=annualSource(pkg,year);
+    const wholeYear=!scoped||(Number(year)>range.from.y||range.from.m===1)&&(Number(year)<range.to.y||range.to.m===12);
+    const monthly=wholeYear?monthlyFigures(pkg,year):null;
+    const returnMetrics=annual.hasPersonal?
+      Object.entries(periodFields.OP).map(([label,key])=>[label,annual.op?
+        measure(annual.op.body[key],annual.op.path+' · '+key):missing,'Rp']):
+      comparison.slice(0,7).map(([key,label])=>[label,annual.values[key],'Rp']);
+    const monthMetrics=comparison.slice(7).map(([key,label])=>[label,
+      monthly?.[key]??measure(null,'Periode pilihan hanya mencakup sebagian tahun.'),key==='people'?'orang':'Rp']);
+    const annualNote=annual.corporate?'PPh Badan':annual.op?'PPh Orang Pribadi':'Jumlah tahunan belum dapat dihitung';
+    const monthlyCount=monthMetrics.filter(([,m])=>Number.isFinite(m.value)).length;
+    const observed=monthMetrics.filter(([,m])=>m.observed);
+    rows.push([year,annualNote,monthlyCount+' dari '+monthMetrics.length+' ukuran setahun'+
+      (observed.length?' · '+observed.length+' ukuran untuk sebagian masa':'')]);
+    for(const [label,m,unit] of [...returnMetrics,...monthMetrics])detail.push([year,label,m.value,unit,m.source]);
+    for(const [label,{observed:m},unit] of observed)detail.push([year,'Masa yang terbaca · '+label,m.value,unit,m.source]);
+  }
+  return {title,rows,workbook:{name:title,rows:detail}};
+}
+
 const mainRatios=['gpm','npm','cttor','expenses','der','dso','dio','turnover'];
 const supplementary=[
   ['fiscalChange','Selisih neto fiskal terhadap laba komersial','%','fiscalDiff','profit'],['quick','Rasio cepat','kali','quickAssets','currentDebt'],
@@ -278,7 +344,8 @@ export function kkaFigures(pkg,year,{principal=null}={}) {
       return [key,label+' (SPT OP)'];
     }),...comparison.slice(7)]:comparison;
   const fmtRef=(a,b)=>previous+' · '+a+' | '+y+' · '+b;
-  const table1={key:'4.1',title:'Tabel 4.1. Perbandingan SPT dua tahun',rows:[['Uraian',previous,y,'Selisih','Perubahan (%)','Sumber'],
+  const table1={key:'4.1',title:'Tabel 4.1. Perbandingan SPT dua tahun',comparableRows:comparisons.length,
+    rows:[['Uraian',previous,y,'Selisih','Perubahan (%)','Sumber'],
     ...comparisons.map(([key,label])=>{
       const a=old[key],b=now[key],change=difference(b.value,a.value);
       return [label,a.value,b.value,change,ratio(change,Math.abs(a.value??0),100),fmtRef(a.source,b.source)];
@@ -307,7 +374,8 @@ export function kkaFigures(pkg,year,{principal=null}={}) {
       measure(ratio(m.value,denominator.value),m.source+' / '+denominator.source),'kali']),
     ...(deposits.observed?[['Subtotal pembayaran teramati dalam 12 bulan',deposits.observed]]:[])];
   const table3={key:'5.3',title:'Tabel 5.3. Kemampuan membayar',rows:[['Uraian','Nilai','Satuan','Sumber'],...ability.map(([label,m,unit])=>[label,m.value,unit||'Rp',m.source])]};
-  const notes=[...older.notes,...current.notes,'Agregat SPT setahun memerlukan angka pada 12 masa. Penyerahan tiga masa mengikuti bulan terakhir yang tercantum dalam paket dan dua bulan sebelumnya. Setiap masa memakai versi terakhir yang dapat diverifikasi.',
+  const notes=[...older.notes,...current.notes,'Agregat SPT setahun memerlukan angka pada 12 masa. Penyerahan tiga masa mengikuti bulan terakhir pada daftar pelaporan atau isi SPT dalam periode pilihan, serta dua bulan sebelumnya. Angka memerlukan induk versi terakhir untuk ketiga masa.',
+    ...(table1.rows.length>comparisons.length+1?['Subtotal PPh 21 merangkum masa yang terbaca pada tiap tahun. Kolom selisih dan persentase perubahan untuk subtotal dikosongkan.']:[]),
     'Setoran 12 bulan mencakup 365 hari kalender hingga tanggal pembuatan paket, termasuk tanggal tersebut. Pemutar memakai tanggal transaksi. Jika tanggal itu kosong, pemutar memakai tanggal buku. Pembayaran aktif dengan nomor yang sama dihitung sekali. Cakupan pembayaran di luar paket perlu dikonfirmasi.',
     ...(deposits.observed?['Subtotal pembayaran teramati hanya mencakup transaksi yang dapat ditelusuri. Total pembayaran pada periode tersebut masih menunggu bukti kelengkapan sumber.']:[]),
     'Perkiraan arus kas memakai perubahan saldo antara dua neraca. Cakupan terhadap potensi memerlukan pokok yang terisi dan lebih besar dari nol.'];
@@ -317,5 +385,6 @@ export function kkaFigures(pkg,year,{principal=null}={}) {
     ...[...ratNow.values()].filter(m=>Number.isFinite(m.value)).map(m=>[m.label,m.unit,m.value,m.formula,m.source]),[],
     ['Perkiraan arus kas operasi'],['Komponen','Nilai (Rp)','Sumber'],...cf.map(([label,m])=>[label,m.value,m.source]),
     ['Perkiraan arus kas operasi',cashflow.value,cashflow.source],[],[table3.title],...table3.rows,[],['Catatan'],...notes.map(n=>[n])]};
-  return {tables:[table1,table2,table3],sheet,notes};
+  return {tables:[table1,table2,table3],sheet,notes,
+    ability:{principal:denominator,cash:now.cash,workingCapital:capital,operatingCashflow:cashflow}};
 }

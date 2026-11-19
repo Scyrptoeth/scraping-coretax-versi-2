@@ -44,6 +44,12 @@ try {
   await assert.rejects(()=>resume(baseline.badge.fingerprint),/Akun atau peran Coretax telah berubah/);
   await role.evaluate(el=>el.textContent='Definitif');
   assert.equal(await resume(baseline.badge.fingerprint),baseline.name);
+  await source.locator('.tw-profilebtn-wide').evaluate(el=>{
+    el.hidden=true;
+    setTimeout(()=>el.hidden=false,600);
+  });
+  await check();
+  assert.equal(await app.evaluate(()=>testSession.session.fingerprint),baseline.badge.fingerprint);
   await id.evaluate(el=>el.textContent='AKUN-UJI-B');
   await assert.rejects(check,/Akun atau peran Coretax telah berubah/);
   await source.locator('.tw-profilebtn-wide').evaluate(el=>el.hidden=true);

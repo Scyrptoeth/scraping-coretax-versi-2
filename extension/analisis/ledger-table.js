@@ -1,4 +1,66 @@
-import {rowsOf} from './model.js';
+import {homeLedgerCode} from '../app-home-plan.js';
+import {ledgerCancellation} from '../ledger-status.js';
+import {rowsOf,sptDay} from './model.js';
+
+export const ledgerTypeLabels={
+  Payment:'Pembayaran', TaxReturn:'Surat pemberitahuan', OtherTaxReturn:'Kewajiban pajak lain',
+  Adjustment:'Penyesuaian', TaxNotice:'Ketetapan pajak', Refund:'Pengembalian'
+};
+export const ledgerDetailLabels={
+  CASH:'Pembayaran tunai', BT:'Pemindahbukuan', DBP:'Pelaporan melalui pembayaran', N:'SPT normal',
+  NOTC:'Surat tagihan pajak', A:'SPT pembetulan', NOTD:'Surat pemberitahuan pajak terutang',
+  CF:'Kompensasi SPT', OC:'Kompensasi lebih bayar', NOTA:'Surat ketetapan pajak',
+  RD:'Pengembalian dicairkan', RDC:'Pengembalian dicairkan/dikompensasikan', RDP:'Pencairan dalam proses'
+};
+
+const displayKey=value=>String(value??'').trim().toLocaleLowerCase('id');
+const codeMap=labels=>new Map(Object.entries(labels).map(([code,label])=>[displayKey(label),code]));
+const typeCodes=codeMap(ledgerTypeLabels), detailCodes=codeMap(ledgerDetailLabels);
+const matchText=(value,pattern)=>String(value??'').trim().match(pattern)?.[0];
+const cancellationCodes={active:false,cancelled:true};
+
+export function displayedLedgerAmount(value) {
+  if(typeof value==='number')return Number.isFinite(value)?value:null;
+  const text=String(value??'').trim();
+  if(!/^[+-]?(?:\d+|\d{1,3}(?:\.\d{3})+)(?:,\d+)?$/.test(text))return null;
+  const number=Number(text.replaceAll('.','').replace(',','.'));
+  return Number.isFinite(number)?number:null;
+}
+
+function displayedDate(value) {
+  const text=String(value??'').trim();
+  const match=/^(\d{2})-(\d{2})-(\d{4})(?:[ T]((?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})?))?$/.exec(text);
+  if(!match)return sptDay(text)?text:null;
+  const day=sptDay(match[3]+'-'+match[2]+'-'+match[1]);
+  return day ? day+(match[4]?'T'+match[4]:'') : null;
+}
+
+const displayedFields=[
+  ['Jenis Pencatatan','AccountingTypeCode',value=>typeCodes.get(displayKey(value))],
+  ['Detail Jenis Pencatatan','AccountingTypeDetailCode',value=>detailCodes.get(displayKey(value))],
+  ['Masa Pajak','PeriodCode',(_,row)=>homeLedgerCode(row)],
+  ['Tanggal Posting','PostingDate',displayedDate],
+  ['Tanggal Transaksi','TransactionDate',displayedDate],
+  ['Tanggal Jatuh Tempo Pembayaran','PaymentDueDate',displayedDate],
+  ['Jumlah','Amount',displayedLedgerAmount], ['Nilai Sisa','AmountLeft',displayedLedgerAmount],
+  ['KAP','RevenueCode',value=>matchText(value,/^\d{6}$/)], ['KJS','PaymentCode',value=>matchText(value,/^\d{3}$/)],
+  ['Mata Uang','CurrencyCode',value=>matchText(value,/^[A-Z]{3}$/)],
+  ['Dibatalkan','IsCancelled',value=>cancellationCodes[ledgerCancellation({Dibatalkan:value})]]
+];
+
+// Project verified display columns for analysis. The entry still holds the original rows.
+export function ledgerAnalysisRow(row) {
+  if(!Object.hasOwn(row,'Nomor Transaksi')||!Object.hasOwn(row,'Jenis Pencatatan'))return row;
+  const normalized={...row};
+  for(const [label,key,interpret] of displayedFields){
+    if(!Object.hasOwn(row,label)||Object.hasOwn(row,key))continue;
+    const value=interpret(row[label],row);
+    if(value==null||value==='')continue;
+    normalized[key]=value;
+    delete normalized[label];
+  }
+  return normalized;
+}
 
 function orderedValue(value){
   if(Array.isArray(value))return value.map(orderedValue);

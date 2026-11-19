@@ -48,10 +48,10 @@ export function validateBusiness(value={}){
   return result;
 }
 
-export function businessSheets(pkg,year,work={}){
-  const registry=(pkg.entries||[]).filter(e=>e.cap?.sumber==='klu'||/(?:^|\/)klu\.json$/i.test(e.path))
+export function businessSheets(pkg,year,work={},verified){
+  const registry=verified?.registry??(pkg.entries||[]).filter(e=>e.cap?.sumber==='klu'||/(?:^|\/)klu\.json$/i.test(e.path))
     .flatMap(entry=>rowsOf(entry).filter(r=>r?.TradeClassificationCode).map(r=>({...r,'Berkas sumber':entry.path})));
-  const annual=annualBusinessCodes(registry,[String(year)],String(pkg.manifest.dibuat||'').slice(0,10));
+  const annual=verified?.annual??annualBusinessCodes(registry,[String(year)],String(pkg.manifest.dibuat||'').slice(0,10));
   const identity=[['WP',pkg.manifest.wp?.nama],['NPWP',pkg.manifest.wp?.npwp],['Tahun pajak',String(year)]];
   const business=work.business||{},reference=business.reference,activity=business.activity;
   const forward='Padanan KBLI 2025 jika kode sumber KBLI 2020',reverse='Padanan KBLI 2020 jika kode sumber KBLI 2025';
@@ -81,7 +81,7 @@ export function businessSheets(pkg,year,work={}){
     }else test.push(['Hasil perhitungan',activityResult(activity.activities,activity.kind)]);
     test.push(['Simpulan petugas',activity.conclusion]);
   }else test.push(['Belum ada uji kegiatan yang disimpan untuk WP dan tahun ini.']);
-  const sources=picked?[picked]:annual.map(r=>[r.KLU,r.Uraian,r['Berkas sumber']]);
+  const sources=picked?[picked]:(verified?.guide??annual.map(r=>[r.KLU,r.Uraian,r['Berkas sumber']]));
   const probis=[...identity,[],['KLU','Uraian','Dasar pilihan','Kode panduan','Alur kegiatan','Langkah pengujian','Sumber yang diperiksa']];
   const suggestions=[];
   for(const [code,title,basis] of sources){

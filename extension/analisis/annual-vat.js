@@ -1,7 +1,11 @@
 import {payloads} from './model.js';
+import {sourceAmount} from './withholding-forms.js';
 
 const ownDeliveries = ['DomesticDeliveriesOtherThanOtherValue', 'DomesticDeliveriesUsingOtherValue',
   'DomesticDeliveriesToTourist', 'DomesticDeliveriesSelfCollected'];
+const taxable='DeliveryOfTaxableGoodsSubjectToVAT',exported='ExportTangibleTaxableGoods';
+const allDeliveries='TotalDeliveryOfGoodsAndServices',outside='DeliveriesOfGoodsNoVAT';
+const otherTaxableDeliveries=[exported,'DomesticDeliveriesCollectedByVATCollector','DomesticDeliveriesUncollectedVAT','DomesticDeliveriesExemptedVAT'];
 const domesticPurchases = ['DomesticTaxableGoodsWithInvoiceCode01', 'DomesticTaxableGoodsWithInvoiceCode02',
   'DomesticTaxableGoodsUsingOtherValueTaxBase'];
 const months = ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
@@ -18,14 +22,45 @@ function difference(base, components) {
   return base===null || rest===null ? null : base-rest;
 }
 
+export function selfCollectedBase(record){
+  const hasPrice=k=>Object.hasOwn(record[k]??{},'SellingPrice');
+  const listed=ownDeliveries.filter(hasPrice);
+  if(!listed.length)return {reason:'Belum ada komponen DPP dipungut sendiri yang dapat dicocokkan dengan subtotal induk.'};
+  const prices=listed.map(k=>sourceAmount(record[k]?.SellingPrice));
+  if(prices.some(v=>v===null))return {reason:'Ada komponen penyerahan yang nominalnya belum terbaca.'};
+  const amount=sum(prices),direct=listed.map(k=>k+'.SellingPrice').join(' + ');
+  if(listed.length===ownDeliveries.length)return {amount,source:direct};
+
+  // Older forms omit the field for unused groups. Reconcile with the taxable delivery subtotal.
+  const excluded=otherTaxableDeliveries.filter(k=>k===exported||hasPrice(k));
+  const taxableAmount=sourceAmount(record[taxable]?.SellingPrice);
+  const excludedAmounts=excluded.map(k=>sourceAmount(record[k]?.SellingPrice));
+  if(taxableAmount===null||excludedAmounts.some(n=>n===null))return {reason:'Komponen DPP dipungut sendiri belum lengkap dan subtotal konfirmasi belum tersedia.'};
+  const remainder=taxableAmount-sum(excludedAmounts);
+  const matches=(a,b)=>Math.abs(a-b)<=1e-6;
+  const taxableOwn=taxableAmount-excludedAmounts[0];
+  if(remainder>=0&&matches(remainder,amount)){
+    const previouslyConfirmed=ownDeliveries.filter(k=>Object.hasOwn(record,k)).length===listed.length&&matches(amount,taxableOwn);
+    return {amount,completedBasis:!previouslyConfirmed,
+      source:direct+' · Dicocokkan dengan '+taxable+'.SellingPrice − ('+excluded.map(k=>k+'.SellingPrice').join(' + ')+')'};
+  }
+
+  // Some returns record other delivery groups only in the grand total.
+  const remaining=hasPrice(outside)?[...excluded.slice(1),outside]:excluded.slice(1);
+  const reportedTotal=sourceAmount(record[allDeliveries]?.SellingPrice);
+  const otherAmounts=remaining.map(k=>sourceAmount(record[k]?.SellingPrice));
+  if(taxableOwn>=0&&matches(amount,taxableOwn)&&reportedTotal!==null&&otherAmounts.every(Number.isFinite)&&
+    matches(reportedTotal,taxableAmount+otherAmounts.reduce((total,price)=>total+price,0))){
+    return {amount,completedBasis:true,source:direct+' · Dicocokkan dengan '+taxable+'.SellingPrice − '+exported+'.SellingPrice'+
+      ' · '+allDeliveries+'.SellingPrice = '+[taxable,...remaining].map(k=>k+'.SellingPrice').join(' + ')};
+  }
+  return {reason:'DPP berdasarkan komponen dan subtotal induk belum dapat dicocokkan.'};
+}
+
 export function monthlyAmounts(record,period,notes) {
   const price=group=>value(record,group,'SellingPrice');
   const vat=group=>value(record,group,'VAT');
-  const exports=price('ExportTangibleTaxableGoods');
-  const taxable='DeliveryOfTaxableGoodsSubjectToVAT';
-  let selfBase=sum(ownDeliveries.map(price));
-  const remainder=difference(price(taxable),[exports]);
-  if((selfBase===null || selfBase===0) && remainder!==null) selfBase=Math.max(0,remainder);
+  const exports=price(exported),selfBase=selfCollectedBase(record).amount??null;
   const directVat=vat('OutputTaxMustBeSelfCollected');
   const taxableVat=vat(taxable);
   let selfVat=directVat;
@@ -69,5 +104,6 @@ export function annualVat(forms,year) {
   // balances carried between returns more than once.
   total['Kompensasi bulan lalu']=null;
   total['PPN kurang/(lebih) bayar']=null;
-  return {rows:[...rows,total],notes,available:reported.length};
+  const withAmounts=reported.filter(row=>Object.values(row).some(Number.isFinite)).length;
+  return {rows:[...rows,total],notes,available:reported.length,withAmounts};
 }

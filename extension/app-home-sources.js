@@ -197,9 +197,16 @@ async function readSourceView({ext,run,id,url,source,wp,child,statusGroup,reques
   }
   if(!table){
     if(!view?.form||!view.owners.includes(wp))return null;
-    const confirmed=await screen();
-    if(!confirmed?.owners.includes(wp)||JSON.stringify(confirmed.form)!==JSON.stringify(view.form))throw Error('Isian profil berubah saat sedang dibaca.');
-    return {rows:[view.form],columns:Object.keys(view.form),complete:false,notes:source==='info'?['Yang terbaca adalah isian profil yang tampil pada halaman.']:[],pages:1,filtered:false};
+    let previous=JSON.stringify(view.form);
+    for(let attempt=0;attempt<12;attempt++){
+      await wait(160);
+      const confirmed=await screen();
+      const form=confirmed?.owners.includes(wp)?confirmed.form:null;
+      if(form&&JSON.stringify(form)===previous)
+        return {rows:[form],columns:Object.keys(form),complete:false,notes:source==='info'?['Yang terbaca adalah isian profil yang tampil pada halaman.']:[],pages:1,filtered:false};
+      previous=JSON.stringify(form);
+    }
+    throw Error('Isian profil belum stabil saat sedang dibaca.');
   }
   const scopedScreen=async()=>{
     const current=await screen();
@@ -251,42 +258,93 @@ export async function collectHomeSources({ext,origin=coretax,tabId,wp,period,sou
     if(current?.owners.some(value=>value!==wp))throw Object.assign(Error('NPWP pada halaman sumber berbeda dari penugasan.'),{code:'IDENTITY'});
     return current;
   }
+  async function readyLedger(id,url,source){
+    if(ledgerTabs.has(id))return ledgerTabs.get(id);
+    let ready=null,initialTotalVerified=false;
+    const requestedCancellation=includeCancelled?'Yes':'No';
+    for(let n=0;n<30&&!ready;n++){
+      let state;
+      try{state=await readScreen(id,{url,names:[],profile:false});}catch(e){if(e.code)throw e;}
+      if(state?.canSearch&&!searched.has(id)){
+        const cancel=await run(id,ledgerControls,{url,wp,action:'cancel',label:requestedCancellation});
+        if(cancel?.identityError)throw Object.assign(Error('WP pada buku besar berbeda dari penugasan.'),{code:'IDENTITY'});
+        const search=await run(id,ledgerControls,{url,wp,action:'initial'});
+        if(search?.ok){
+          searched.add(id);initialTotalVerified=search.totalsRefreshed;
+        }
+        else if(search?.identityError)throw Object.assign(Error('WP pada buku besar berbeda dari penugasan.'),{code:'IDENTITY'});
+      }
+      if(searched.has(id)){
+        ready=await run(id,ledgerControls,{url,wp,action:'state',label:''});
+        if(ready?.identityError)throw Object.assign(Error('WP pada buku besar berbeda dari penugasan.'),{code:'IDENTITY'});
+      }
+      if(!ready&&n>=6&&state?.tables.length&&!state.canSearch)break;
+      if(!ready)await wait(160);
+    }
+    if(ready&&ready.cancelled!==requestedCancellation){
+      const cancel=await run(id,ledgerControls,{url,wp,action:'cancel',label:requestedCancellation});
+      if(cancel?.identityError)throw Object.assign(Error('WP pada buku besar berbeda dari penugasan.'),{code:'IDENTITY'});
+      if(cancel?.ok){
+        const search=await run(id,ledgerControls,{url,wp,action:'initial'});
+        if(search?.identityError)throw Object.assign(Error('WP pada buku besar berbeda dari penugasan.'),{code:'IDENTITY'});
+        initialTotalVerified=Boolean(search?.ok&&search.totalsRefreshed);
+        ready=await run(id,ledgerControls,{url,wp,action:'state',label:''});
+        if(ready?.identityError)throw Object.assign(Error('WP pada buku besar berbeda dari penugasan.'),{code:'IDENTITY'});
+      }
+      if(ready?.cancelled!==requestedCancellation)
+        issue(source,'Pilihan transaksi dibatalkan pada buku besar belum dapat diterapkan.');
+    }
+    if(ready){
+      if(!initialTotalVerified)ready.totals=[];
+      const cleared=await run(id,ledgerControls,{url,wp,action:'clearTransactionDate'});
+      if(cleared?.identityError)throw Object.assign(Error('WP pada buku besar berbeda dari penugasan.'),{code:'IDENTITY'});
+      ready.dateCleared=Boolean(cleared?.ok);
+      if(ready.dateCleared&&initialTotalVerified&&(!cleared.changed||cleared.totalsRefreshed)){
+        const state=await run(id,ledgerControls,{url,wp,action:'state',label:''});
+        if(state?.identityError)throw Object.assign(Error('WP pada buku besar berbeda dari penugasan.'),{code:'IDENTITY'});
+        if(state?.noPeriod&&state.otherFilters===false&&state.cancelled===requestedCancellation){
+          ready.allPeriods=true;
+          ready.otherFilters=false;
+          ready.totals=state.totals;
+        }
+      }
+    }
+    ledgerTabs.set(id,ready);
+    return ledgerTabs.get(id);
+  }
+  async function readLedgerPeriod(id,url,source,month){
+    try{
+      return {id,activePeriod:await selectLedgerMonth({run,id,url,wp,month,checkpoint})};
+    }catch(error){
+      if(!error.reopenPicker)throw error;
+      await checkpoint();
+      const current=await ext.tabs.get(id);
+      if(opened.get(url)!==id||current.url!==url)throw error;
+      await ext.tabs.remove(id);
+      opened.delete(url);
+      ledgerTabs.delete(id);
+      searched.delete(id);
+      const next=await open(url);
+      const ready=await readyLedger(next,url,source);
+      if(!ready)throw error;
+      if(!ready.dateCleared)issue(source,'Filter tanggal transaksi belum dapat dikosongkan. Kelengkapan buku besar belum terkonfirmasi.');
+      return {id:next,activePeriod:await selectLedgerMonth({run,id:next,url,wp,month,checkpoint})};
+    }
+  }
   async function destinations(source,url){
     const fresh=await run(tabId,visibleTables,{homeLinks:true,url:submitted,wp});
     if(fresh?.wp!==wp||linkedSource(source,fresh.links,submitted)!==url)throw Object.assign(Error('WP atau tautan pada menu sumber berubah.'),{code:'IDENTITY'});
     const id=await open(url);
     if(ledgerSources.includes(source)){
-      if(!ledgerTabs.has(id)){
-        let ready=null,initialTotalVerified=false;
-        for(let n=0;n<30&&!ready;n++){
-          let state;
-          try{state=await readScreen(id,{url,names:[],profile:false});}catch(e){if(e.code)throw e;}
-          if(state?.canSearch&&!searched.has(id)){
-            const cancel=await run(id,ledgerControls,{url,wp,action:'cancel',label:includeCancelled?'Yes':'No'});
-            if(cancel?.identityError)throw Object.assign(Error('WP pada buku besar berbeda dari penugasan.'),{code:'IDENTITY'});
-            const search=await run(id,ledgerControls,{url,wp,action:'initial'});
-            if(search?.ok){
-              searched.add(id);initialTotalVerified=search.totalsRefreshed;
-              if(!cancel?.ok)issue(source,'Pilihan transaksi dibatalkan pada buku besar belum dapat diterapkan.');
-            }
-            else if(search?.identityError)throw Object.assign(Error('WP pada buku besar berbeda dari penugasan.'),{code:'IDENTITY'});
-          }
-          if(searched.has(id)){
-            ready=await run(id,ledgerControls,{url,wp,action:'state',label:''});
-            if(ready?.identityError)throw Object.assign(Error('WP pada buku besar berbeda dari penugasan.'),{code:'IDENTITY'});
-          }
-          if(!ready&&n>=6&&state?.tables.length&&!state.canSearch)break;
-          if(!ready)await wait(160);
-        }
-        if(ready&&!initialTotalVerified)ready.totals=[];
-        ledgerTabs.set(id,ready);
-      }
-      const initial=ledgerTabs.get(id);
+      const initial=await readyLedger(id,url,source);
       if(initial){
         if(source==='bbsaldo')return [{url,id,initial}];
         const plan=planHomeCapture({wp,period,sources:[source],types});
-        if(!ledgerRanges.has(id))ledgerRanges.set(id,await ledgerYearRanges({run,id,url,wp,years:plan.years,checkpoint}));
-        const ranges=ledgerRanges.get(id);
+        if(!ledgerRanges.has(url)){
+          if(!initial.dateCleared)issue(source,'Filter tanggal transaksi belum dapat dikosongkan. Kelengkapan buku besar belum terkonfirmasi.');
+          ledgerRanges.set(url,await ledgerYearRanges({run,id,url,wp,years:plan.years,checkpoint}));
+        }
+        const ranges=ledgerRanges.get(url);
         if(ranges.unconfirmed.length)issue(source,'Cakupan masa khusus belum dapat dipastikan untuk tahun '+ranges.unconfirmed.join(', ')+'.');
         return [...plan.months,...ranges.choices].map(month=>({url,id,month}));
       }
@@ -324,7 +382,7 @@ export async function collectHomeSources({ext,origin=coretax,tabId,wp,period,sou
       const entryUrl=linkedSource(source,panel.links,submitted);
       if(!entryUrl){result.missing.push(source);issue(source,'Tautan untuk WP ini belum tersedia dari menu sumber.');continue;}
       try{
-       for(const {id,url,child,month:requestedMonth,initial,statusGroup} of await destinations(source,entryUrl)){
+       for(let {id,url,child,month:requestedMonth,initial,statusGroup} of await destinations(source,entryUrl)){
         const subpage=url.split('/').filter(Boolean).at(-2);
         const section=statusGroup||(subpage==='address'?'Alamat':subpage==='place-of-business-activity'?'Tempat Kegiatan Usaha/Sub Unit':labels[source]);
         const sectionLabel=requestedMonth?ledgerMonthLabel(requestedMonth):section;
@@ -334,7 +392,7 @@ export async function collectHomeSources({ext,origin=coretax,tabId,wp,period,sou
             const cached=source==='bbtotal'&&monthlyTotals.get(requestedMonth);
             if(cached){activePeriod=cached.activePeriod;totals=cached.totals;}
             else{
-              activePeriod=await selectLedgerMonth({run,id,url,wp,month:requestedMonth,checkpoint});
+              ({id,activePeriod}=await readLedgerPeriod(opened.get(url)??id,url,source,requestedMonth));
               if(!activePeriod)throw Error('Pemilih masa buku besar belum tersedia.');
               const state=await run(id,ledgerControls,{url,wp,action:'state',label:ledgerMonthLabel(requestedMonth)});
               if(state?.identityError)throw Object.assign(Error('WP pada buku besar berubah.'),{code:'IDENTITY'});
@@ -349,9 +407,21 @@ export async function collectHomeSources({ext,origin=coretax,tabId,wp,period,sou
               }
             }
         }
-        const summary=initial?.totals?.filter(row=>row.Key==='Total')||source==='bbtotal'&&requestedMonth&&totals?.filter(row=>row.Key==='Filtered');
-        if((initial||requestedMonth&&source==='bbtotal')&&summary?.length!==1){issue(source,'Jumlah pembanding pada tabel Coretax belum dapat dipastikan'+(requestedMonth?' untuk '+sectionLabel:'')+'.');continue;}
-        const read=summary?{rows:summary,complete:false,notes:[],pages:1,filtered:!!requestedMonth}:
+        let summary;
+        if(initial){
+          summary=initial.totals.filter(row=>row.Key==='Total');
+          if(summary.length!==1){issue(source,'Saldo seluruh periode pada tabel Coretax belum dapat dipastikan.');continue;}
+          const filtered=initial.totals.filter(row=>row.Key==='Filtered');
+          if(initial.allPeriods&&filtered.length===1)summary.push(filtered[0]);
+          else issue(source,'Baris saldo pembanding seluruh periode belum dapat dipastikan dari filter pada halaman Coretax.');
+        }else if(source==='bbtotal'&&requestedMonth){
+          const overall=totals?.filter(row=>row.Key==='Total')??[];
+          const filtered=totals?.filter(row=>row.Key==='Filtered')??[];
+          if(filtered.length!==1){issue(source,'Jumlah pembanding pada tabel Coretax belum dapat dipastikan untuk '+sectionLabel+'.');continue;}
+          if(overall.length!==1)issue(source,'Baris saldo seluruh periode belum dapat dipastikan untuk '+sectionLabel+'.');
+          summary=overall.length===1?[overall[0],filtered[0]]:filtered;
+        }
+        const read=summary?{rows:summary,complete:false,notes:[],pages:1,filtered:Boolean(requestedMonth||initial?.otherFilters)}:
           await readSourceView({ext,run,id,url,source,wp,child:child||source==='bb'&&searched.has(id),statusGroup,requestedMonth,readScreen,checkpoint,pageLimit});
         if(!read){
           result.missing.push(source);
@@ -437,19 +507,45 @@ export async function readSourcePages({run,id,table,url,screen,checkpoint=async(
     if(data?.skip)throw Error(data.skip);
     return data;
   };
-  const settle=async(previous,previousRows)=>{
-    for(let attempt=0;attempt<35;attempt++){
+  const settle=async(previous,direction)=>{
+    const deadline=Date.now()+120000;
+    const previousRows=previous?JSON.stringify(previous.rows):'';
+    const expectedFirst=previous?.range?(direction==='first'?1:previous.range.last+1):null;
+    const expectedPage=previous?.pageNumber?(direction==='first'?1:previous.pageNumber+1):null;
+    for(let attempt=0;previous?Date.now()<deadline:attempt<35;attempt++){
       await checkpoint();
       const data=await observe();
-      if(data?.rows && data.stamp!==previous && (!previousRows||JSON.stringify(data.rows)!==previousRows))return data;
+      if(data?.rows){
+        if(!previous)return data;
+        if(data.filterHash!==previous.filterHash)throw Error('Filter tabel berubah saat berpindah halaman.');
+        if(data.stamp!==previous.stamp && JSON.stringify(data.rows)!==previousRows &&
+            (!expectedFirst || data.range?.first===expectedFirst && data.range.total===previous.range.total) &&
+            (!expectedPage || data.pageNumber===expectedPage) &&
+            (direction!=='first'||data.atStart))return data;
+      }
       await wait(140);
     }
     throw Error('Halaman sumber belum selesai dimuat atau halaman berikut mengulang tampilan.');
   };
+  const position=data=>JSON.stringify([data.range,data.pageNumber,data.filterHash,data.atStart,data.atEnd,data.canFirst,data.canAdvance]);
+  async function confirm(data,move){
+    const expectedPosition=position(data);
+    for(let attempt=0;attempt<3;attempt++){
+      await checkpoint();
+      if(seen.has(data.stamp))throw Error('Halaman yang sama terbaca kembali.');
+      const current=await observe({expect:data.stamp,...(move?{move}:{})});
+      if(move?current?.moved:current?.stamp===data.stamp&&current?.explicitEmpty===data.explicitEmpty)return data;
+      if(!current?.stalePage&&!current?.loading)break;
+      await wait(160);
+      data=await settle();
+      if(position(data)!==expectedPosition)break;
+    }
+    throw Error('Isi atau filter tabel berubah ketika dibaca.');
+  }
   current=await settle();
   if(current.canFirst||current.range?.first>1||current.pageNumber>1){
-    await observe({move:'first',expect:current.stamp});
-    current=await settle(current.stamp,JSON.stringify(current.rows));
+    current=await confirm(current,'first');
+    current=await settle(current,'first');
   }
   try{
    for(;pages<Math.max(1,pageLimit);){
@@ -457,11 +553,10 @@ export async function readSourcePages({run,id,table,url,screen,checkpoint=async(
     if(!pages){filter=current.filterHash;total=range?.total;}
     if(filter!==current.filterHash||range&&(range.total!==total||range.first!==(range.total===0?0:rows.length+1))||
        !range && current.pageNumber && current.pageNumber!==pages+1)throw Error('Rentang atau filter tabel berubah saat berpindah halaman.');
-    if(seen.has(current.stamp))throw Error('Halaman yang sama terbaca kembali.');
-    seen.add(current.stamp);
     if(current.explicitEmpty)await wait(300);
-    const confirmed=await observe({expect:current.stamp});
-    if(confirmed?.stamp!==current.stamp||confirmed.explicitEmpty!==current.explicitEmpty)throw Error('Isi tabel belum stabil saat pemeriksaan ulang.');
+    const move=current.canAdvance&&!current.atEnd&&(range||current.pageNumber)&&pages+1<pageLimit?'next':null;
+    current=await confirm(current,move);
+    seen.add(current.stamp);
     const emptyAtStart=current.explicitEmpty&&!current.canFirst&&!current.canAdvance&&!current.rows.length&&
       (current.atStart||current.pageNumber===1||!current.hasPaginator);
     if(certify&&(range||emptyAtStart)){
@@ -477,8 +572,7 @@ export async function readSourcePages({run,id,table,url,screen,checkpoint=async(
     if(range&&range.last===range.total){complete=true;break;}
     if(!range&&current.atEnd){notes.push('Semua halaman bernomor yang tersedia telah dibaca. Jumlah seluruh baris tidak tercantum pada sumber.');break;}
     if(!current.canAdvance||pages>=pageLimit){notes.push('Masih ada halaman sumber yang belum terbaca.');break;}
-    await observe({move:'next',expect:current.stamp});
-    current=await settle(current.stamp,JSON.stringify(current.rows));
+    current=await settle(current,'next');
    }
   }catch(error){
     if(error.code||!pages)throw error;

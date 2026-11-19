@@ -28,6 +28,9 @@ try {
   page.on('pageerror',e=>errors.push(e.message));
   await page.goto(origin+'/app.html');
   await page.getByText('Belum ada hasil penarikan.').waitFor();
+  await page.locator('#year-start').selectOption('2021');
+  await page.locator('#year-end').selectOption('2025');
+  assert.equal(await page.locator('#period-info').innerText(),'Periode terpilih · 2021-01 s.d. 2025-12');
   await page.getByRole('link',{name:'Buka Analisis'}).click();
   await page.getByRole('button',{name:'Peraturan',exact:true}).first().click();
   await page.getByPlaceholder('Nomor, judul, atau kata kunci').fill('PER-12/PJ/2022');

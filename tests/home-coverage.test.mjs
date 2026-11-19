@@ -1,9 +1,34 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {finishHomeTable,homeDigest,homeRowStamp,homeTableSections} from '../extension/app-home-coverage.js';
+import {readSourcePages} from '../extension/app-home-sources.js';
 
 const owner='0000000000000017',columns=['Uraian'];
 const context=await homeDigest([owner,'daftar simulasi']);
+
+test('automatic source pagination rereads a changed page before advancing and retaining it',async()=>{
+  const table={index:0,tableId:'simulasi',title:'Dokumen',labels:columns};
+  let page=1,caption='Memuat',moves=0,updates=0;
+  const run=async(id,fn,request)=>{
+    if(request===null)return [table];
+    if(request.homeRead.move&&caption==='Memuat'){
+      caption='Dokumen pertama';
+      return {stalePage:true};
+    }
+    if(request.homeRead.move){
+      page=2;caption='Dokumen kedua';moves++;
+      return {moved:true};
+    }
+    if(page===2&&updates++===0)return {rows:[{Uraian:'Memuat ulang'}],pageNumber:null,range:null,
+      filterHash:'tanpa-filter',stamp:'paginasi sedang diperbarui'};
+    return {rows:[{Uraian:caption}],pageNumber:page,atStart:page===1,atEnd:page===2,canAdvance:page===1,
+      range:{first:page,last:page,total:2},filterHash:'tanpa-filter',stamp:caption};
+  };
+  const source=await readSourcePages({run,id:1,table,url:'sumber simulasi',screen:()=>true});
+  assert.deepEqual(source.rows,[{Uraian:'Dokumen pertama'},{Uraian:'Dokumen kedua'}]);
+  assert.equal(source.complete,true);
+  assert.equal(moves,1);
+});
 async function packageEntry(source,sections){
   const pages=[],evidence=[];
   for(const [name,blocks] of sections){

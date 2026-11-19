@@ -57,7 +57,8 @@ export function indicativeFindings(pkg,year,work={},index={groups:[]}){
   const states=work.indicationReviews||{};
   const rules=[...(vat?vatRisks(pkg,year):[]),...(hasCorporate?companyRisks(pkg,year,work):[])];
   for(const r of rules){
-    candidates.push({ruleId:r.ruleId,title:r.title});
+    candidates.push({ruleId:r.ruleId,title:r.title,kind:r.kind,reference:r.ref,basis:r.base,
+      source:r.source,evidence:r.evidence,law:r.law,note:r.note});
     const status=states[r.ruleId];
     if(hidden(status))continue;
     const a=safe(r.amount)?r.amount:null,fee=interest(r,work.simulation?.end),total=a!==null&&fee.value!==null&&safe(a+fee.value)?a+fee.value:null;
@@ -82,12 +83,14 @@ export function indicativeFindings(pkg,year,work={},index={groups:[]}){
   const positive=index.groups.find(g=>g.key==='BADAN/B.7');
   const initialRules=hasCorporate?[['depreciation','5314','Penyusutan dan amortisasi'],['entertainment','5321','Biaya jamuan']]:[];
   for(const [ruleId,code,title] of initialRules){
-    candidates.push({ruleId,title});
-    if(hidden(states[ruleId]))continue;
     const line=positive?.lines.find(l=>l.id.endsWith('/account-'+code)),comparison=line&&fiscal.get(line.id);
     const value=comparison?.value??null,reported=line?.amount??null;
-    initial.rows.push(['B.7',title,year,reported,value,safe(value)&&safe(reported)?value-reported:null,statusName(states[ruleId]),
-      [line?.source,comparison?.source].filter(Boolean).join(' · '),comparison?.note||'Pembanding dengan selisih yang dapat ditelusuri belum tersedia.']);
+    const source=[line?.source,comparison?.source].filter(Boolean).join(' · ');
+    const note=comparison?.note||'Pembanding dengan selisih yang dapat ditelusuri belum tersedia.';
+    candidates.push({ruleId,title,kind:'PPh Badan',reference:'B.7',basis:reported,source,note});
+    if(hidden(states[ruleId]))continue;
+    initial.rows.push(['B.7',title+' · akun '+code,year,reported,value,safe(value)&&safe(reported)?value-reported:null,statusName(states[ruleId]),
+      source,note]);
   }
   // A combined subtotal uses only cases with both components. Unpriced cases remain visible.
   const totals=['Subtotal pokok skenario','Subtotal bunga skenario','Subtotal pokok dan bunga'].map((label,i)=>{
@@ -101,7 +104,7 @@ export function indicativeFindings(pkg,year,work={},index={groups:[]}){
   if(credit)tables.push({title:'Pembanding ketetapan dari nilai awal',columns:['Jenis pajak','Pokok skenario (Rp)','Bunga skenario (Rp)',
     'Jumlah skenario (Rp)','Masa dasar bunga','Bulan bunga','Asumsi dan batas data','Sumber'],
     rows:[['PPh Badan',credit.principal,credit.interest,credit.total,credit.period,credit.months,credit.notes.join(' '),credit.source]]});
-  return {tables,facts,candidates,totals,
+  return {tables,facts,candidates,totals,initialFiscal:initial,
     notes:['Setiap angka merupakan skenario untuk meminta bukti. Status dipertahankan berarti butir masih perlu diuji.',
       ...(hasCorporate?['Subtotal hanya memakai analisis aktif yang memiliki angka. Nilai awal B.7, pembanding ketetapan dan benchmark ditampilkan terpisah untuk mencegah penghitungan ganda.']:[]),
       ...(personal&&corporate?['Paket memuat SPT Tahunan Badan dan Orang Pribadi pada tahun yang sama. Periksa identitas sumber.']:[]),

@@ -6,6 +6,8 @@ Login di beranda Coretax lalu buka ekstensi melalui ikon Chrome. Pada bagian **P
 
 Setelah memilih sumber, jalankan **Mulai tarik**. Ekstensi membuka halaman **SPT per Wajib Pajak** di tab kerja, menunggu kolom pencarian tersedia, mencocokkan NPWP, lalu mengikuti tautan milik WP tersebut. Untuk bukti potong, penarik memakai laporan bukti pemotongan atau pemungutan yang diterima WP. **Pratinjau WP** memungkinkan Anda meninjau pilihan dan mengecualikan versi tertentu. Selama bekerja, biarkan beranda dan akun semula tetap aktif.
 
+Lihat tahap berjalan di bagian **Tarik data**. Perkiraan waktu tampil jika jumlah halaman atau versi pada tahap itu dapat dihitung dan pembacaan sudah berjalan. Saat daftar atau formulir SPT masih dimuat, status menunjukkan waktu tunggu yang tersisa sampai batas dua menit. Tafsirkan angka itu sebagai batas tunggu halaman.
+
 Periksa **Berita acara** dalam ZIP atau **Cakupan sumber penarikan** di pemutar untuk melihat sumber mana yang menghasilkan berkas. Jumlah berkas perlu dibaca bersama catatan batas halaman, masa, serta bagian yang dapat dikenali.
 
 Jika Anda sudah mencocokkan isi antrean dan ingin menyimpan cuplikan tersebut, pilih **Kemas isi antrean**. Cara ini dapat digunakan sesudah menghentikan pratinjau atau ketika sambungan kantor terputus.
@@ -98,7 +100,7 @@ Acuan lokal adalah VERITAX 1.32.0, khususnya bagian 1–5 pada `ekstensi-veritax
 |---|---|---|
 | Identitas penugasan, normalisasi NPWP, daftar teks, jenis SPT dan sumber | Terverifikasi sebagian | Lima bagian utama memuat enam jenis SPT dan pilihan sumber. Normalisasi, duplikat, format salah, dan nol awal diuji. |
 | Koneksi Coretax dan otorisasi penugasan | Terverifikasi sebagian | Bila akun dapat dikenali di beranda, nama penarik terisi dan penarikan memeriksa kembali akun serta peran. Pratinjau dan perakitan memerlukan pernyataan kerahasiaan. |
-| Penemuan WP, estimasi tarikan dan cakupan sumber | Terverifikasi sebagian | Pratinjau mencari satu NPWP dari beranda lalu menghitung versi SPT dalam masa pilihan. Estimasi waktu seperti pada acuan masih memerlukan pengembangan. |
+| Penemuan WP, estimasi tarikan dan cakupan sumber | Terverifikasi sebagian | Pratinjau menghitung versi SPT dalam masa pilihan. Penarik menampilkan perkiraan per tahap bila jumlah dan laju tersedia. Estimasi untuk seluruh tarikan masih perlu dibandingkan. |
 | Pengambilan, paginasi dan batas WP | Berbeda | Ada pembacaan tabel terpilih dan paginasi melalui tombol halaman berikut, pembatas halaman, jeda, penghentian dan pencocokan NPWP. Uji fixture mencakup batas pengguna, akhir tabel, tombol di luar paginator dan perpindahan WP. Navigasi produksi masih belum teruji. |
 | Pembacaan otomatis profil, registrasi, dokumen, daftar/isi SPT per versi dan seluruh lampiran, buku besar serta bukti potong | Terverifikasi sebagian | Dari beranda, penarik mengikuti tautan WP dan laporan bukti potong. Akses rekening, sertifikat, beberapa jenis bukti potong serta rincian formulir dan lampiran masih memiliki batas. [Rincian pengujian](KESETARAAN.md#hasil-prarilis-0180) |
 | Kecepatan jaringan adaptif, pemulihan sesi, cache SPT per versi | Berbeda | Paginasi berjalan berurutan dan deduplikasi berlaku pada isi dalam satu tarikan. Sumber untuk satu NPWP disimpan sebelum perakitan. Perilaku khusus sesi dan penjadwalan permintaan API referensi masih terbuka. |

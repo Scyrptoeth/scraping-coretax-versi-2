@@ -16,10 +16,10 @@ const table=(cols,body,pager='')=>'<div class="p-datatable"><table><thead><tr>'+
 const row=(...values)=>'<tr>'+values.map(s=>'<td>'+s+'</td>').join('')+'</tr>';
 const count=(n)=>'<span class="p-paginator-current">Menampilkan 1 sampai '+n+' dari '+n+' baris</span>';
 const archivedCols=['Jenis SPT','Masa Pajak','Nomor SPT'];
-const ledgerCols=['Tanggal Posting','Jumlah','Nomor Transaksi','Masa Pajak'];
+const ledgerCols=['Tanggal Posting','Jumlah','Nomor Transaksi','Tanggal Transaksi','Masa Pajak'];
 const years=[['Januari 2025','TX-JAN'],['Januari - Desember 2025','TX-TAHUN'],['Maret - Juli 2025','TX-KHUSUS']];
 const picker='<div class="p-dropdown"><input role="combobox" readonly placeholder="Pilih Masa Pajak"><span class="p-dropdown-label">Pilih Masa Pajak</span>'+
-  '<button class="p-dropdown-trigger" onclick="document.querySelector(\'#period-panel\').hidden=!document.querySelector(\'#period-panel\').hidden">▾</button></div>';
+  '<button class="p-dropdown-trigger" onclick="const panel=document.querySelector(\'#period-panel\');if(panel.hidden){setTimeout(()=>panel.hidden=false,350)}else{panel.hidden=true}">▾</button></div>';
 try{
   routes.set(list,routes.get(list).replace('</ul>',link('Informasi Umum Wajib Pajak',profile)+link('Archieved Return Sheets',archive)+'</ul>'));
   const taxTypes=route('registration','tax-types');
@@ -46,18 +46,21 @@ try{
     '<div class="p-paginator"><button class="p-paginator-first" disabled>«</button><button class="p-paginator-page p-highlight">1</button>'+
     '<button aria-label="Halaman berikutnya" class="p-paginator-next" onclick="this.disabled=true;document.querySelector(\'.p-paginator-page\').textContent=2;document.querySelector(\'tbody\').innerHTML=\''+
     row('SPT Masa PPN','Januari 2025','A-2025')+'\'">›</button></div>'));
-  const total=key=>row(key,'7','8','9','10','11');
-  const cancelPicker='<label for="ShowCancelledTransaction">Tampilkan Transaksi yang Dibatalkan</label><div id="ShowCancelledTransaction"><span class="p-dropdown-label">No</span>'+
+  const total=(key,debit='7')=>row(key,debit,'8','9','10','11');
+  const cancelPicker='<label for="ShowCancelledTransaction">Tampilkan Transaksi yang Dibatalkan</label><div id="ShowCancelledTransaction"><span class="p-dropdown-label">Please Select</span>'+
     '<button class="p-dropdown-trigger" onclick="document.querySelector(\'#cancel-panel\').hidden=false">▾</button></div><div id="cancel-panel" class="p-dropdown-panel" hidden>'+
-    '<button role="option" aria-label="Yes" onclick="document.querySelector(\'#ShowCancelledTransaction span\').textContent=this.innerText;this.parentElement.hidden=true;">Yes</button></div>';
+    ['Yes','No'].map(label=>'<button role="option" aria-label="'+label+'" onclick="document.querySelector(\'#ShowCancelledTransaction span\').textContent=this.innerText;this.parentElement.hidden=true;">'+label+'</button>').join('')+'</div>';
+  const dateFilter='<input id="TransactionDate" readonly value="19-10-2026 - 19-11-2026">'+
+    '<button type="button" aria-label="Clear date" onclick="document.querySelector(\'#TransactionDate\').value=\'\'"></button>';
   routes.set(ledger,'<shared-left-menu><p class="ct-title-white">'+wp+'</p></shared-left-menu>'+cancelPicker+
-    '<button id="submit" onclick="document.getElementById(\'result\').hidden=false">Cari</button><div hidden id="result">'+
-    '<div class="p-datatable"><table><thead><tr>'+ledgerCols.map(c=>'<th>'+c+'</th>').join('')+'</tr><tr><th></th><th></th><th></th><th>'+picker+
-    '</th></tr></thead><tbody>'+row('2024-01-04','999','LAMA','Januari 2024')+'</tbody></table>'+count(1)+'</div>'+
-    '<table id="summary"><thead><tr><th></th>'+['Debit','Kredit','Debit Tersisa','Kredit Tersisa','Saldo'].map(h=>'<th>'+h+'</th>').join('')+'</tr>'+total('Total')+total('Filtered')+'</thead></table>'+
+    '<button id="submit" onclick="document.getElementById(\'result\').hidden=false;if(!document.getElementById(\'TransactionDate\').value){window.dateCleared=true;document.querySelector(\'.p-datatable tbody\').replaceChildren();document.querySelector(\'#summary thead tr:last-child\').cells[1].textContent=\'7\';}">Cari</button><div hidden id="result">'+
+    '<div class="p-datatable"><table><thead><tr>'+ledgerCols.map(c=>'<th>'+c+'</th>').join('')+'</tr><tr><th></th><th></th><th></th><th>'+dateFilter+'</th><th>'+picker+
+    '</th></tr></thead><tbody>'+row('2024-01-04','999','LAMA','2024-01-03','Januari 2024')+'</tbody></table>'+count(1)+'</div>'+
+    '<table id="summary"><thead><tr><th></th>'+['Debit','Kredit','Debit Tersisa','Kredit Tersisa','Saldo'].map(h=>'<th>'+h+'</th>').join('')+'</tr>'+total('Total')+total('Filtered','19')+'</thead></table>'+
+    '<div style="opacity:0"><div class="p-dropdown-panel"><input class="p-dropdown-filter"></div>'+
     '<div class="p-dropdown-panel" id="period-panel" hidden><input class="p-dropdown-filter">'+years.map(([label,key])=>'<button role="option" aria-label="'+label+
-    '" onclick="document.querySelector(\'#period-panel\').hidden=true;document.querySelector(\'.p-dropdown-label:not(#ShowCancelledTransaction span)\').textContent=this.innerText;document.querySelector(\'tbody\').innerHTML=\''+
-    row('2025-01-04','700',key,label)+'\';document.querySelector(\'#summary thead tr:last-child\').cells[1].textContent=\'7\';">'+label+'</button>').join('')+'</div></div>');
+    '" onclick="document.querySelector(\'#period-panel\').hidden=true;document.querySelector(\'.p-dropdown-label:not(#ShowCancelledTransaction span)\').textContent=this.innerText;if(!window.dateCleared)return;document.querySelector(\'tbody\').innerHTML=\''+
+    row('2025-01-04','700',key,'2025-01-03',label)+'\';document.querySelector(\'#summary thead tr:last-child\').cells[1].textContent=\'7\';">'+label+'</button>').join('')+'</div></div></div>');
   const worker=ctx.serviceWorkers()[0]||await ctx.waitForEvent('serviceworker');
   const tab=await ctx.newPage();await tab.goto(list);
   const app=await ctx.newPage();await app.goto(new URL('/app.html',worker.url()).href);
@@ -113,11 +116,26 @@ try{
   assert.equal(by('bb')[0].proof.dariBeranda.kodeMasa,'01012025');
   assert.deepEqual(by('bb').map(i=>i.proof.dariBeranda.kodeMasa),['01012025','01122025','03072025'],JSON.stringify(output));
   assert.deepEqual(by('bbtotal').map(i=>i.proof.dariBeranda.kodeMasa),['01012025','01122025','03072025'],JSON.stringify(output));
-  assert.equal(by('bbtotal')[0]?.page.Payload.Data[0].Key,'Filtered',JSON.stringify(output));
-  assert.equal(by('bbsaldo')[0]?.page.Payload.Data[0].Key,'Total',JSON.stringify(output));
+  assert.deepEqual(by('bbtotal')[0]?.page.Payload.Data.map(r=>r.Key),['Total','Filtered'],JSON.stringify(output));
+  assert.deepEqual(by('bbsaldo')[0]?.page.Payload.Data.map(r=>[r.Key,r.Debit]),[['Total','7'],['Filtered','7']],JSON.stringify(output));
   assert.equal(by('bb')[0].proof.dariBeranda.transaksiDibatalkan,'No');
   const withCancelled=await collect(['bbsaldo'],true);
   assert.equal(withCancelled.items[0]?.proof.dariBeranda.transaksiDibatalkan,'Yes',JSON.stringify(withCancelled.output));
+  const ledgerMarkup=routes.get(ledger);
+  routes.set(ledger,ledgerMarkup.replace('<th>'+dateFilter,'<th><input value="Filter lain">'+dateFilter));
+  const filteredBalance=await collect(['bbsaldo']);
+  assert.deepEqual(filteredBalance.items[0]?.page.Payload.Data.map(r=>r.Key),['Total']);
+  assert.ok(filteredBalance.output.issues.some(text=>/Baris saldo pembanding seluruh periode/.test(text)));
+  const stalledLedger=ledgerMarkup.replaceAll("document.querySelector('#period-panel').hidden=true;document.querySelector",
+    "document.querySelector('#period-panel').hidden=true;document.querySelector('.p-dropdown:has(input[role=combobox])').classList.add('p-dropdown-open');document.querySelector");
+  assert.notEqual(stalledLedger,ledgerMarkup);
+  routes.set(ledger,stalledLedger);
+  const recoveredLedger=await collect(['bb','bbtotal']);
+  for(const source of ['bb','bbtotal']){
+    const captured=recoveredLedger.items.filter(entry=>entry.source===source);
+    assert.deepEqual(captured.map(entry=>entry.proof.dariBeranda.kodeMasa),['01012025','01122025','03072025'],JSON.stringify(recoveredLedger.output));
+  }
+  routes.set(ledger,ledgerMarkup);
   const first=await collect(['sptarsip'],false,1);
   assert.equal(first.items[0].page.Payload.Data.length,1);
   assert.equal(first.items[0].proof.morePagesAvailable,true);

@@ -21,6 +21,21 @@ test('the profile overview uses groups of readable fields, keeps zero, and disti
   base.pages[0].Payload.Data[0].GeneralInformation.UniqueIdentificationNumber='0000000000000072';
   assert.ok(!JSON.stringify(sections([base])[0].blocks).includes('Perusahaan fiktif'));
 });
+test('visible Coretax profile feeds the same identity, registration, and bookkeeping groups',()=>{
+  const row={'Nama':'Badan fiktif','Nomor Pokok Wajib Pajak':wp,'Jenis Wajib Pajak':'Badan','Status Wajib Pajak':'Aktif',
+    'Tanggal Pendaftaran':'7 Agustus 2021','Tanggal Aktivasi':'31 Februari 2023','Tanggal Pendirian':'12 Juli 2019',
+    'Periode Pembukuan':'01-12','Mata Uang Pembukuan':'Rupiah','Jumlah Karyawan':0,'Modal Dasar':'Rp0'};
+  const rows=profile=>profileSections({...pkg,entries:[entry('info',[profile])]})[0].blocks.flatMap(b=>b.rows);
+  const visible=new Map(rows(row).map(r=>[r.Isian,r.Nilai]));
+  for(const [label,value] of [['Nama','Badan fiktif'],['NPWP',wp],['Status WP','Aktif'],['Tanggal terdaftar','07-08-2021'],
+    ['Tanggal pendirian','12-07-2019'],['Tahun buku','Januari–Desember'],['Mata uang pembukuan','Rupiah'],
+    ['Jumlah pegawai menurut data usaha',0],['Modal dasar','Rp0']])assert.equal(visible.get(label),value,label);
+  assert.equal(visible.has('Tanggal aktivasi'),false);
+  assert.equal(Object.hasOwn(row,'UniqueIdentificationNumber'),false);
+  assert.ok(!rows({...row,'Nomor Pokok Wajib Pajak':'0000000000000072'}).some(r=>r.Nilai==='Badan fiktif'));
+  assert.ok(!rows({...row,'Nomor Pokok Wajib Pajak':'0000000000000072',GeneralInformation:{UniqueIdentificationNumber:wp,Name:'Badan fiktif'}})
+    .some(r=>r.Nilai==='Badan fiktif'));
+});
 test('profile calendars distinguish missing data, amendments, other years, active payments and the adjusted filing deadline',()=>{
   const normal={ReturnSheetTypeCode:'VAT_VATR',TaxPeriodCode:'01012025',ReturnSheetModel:'Normal',ReturnDate:'2025-03-03',ExpectedReturnDate:'2025-03-01'};
   const amend={...normal,TaxPeriodCode:'02022025',ReturnSheetModel:'Amendment 001'},other={...normal,TaxPeriodCode:'01012024'};
@@ -44,4 +59,18 @@ test('identification and property tables keep string identifiers and show each s
   assert.equal(blocks[1].rows.length,0);assert.equal(blocks[2].rows[0]['Nomor dokumen'],'0093');
   assert.equal(blocks[2].rows[0].Status,'Disetujui');
   const property=sections.find(s=>s.id==='pbb').blocks[0].rows[0];assert.equal(property.NOP,'0051');assert.equal(property['Luas objek'],0);
+});
+
+test('registration display date and current group support PKP and registration timeline',()=>{
+  const registration={'Jenis Pajak':'PPN','Kelompok pendaftaran':'Terdaftar untuk Jenis Pajak Berikut',
+    'Tanggal Pendaftaran':'02-01-2025'};
+  const location={'Jenis TKU':'Kantor Pusat','Tanggal Mulai':'03-01-2025','Tanggal Berakhir':''};
+  const entries=[entry('jenispajak',[registration]),entry('alamat',[location])];
+  const sections=profileSections({...pkg,entries});
+  assert.equal(sections[0].cards.find(r=>r[0]==='Status PKP')[1],'PKP sejak 02-01-2025');
+  assert.deepEqual(sections.find(s=>s.id==='waktu').rows.map(r=>[r.Tanggal,r.Keterangan,r['Berkas sumber']]),[
+    ['2025-01-03','Kantor Pusat','profil/alamat.json'],['2025-01-02','PPN','profil/jenispajak.json']
+  ]);
+  registration['Tanggal Pencabutan Pendaftaran']='30-04-2025';
+  assert.equal(profileSections({...pkg,entries})[0].cards.find(r=>r[0]==='Status PKP')[1],'Belum terkonfirmasi');
 });

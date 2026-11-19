@@ -56,7 +56,7 @@ export function eventsFor(pkg,year) {
   for(const r of packageLedger(pkg)){
     if(r.AccountingTypeCode!=='TaxNotice'&&!['TaxAssessment','NoticeOfTaxCollection'].includes(r.ReferenceType))continue;
     add(r.PostingDate||r.TransactionDate,'Ketetapan dan tagihan',[r.ReferenceType||r.AccountingTypeCode,r.RevenueCode].filter(Boolean).join(' · '),
-      r['Berkas sumber'],periodYear(r.PeriodCode),r.ReferenceNumber);
+      r['Berkas sumber'],periodYear(r.PeriodCode),r.ReferenceNumber??r.Referensi);
   }
   return events.sort((a,b)=>a.Tanggal.localeCompare(b.Tanggal));
 }

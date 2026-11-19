@@ -29,7 +29,7 @@ test('home table headings and source codes give the same return context in the p
     {ReturnSheetTypeCode:'LBT_LBTR',TaxPeriodCode:'01122026',ReturnSheetModel:'Normal'},
     {ReturnSheetTypeCode:'VAT_VATR',TaxPeriodCode:'09092026',ReturnSheetModel:'Normal'}
   ];
-  const visible=canonical.map((r,i)=>({'Jenis Surat Pemberitahuan Pajak':['Tahunan PPh Badan','LBT_LBTR','Masa PPN'][i],
+  const visible=canonical.map((r,i)=>({'Jenis Surat Pemberitahuan Pajak':['Tahunan PPh Badan','Surat Pemberitahuan Objek Pajak Pajak Bumi dan Bangunan','Masa PPN'][i],
     'Masa Pajak':['Januari - Desember 2025','Januari - Desember 2026','September 2026'][i],
     'Model SPT':i===0?'Pembetulan ke-2':'Normal'}));
   const expected=[

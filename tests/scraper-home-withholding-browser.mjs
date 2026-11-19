@@ -29,7 +29,7 @@ const report='<h1>'+title+'</h1><input id="NpwpPenerimaPenghasilan"><input id="N
 
 const {ctx,routes,close}=await launchHomeFixture();
 try{
-  routes.set(home,routes.get(home)+'<button onclick="reports.hidden=false">Laporan</button><nav id="reports" hidden><a href="'+url+'">'+title+'</a></nav>');
+  routes.set(home,routes.get(home)+'<button onclick="reports.hidden=false">Laporan</button><nav id="reports" style="opacity:0" hidden><a href="'+url+'">'+title+'</a></nav>');
   routes.set(url,report);
   const source=await ctx.newPage();await source.goto(home);
   const worker=ctx.serviceWorkers()[0]||await ctx.waitForEvent('serviceworker');

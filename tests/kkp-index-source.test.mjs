@@ -4,13 +4,14 @@ import {readFile,readdir} from 'node:fs/promises';
 import {join} from 'node:path';
 import {spawnSync} from 'node:child_process';
 import {indexPackage} from '../extension/analisis/model.js';
+import {monthlyAmounts} from '../extension/analisis/annual-vat.js';
 import {assessLine,buildIndex,completeIndexBook,restoreIndexedRows} from '../extension/analisis/kkp-index.js';
 import {readPackage} from '../extension/archive/package.js';
 
 const wp='0000000000000017';
 function entry(type,part,payload,{period='2025-01',version=0,id='demo-'+version,cap={},ok=true}={}){
   const grid=part==='d1-bpu',meta={lengkap:true,halaman:1,konteks:{npwp:wp,bagian:part,spt:{npwp:wp,recordId:id,
-    jenis:type==='PPN'?'VAT_VATR':'ICT_WTR',masa:period,pemb:version,tahun:2025}}};
+    jenis:{PPN:'VAT_VATR',UNIFIKASI:'ICT_WTR',PPH2126:'ICT_WITR'}[type],masa:period,pemb:version,tahun:2025}}};
   if(grid){meta.total=payload.Data.length;meta.baris=payload.Data.length;}
   return {path:'spt/'+type+'/'+period+'/p'+String(version).padStart(2,'0')+'_'+id+'/'+part+'.json',
     cap:{...meta,...cap},pages:[{IsSuccessful:ok,Payload:payload}]};
@@ -54,6 +55,75 @@ test('N.3 reads the latest self-collected base, distinct from VAT or OtherTaxBas
   const jan=list.find(l=>l.period==='2025-01');assert.match(jan.source,/p01_demo-1\/induk.json/);assert.match(jan.source,/SellingPrice/);
   assert.equal(lines(index,'N.3.1')[0].amount,null);
 });
+test('legacy VAT groups with omitted selling prices reconcile against the itemized taxable subtotal',()=>{
+  const body={...base(100),DomesticDeliveriesToTourist:{SellingPriceAfterDiscount:0},
+    DomesticDeliveriesCollectedByVATCollector:{SellingPrice:80},DomesticDeliveriesUncollectedVAT:{SellingPrice:40},
+    DomesticDeliveriesExemptedVAT:{SellingPrice:18},DeliveryOfTaxableGoodsSubjectToVAT:{SellingPrice:258}};
+  const p=pack([vat(body)]),index=buildIndex(p,'2025'),[line]=lines(index,'N.3');
+  assert.equal(line.amount,100);assert.equal(line.partial,false);
+  assert.equal(monthlyAmounts(body,'2025-01',[])['DPP dipungut sendiri'],line.amount);
+  assert.match(line.source,/− \(ExportTangibleTaxableGoods\.SellingPrice \+ DomesticDeliveriesCollectedByVATCollector\.SellingPrice/);
+  assert.deepEqual(['N.4','N.6'].map(ref=>lines(index,ref)[0].amount),[80,18]);
+  const old=assessLine({...line,amount:null},{value:112,document:'Bukti fiktif',officer:'Penguji',note:'Telaah simulasi.'});
+  const [restored]=restoreIndexedRows([old],[old],index);
+  assert.equal(restored.menurutWp,100);assert.equal(restored.menurutPetugas,112);assert.match(restored.kkpNote,/Selisih dihitung ulang/);
+  body.DomesticDeliveriesUncollectedVAT.SellingPrice=null;
+  assert.equal(lines(buildIndex(pack([vat(body)]),'2025'),'N.3')[0].amount,null);
+});
+test('N.3 checks total deliveries if the taxable subtotal already excludes uncollected VAT',()=>{
+  const body={...base(100),DomesticDeliveriesUncollectedVAT:{SellingPrice:40},
+    TotalDeliveryOfGoodsAndServices:{SellingPrice:160}};
+  const [line]=lines(buildIndex(pack([vat(body)]),'2025'),'N.3');
+  assert.equal(line.amount,100);
+  assert.equal(line.partial,false);
+  assert.match(line.source,/TotalDeliveryOfGoodsAndServices\.SellingPrice/);
+  assert.equal(monthlyAmounts(body,'2025-01',[])['DPP dipungut sendiri'],line.amount);
+  for(const incomplete of [{...body,TotalDeliveryOfGoodsAndServices:undefined},
+    {...body,TotalDeliveryOfGoodsAndServices:{SellingPrice:161}},
+    {...body,DomesticDeliveriesUncollectedVAT:{SellingPrice:null}}]){
+    assert.equal(lines(buildIndex(pack([vat(incomplete)]),'2025'),'N.3')[0].amount,null);
+  }
+});
+test('a filed list without form details shows its reporting coverage and blocks a stale revision',()=>{
+  const daftar={path:'spt/daftar.json',cap:{lengkap:true},pages:[{Payload:{Data:[
+    {'Jenis SPT':'SPT Masa PPN','Masa Pajak':'Januari 2025','Model SPT':'Pembetulan ke 1','Status SPT':'Dilaporkan'},
+    {'Jenis SPT':'SPT Masa PPN','Masa Pajak':'Februari 2025','Model SPT':'Normal','Status SPT':'Dilaporkan'}
+  ]}}]};
+  const p=pack([daftar,vat(base(100)),vat(base(25),{period:'2025-02',cap:{lengkap:false}})]);
+  const i=buildIndex(p,'2025');
+  assert.deepEqual(i.coverage,[{'Jenis SPT':'PPN','Masa pada daftar':2,'Induk terakhir terkonfirmasi':0,
+    'Masa yang masih perlu dilengkapi':'2025-01, 2025-02','Sumber daftar':'spt/daftar.json'}]);
+  assert.ok(lines(i,'N.3').every(line=>line.amount===null));
+  assert.match(lines(i,'N.3').find(l=>l.period==='2025-01').source,/Pembetulan terakhir/);
+});
+test('visible withholding on an incomplete parent reaches Excel as source evidence only',()=>{
+  const e=entry('PPH2126','induk',{Data:[
+    [1,1,'Uraian'],[1,2,'Jumlah (Rp)'],[2,1,'PPH PASAL 21 YANG DIPOTONG'],[2,2,'1.000'],
+    [3,1,'PPH PASAL 26 YANG DIPOTONG'],[3,2,'0']
+  ].map(([Baris,Kolom,value])=>({Tabel:1,Baris,Kolom,'Isian pada formulir':value}))});
+  e.cap.lengkap=false;e.cap.konteks.cuplikanTampilan=true;
+  const p=pack([e]),i=buildIndex(p,'2025');
+  assert.equal(lines(i,'C.2.2').length,0);
+  assert.deepEqual(i.snapshots.map(r=>r['Nilai yang terlihat (Rp)']),[1000,0]);
+  assert.match(i.snapshots[1].Sumber,/induk\.json.*Tabel 1.*Baris 3.*Kolom 2/);
+  const sheet=completeIndexBook(p,'2025',i,new Map(),{}).find(s=>s.name==='SPT Data');
+  assert.ok(sheet.rows.some(r=>r.includes('PPh dipotong yang terlihat pada cuplikan induk')));
+});
+test('C.2.1 reads PPh 21 gross from the nested main form without including PPh 26',()=>{
+  const total='TotalGrossIncomeAndIncomeTaxBorneByGovernmentAndIncomeTaxWithheld';
+  const body={Form1A:{[total]:{GrossIncome:100}},Form1B:{[total]:{GrossIncome:120}},Form3:{
+    Article21GrossIncomeAndIncomeTaxWithheld:{GrossIncome:50},Article21GrossIncomeAndIncomeTaxBorneByGovernment:{GrossIncome:0},
+    Article26GrossIncomeAndIncomeTaxWithheld:{GrossIncome:999}
+  }};
+  const employee=(v,opts)=>entry('PPH2126','induk',{FormData:JSON.stringify(v)},opts);
+  const p=pack([employee(body),employee({...body,Form1A:{[total]:null}},{period:'2025-02'}),
+    employee({...body,CurrencyCode:'USD'},{period:'2025-03'}),employee({Form1A:{GrossIncome:0}},{period:'2025-04'})]);
+  const i=buildIndex(p,'2025'),list=lines(i,'C.2.1').sort((a,b)=>a.period.localeCompare(b.period));
+  assert.deepEqual(list.map(l=>l.amount),[270,null,null,0]);
+  assert.match(list[0].source,/Form1A.*Form1B.*Form3\.Article21/);
+  assert.doesNotMatch(list[0].source,/Article26/);
+  assert.match(list[0].id,/#Form1A\.GrossIncome$/);
+});
 test('G.2.1 and K.2.1 sum D1-BPU by article, preserve genuine zero, cover only reported months and use latest grid',()=>{
   const p=pack([grid([slip('Pasal 23',300)]),grid([slip('Article 23',0),slip('Pasal 4 Ayat (2)',50),slip('Pasal 23',20)],{version:1}),
     grid([slip('Pasal 22',8)],{period:'2025-02'}),grid([],{period:'2025-03'}),
@@ -64,6 +134,16 @@ test('G.2.1 and K.2.1 sum D1-BPU by article, preserve genuine zero, cover only r
     const jan=rows.find(l=>l.period==='2025-01');assert.equal(jan.version,1);assert.match(jan.source,/p01_demo-1\/d1-bpu.json/);
     assert.match(jan.source,/TaxBase/);assert.match(jan.source,/baris/i);
     assert.equal(rows.find(l=>l.period==='2025-05').partial,true);assert.equal(rows.find(l=>l.period==='2025-03').partial,false);
+  }
+});
+test('unclassified active D1-BPU rows preserve an attributable subtotal without confirming a monthly total',()=>{
+  const p=pack([grid([slip('Pasal 23',20),slip('Pasal 4 Ayat 2',0),slip(null,40)])]),i=buildIndex(p,'2025');
+  for(const [ref,value] of [['G.2.1',20],['K.2.1',0]]){
+    const group=i.groups.find(g=>g.ref===ref);
+    assert.deepEqual(group.lines.map(l=>[l.amount,l.partial]),[[null,true]]);
+    assert.equal(group.support[0].Nilai,value);
+    assert.equal(group.support[0]['Baris aktif dengan pasal belum terbaca'],1);
+    assert.match(group.support[0].Sumber,/halaman 1 baris 3/);
   }
 });
 test('incomplete evidence, filtered pages, mismatched owners/versions, unreadable article and missing amounts never certify a zero',()=>{

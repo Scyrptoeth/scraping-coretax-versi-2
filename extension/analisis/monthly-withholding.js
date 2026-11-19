@@ -1,4 +1,5 @@
 import {rowsOf} from './model.js';
+import {withholdingSnapshot} from './withholding-forms.js';
 
 const months=['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
 const labels=new Map([['21','PPh Pasal 21'],['4(2)','PPh Pasal 4 ayat (2)'],['15','PPh Pasal 15'],
@@ -27,14 +28,23 @@ function currentReturns(forms,year,warnings){
   const selected=[];
   for(const matches of groups.values()){
     const f=matches[0];
-    if(matches.length===1)selected.push(f);
-    else warnings.push('Ada beberapa SPT '+f.type+' dengan nomor pembetulan tertinggi yang sama pada '+f.period+'. Nilainya belum dapat dipilih.');
+    if(matches.length!==1)warnings.push('Ada beberapa SPT '+f.type+' dengan nomor pembetulan tertinggi yang sama pada '+f.period+'. Nilainya belum dapat dipilih.');
+    else if(f.laterListed)warnings.push('Versi lebih baru pada '+f.period+' tercatat di daftar pelaporan. Angkanya belum tersedia.');
+    else selected.push(f);
   }
   return selected;
 }
 
-function articleLines(form,warnings){
+function articleLines(form,warnings,wp){
   const entry=form.parts.get('induk');
+  const snapshot=withholdingSnapshot(form,wp);
+  if(snapshot.length){
+    const amounts=['A21IncomeTaxWithheld','A26IncomeTaxWithheld'].map(key=>snapshot.find(item=>item.key===key));
+    const tax=amounts.every(item=>Number.isFinite(item?.value))?amounts[0].value+amounts[1].value:null;
+    return [{code:'21',base:null,tax,active:true,baseSource:'',
+      taxSource:tax===null?'':entry.path+' · '+amounts.map(item=>item.label+' · '+item.source).join(' / '),
+      snapshot:true}];
+  }
   const forms=rowsOf(entry);
   if(!entry||forms.length!==1){
     warnings.push('Induk '+form.type+' '+form.period+' belum tersedia sebagai satu formulir.');
@@ -74,11 +84,11 @@ function articleLines(form,warnings){
   return lines;
 }
 
-export function monthlyWithholding(forms,year){
+export function monthlyWithholding(forms,year,wp){
   const warnings=[],active=new Set(),values=new Map(),sources=[];
   for(const form of currentReturns(forms,year,warnings)){
     const month=Number(form.period.slice(-2));
-    for(const line of articleLines(form,warnings)){
+    for(const line of articleLines(form,warnings,wp)){
       const key=month+'/'+line.code;
       if(line.active)active.add(line.code);
       if(values.has(key)){
@@ -86,7 +96,7 @@ export function monthlyWithholding(forms,year){
         warnings.push('Lebih dari satu ringkasan untuk '+labels.get(line.code)+' pada '+form.period+'. Nilainya belum dapat dipilih.');
       }else values.set(key,line);
       sources.push({Masa:form.period,Pasal:labels.get(line.code),Versi:form.version,'Sumber objek':line.baseSource || null,
-        'Sumber pajak':line.taxSource});
+        'Sumber pajak':line.taxSource,...(line.snapshot?{'Cakupan sumber':'Cuplikan induk'}:{})});
     }
   }
   const articles=[...labels].filter(([code])=>active.has(code)),columns=['Masa'];
@@ -104,7 +114,7 @@ export function monthlyWithholding(forms,year){
   for(const key of columns.slice(1)){
     const observed=sum(rows.map(row=>row[key]));
     if(observed===null)unreportedColumns.push(key);
-    total[key]=observed??0;
+    total[key]=observed;
   }
   const shown=new Set(articles.map(([,label])=>label));
   const evidence=sources.filter(source=>shown.has(source.Pasal)).sort((a,b)=>a.Masa.localeCompare(b.Masa));

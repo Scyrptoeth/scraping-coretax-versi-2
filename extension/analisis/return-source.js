@@ -1,9 +1,9 @@
 import {normalizeId} from '../app-data.js';
-import {listRowType} from '../app-package-entries.js';
+import {sptListContext} from '../app-spt-plan.js';
 import {rowsOf} from './model.js';
 
 const given=v=>v!==null&&v!==undefined&&v!=='';
-const taxCodes={PPN:'VAT_VATR',PPH2126:'ICT_WITR',UNIFIKASI:'ICT_WTR',BADAN:'ICT_RCITR',OP:'ICT_PITR'};
+export const taxCodes={PPN:'VAT_VATR','PPN-PEMUNGUT':'VAT_VATTRNTEVATC',PPH2126:'ICT_WITR',UNIFIKASI:'ICT_WTR',BADAN:'ICT_RCITR',OP:'ICT_PITR'};
 const currencyFields=['CurrencyCode','Currency','MataUang','Mata Uang','TaxBaseCurrencyCode','IncomeTaxCurrencyCode'];
 const rupiahLabels=new Set(['IDR','RP','RP.','RUPIAH']);
 export function usesOtherCurrency(...records){
@@ -41,15 +41,13 @@ export function listedReturns(pkg,year,type){
     const cap=entry.cap||{},query=cap.payload||{};
     if(query.isArchieved===true||(given(cap.konteks?.npwp)&&normalizeId(cap.konteks.npwp)!==owner))continue;
     for(const row of rowsOf(entry)){
-      if(listRowType(row)!==type||(given(row.ReturnSheetStatusCode)&&String(row.ReturnSheetStatusCode).toUpperCase()!=='SUBMITTED')||
+      const context=sptListContext(row),status=String(row.ReturnSheetStatusCode??row['Status SPT']??'').trim().toUpperCase();
+      if(context.type!==type||context.typeConflict||status&&!['SUBMITTED','DILAPORKAN'].includes(status)||
         (given(row.TaxpayerAggregateIdentifier)&&given(query.TaxpayerAggregateIdentifier)&&row.TaxpayerAggregateIdentifier!==query.TaxpayerAggregateIdentifier))continue;
-      const code=String(row.TaxPeriodCode??'');
+      if(!context.period||year!=null&&context.period.year!==Number(year))continue;
       const annual=type===taxCodes.BADAN||type===taxCodes.OP;
-      const period=annual?(annualCode.exec(code)?.[1]??code):
-        /^(0[1-9]|1[0-2])\1(\d{4})$/.test(code)?code.slice(4)+'-'+code.slice(0,2):code;
-      if(period.slice(0,4)!==String(year)||(annual?!/^\d{4}$/.test(period):!/^\d{4}-(0[1-9]|1[0-2])$/.test(period)))continue;
-      const model=String(row.ReturnSheetModel||'').trim(),amendment=/^(?:Amendment|Pembetulan)\s*(\d+)$/i.exec(model);
-      const version=/^Normal$/i.test(model)?0:amendment?Number(amendment[1]):null;
+      if(!annual&&context.period.first!==context.period.last)continue;
+      const period=annual?String(context.period.year):context.period.label,version=context.revision;
       if(!periods.has(period))periods.set(period,[]);
       periods.get(period).push({id:row.RecordId,version,path:entry.path});
     }
@@ -60,6 +58,6 @@ export function listedReturns(pkg,year,type){
 export function revisionProblem(list,versions,form){
   const later=list.find(r=>r.version>form.version||
     given(r.id)&&r.version===form.version&&r.id!==form.id||
-    given(r.id)&&r.version===null&&!versions.some(f=>f.id===r.id));
+    r.version===null&&(!given(r.id)||!versions.some(f=>f.id===r.id)));
   return later?'Pembetulan terakhir pada '+later.path+' belum cocok dengan rekaman SPT dalam paket.':'';
 }

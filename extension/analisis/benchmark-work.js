@@ -56,9 +56,7 @@ export function benchmarkAnalysis(pkg,year,references=[]){
   return {year,form:base.form,klu:base.klu,ratios,scenarios,reason};
 }
 
-export function benchmarkSheet(pkg,year,references=[]){
-  const analysis=benchmarkAnalysis(pkg,year,references);
-  if(!analysis)return null;
+function benchmarkRows(pkg,analysis){
   const {form,klu,ratios,scenarios}=analysis;
   const rows=[['Benchmark sektoral dan simulasi tax gap'],['Nama WP',pkg.manifest.wp?.nama],['NPWP',pkg.manifest.wp?.npwp],['Tahun SPT',analysis.year],
     ['Versi SPT',form?form.version===0?'Normal':'Pembetulan '+form.version:null],['KLU WP',klu.code],['Dasar KLU',klu.basis,klu.path],
@@ -66,5 +64,33 @@ export function benchmarkSheet(pkg,year,references=[]){
     ['NPM','Kelebihan NPM acuan atas NPM WP × peredaran × tarif ÷ (1 − tarif). Tarif dan rasio dipakai sebagai pecahan.']];
   if(scenarios.length)rows.push(...worksheet(scenarios));else rows.push(['Belum ada acuan sektoral yang dimasukkan untuk WP dan tahun ini.']);
   rows.push(['Penggunaan','Setiap skenario dihitung sendiri dan dapat ditelusuri ke rujukannya. Nilai simulasi terpisah dari pokok hasil pengujian.']);
-  return {name:'Benchmark & Tax Gap',rows};
+  return rows;
+}
+
+export function benchmarkSheet(pkg,year,references=[]){
+  const analysis=benchmarkAnalysis(pkg,year,references);
+  return analysis?{name:'Benchmark & Tax Gap',rows:benchmarkRows(pkg,analysis)}:null;
+}
+
+const displayValue=new Intl.NumberFormat('id-ID',{maximumFractionDigits:2});
+const percent=value=>Number.isFinite(value)?displayValue.format(value)+'%':'Belum tersedia';
+
+export function kkaBenchmarkAppendix(pkg,year,references=[]){
+  const analysis=benchmarkAnalysis(pkg,year,references);
+  if(!analysis)return null;
+  const title='L-10 Pembanding sektoral', {klu,form,ratios,scenarios}=analysis;
+  const rows=[['Uraian','Hasil','Dasar atau rujukan'],
+    ['Tahun pajak dan versi SPT',analysis.year+' · '+(form?form.version===0?'Normal':'Pembetulan '+form.version:'Versi belum dapat ditentukan'),
+      form?.parts.get('induk')?.path||analysis.reason],
+    ['KLU WP',klu.code||'Belum dapat ditentukan',klu.basis],
+    ...ratios.map(r=>[r.Rasio,percent(r['WP (%)']),r.Keterangan||r.Uraian])];
+  if(!scenarios.length)rows.push(['Acuan sektoral','Belum diisi','Tambahkan acuan dan rujukannya di Kertas Kerja.']);
+  for(const s of scenarios){
+    const outcome=Number.isFinite(s['PPh tambahan simulasi (Rp)'])?'Rp '+displayValue.format(s['PPh tambahan simulasi (Rp)']):'';
+    rows.push([s.Skenario+' · '+s.Rasio,
+      ['Acuan '+percent(s['Acuan (%)']),outcome,s.Keterangan].filter(Boolean).join(' · '),
+      ['KLU '+s['KLU cakupan'],s['Tahun data acuan'],s['Rujukan acuan'],s['Rujukan tarif']].filter(Boolean).join(' · ')]);
+  }
+  rows.push(['Penggunaan','Pembanding risiko','Nilai simulasi terpisah dari rekap pokok pajak.']);
+  return {title,rows,workbook:{name:title,rows:benchmarkRows(pkg,analysis)}};
 }

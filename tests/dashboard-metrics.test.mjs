@@ -21,7 +21,22 @@ test('corporate and VAT cards take latest filings, keep zero and link the contri
   const missing=result([jan,vat('2025-02','00',null,null)]);
   assert.equal(missing.sales.value,null);assert.equal(missing.tax.value,null);
   assert.equal(missing.supplies.value,null);assert.equal(missing.vatDue.value,null);
+  assert.equal(missing.supplies.observedValue,260);assert.equal(missing.vatDue.observedValue,30);
+  assert.equal(missing.supplies.incomplete,true);
   assert.equal(result([feb]).vatDue.value,0);
+});
+
+test('listed returns reveal missing latest forms and prevent older values from being shown as current',()=>{
+  const directory=entry('spt/daftar.json',{Data:[
+    {ReturnSheetTypeCode:'VAT_VATR',TaxPeriodCode:'01012025',ReturnSheetModel:'Amendment 1',RecordId:'later'},
+    {ReturnSheetTypeCode:'VAT_VATR',TaxPeriodCode:'02022025',ReturnSheetModel:'Normal',RecordId:'demo'},
+    {ReturnSheetTypeCode:'ICT_RCITR',TaxPeriodCode:'01122025',ReturnSheetModel:'Amendment 1',RecordId:'company-later'}
+  ]});
+  const m=result([directory,vat('2025-01','00',600,10),vat('2025-02','00',350,-20),annual('00',1000,50)]);
+  assert.equal(m.sales.value,null);assert.equal(m.tax.value,null);
+  assert.equal(m.supplies.value,null);assert.equal(m.supplies.observedValue,350);
+  assert.equal(m.vatDue.observedValue,0);assert.match(m.vatDue.detail,/1 dari 2/);
+  assert.ok(m.supplies.sources.includes(directory.path));
 });
 
 test('ledger cards use distinct transactions, document each year criterion, threshold and sign',()=>{
@@ -49,6 +64,21 @@ test('ledger cards distinguish unknown amount or overlapping unidentified rows f
   assert.match(result([month,all]).payments.detail,/tanpa ID/);
   assert.equal(result([entry('bukubesar/2025-01.json',{Data:[{...r,Amount:null}]})]).payments.value,null);
   assert.equal(result([entry('bukubesar/2025-01.json',{Data:[{...r,Amount:-7,AmountLeft:null}]})]).outstanding.value,null);
+});
+
+test('ledger cards read verified display columns, including rupiah decimals and transaction dates',()=>{
+  const payment={'Nomor Transaksi':'P-1','Jenis Pencatatan':'Pembayaran','Masa Pajak':'Januari 2025',
+    'Tanggal Posting':'03-02-2026 10:04:05',Jumlah:'40.000,50','Nilai Sisa':'0',Dibatalkan:'Tidak'};
+  const liability={'Nomor Transaksi':'D-1','Jenis Pencatatan':'Surat Pemberitahuan','Masa Pajak':'Januari 2025',
+    'Tanggal Transaksi':'02-02-2025',Jumlah:'-25.000,25','Nilai Sisa':'-9.000,25',Dibatalkan:'Tidak'};
+  const invalid={...payment,'Nomor Transaksi':'P-2',Jumlah:'70.000',Dibatalkan:'Ya'};
+  const month=entry('bukubesar/2025-01.json',{Data:[payment,liability,invalid]},false);
+  const metrics=result([month]);
+  assert.equal(metrics.payments.value,40000.5);
+  assert.equal(metrics.outstanding.value,9000.25);
+  assert.equal(metrics.payments.incomplete,true);
+  assert.match(metrics.payments.detail,/belum lengkap/);
+  assert.equal(result([month],'2026').payments.value,40000.5);
 });
 
 test('flagged, inferred and unclassified payments stay distinct when a package carries a cancellation selection',()=>{

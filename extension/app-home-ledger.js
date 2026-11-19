@@ -22,6 +22,20 @@ export async function ledgerControls({url,wp,action,label}){
     !/^\/accounting\/id-ID\/balancesheet\/[a-f\d-]+\/?$/i.test(location.pathname))return null;
   const visible=el=>el?.getClientRects().length>0 && el.checkVisibility({visibilityProperty:true,opacityProperty:true});
   const all=(root,sel)=>[...root.querySelectorAll(sel)].filter(visible);
+  // Coretax dropdowns can remain transparent while their tab is in the background.
+  const laidOut=(root,sel)=>[...root.querySelectorAll(sel)].filter(el=>el.getClientRects().length>0&&el.checkVisibility({visibilityProperty:true}));
+  const attachedPanels=()=>laidOut(document,'.p-dropdown-panel');
+  function newPanel(previous){
+    const opened=attachedPanels().filter(panel=>!previous.has(panel));
+    return opened.length===1?opened[0]:null;
+  }
+  function ownedPanel(state){
+    if(state.beforeChoosing && newPanel(state.beforeChoosing)){
+      state.previous=state.beforeChoosing;
+      state.beforeChoosing=null;
+    }
+    return newPanel(state.previous);
+  }
   const compact=v=>String(v||'').replace(/\s+/g,' ').trim();
   const ownerNodes=all(document,'shared-left-menu p.ct-title-white').map(n=>compact(n.innerText).replace(/[.\s-]/g,'')).filter(v=>/^\d{15,16}$/.test(v));
   if(!ownerNodes.length)return null;
@@ -74,27 +88,63 @@ export async function ledgerControls({url,wp,action,label}){
     const caption=all(document,'label[for=ShowCancelledTransaction]');
     const trigger=cancellation?.querySelector('.p-dropdown-trigger');
     if(caption.length!==1||!/^tampilkan transaksi yang dibatalkan\s*:?$/i.test(compact(caption[0].innerText))||!visible(trigger)||
-        !['Yes','No'].includes(observed)||!['Yes','No'].includes(label)||all(document,'.p-dropdown-panel').length)return {ok:false,cancelled:observed};
+        !['Yes','No'].includes(label)||all(document,'.p-dropdown-panel').length)return {ok:false,cancelled:observed};
+    const previous=new Set(attachedPanels());
     trigger.click();
     let chosen=false;
-    for(let n=0;n<15;n++){
-      await new Promise(resolve=>setTimeout(resolve,80));
+    const deadline=Date.now()+5000;
+    while(Date.now()<deadline){
+      await new Promise(resolve=>setTimeout(resolve,120));
       if(location.href!==url||!document.contains(cancellation))return {ok:false};
       if(chosen && cancelled()===label)return {ok:true,cancelled:label};
-      const panel=all(document,'.p-dropdown-panel');
-      if(!chosen&&panel.length===1){
-        const valid=all(panel[0],'[role=option]').filter(o=>compact(o.getAttribute('aria-label')||o.innerText)===label&&o.getAttribute('aria-disabled')!=='true');
+      const panel=newPanel(previous);
+      if(!chosen&&panel){
+        const valid=laidOut(panel,'[role=option],.p-dropdown-item').filter(o=>compact(o.getAttribute('aria-label')||o.innerText)===label&&
+          !o.matches('[aria-disabled=true],:disabled,.p-disabled'));
         if(valid.length===1){valid[0].click();chosen=true;}
       }
     }
-    if(!chosen&&all(document,'.p-dropdown-panel').length===1)trigger.click();
+    if(!chosen&&newPanel(previous))trigger.click();
     return {ok:false,cancelled:cancelled()};
   }
   const controls=all(document,'input[role=combobox][placeholder="Pilih Masa Pajak"]');
   if(controls.length!==1)return null;
   const picker=controls[0].closest('.p-dropdown'),table=controls[0].closest('table');
   if(!picker||!table||!all(table,'th').some(h=>compact(h.innerText)==='Masa Pajak'))return null;
-  const displayed=[controls[0].value,...all(picker,'.p-dropdown-label').map(n=>n.value||n.innerText)].map(compact);
+  if(action==='clearTransactionDate'){
+    const dates=()=>{
+      const fields=all(document,'input[role=combobox][placeholder="Pilih Masa Pajak"]');
+      const current=fields.length===1?fields[0].closest('table'):null;
+      return current?all(current,'thead input[id="TransactionDate"]'):[];
+    };
+    const transactionDates=dates(),[field]=transactionDates;
+    if(!field)return {ok:true};
+    if(transactionDates.length!==1)return {ok:false};
+    if(!compact(field.value))return {ok:true};
+    const calendars=()=>all(document,'.p-datepicker');
+    if(calendars().length)return {ok:false};
+    const dateCell=field.closest('th');
+    const clearDate=dateCell?all(dateCell,'button[aria-label="Clear date"]').filter(button=>!button.disabled):[];
+    if(clearDate.length>1)return {ok:false};
+    if(clearDate.length===1)clearDate[0].click();
+    else{field.focus();field.click();}
+    const deadline=Date.now()+5000;
+    while(Date.now()<deadline&&!clearDate.length){
+      if(location.href!==url||!field.isConnected)return {ok:false};
+      const panels=calendars();
+      const clear=panels.length===1?all(panels[0],'.p-datepicker-buttonbar button').filter(button=>
+        /^(?:clear|bersihkan)$/i.test(compact(button.innerText))&&!button.disabled):[];
+      if(clear.length===1){clear[0].click();break;}
+      await new Promise(resolve=>setTimeout(resolve,120));
+    }
+    if(dates().length!==1||compact(dates()[0].value))return {ok:false};
+    const buttons=all(document,'button#submit').filter(button=>/^cari$/i.test(compact(button.innerText))&&!button.disabled);
+    if(buttons.length!==1)return {ok:false};
+    const refreshed=await refresh(buttons[0],table,'Filtered');
+    return {ok:refreshed.ok&&dates().length===1&&!compact(dates()[0].value),changed:true,totalsRefreshed:refreshed.totalsRefreshed};
+  }
+  const periodLabels=all(picker,'.p-dropdown-label').map(n=>compact(n.value||n.innerText));
+  const displayed=[compact(controls[0].value),...periodLabels];
   const selected=displayed.includes(label);
   const totals=[];
   for(const candidate of all(document,'table')){
@@ -113,19 +163,27 @@ export async function ledgerControls({url,wp,action,label}){
     const otherFilters=applied.some(el=>monthColumn===undefined||el.closest('th')?.cellIndex!==monthColumn) ||
       all(table,'thead input,thead select').some(input=>!picker.contains(input) &&
         (input.type==='checkbox'||input.type==='radio'?input.checked:Boolean(input.value.trim())));
-    return {selected,totals,cancelled:cancelled(),otherFilters};
+    const noPeriod=periodLabels.length===1&&periodLabels[0]==='Pilih Masa Pajak'&&!compact(controls[0].value);
+    return {selected,totals,cancelled:cancelled(),otherFilters,noPeriod};
   }
-  let panels=all(document,'.p-dropdown-panel');
+  const selectorState=Symbol.for('coretax-v2.ledger-period-selector');
+  const trigger=picker.querySelector('.p-dropdown-trigger');
+  const expanded=picker.matches('.p-dropdown-open')||controls[0].getAttribute('aria-expanded')==='true';
+  const current=picker[selectorState];
   if(action==='open'){
-    const trigger=picker.querySelector('.p-dropdown-trigger');
-    if(!visible(trigger)||panels.length)return {ok:false};
+    if(current&&(!current.reportedExpanded||expanded)&&ownedPanel(current))return {ok:true};
+    if(!visible(trigger)||expanded||all(document,'.p-dropdown-panel').length)return {ok:false};
+    picker[selectorState]={previous:new Set(attachedPanels()),reportedExpanded:false};
     trigger.click();return {ok:true};
   }
-  if(panels.length!==1)return {ok:false};
-  const panel=panels[0],associated=controls[0].getAttribute('aria-controls');
+  if(!current)return {ok:false};
+  const panel=ownedPanel(current);
+  current.reportedExpanded ||= expanded;
+  if(!panel||current.reportedExpanded&&!expanded)return {ok:false};
+  const associated=controls[0].getAttribute('aria-controls');
   if(associated && !panel.contains(document.getElementById(associated)))return {ok:false};
   if(action==='search'){
-    const fields=all(panel,'input.p-dropdown-filter');
+    const fields=laidOut(panel,'input.p-dropdown-filter');
     if(fields.length!==1)return {ok:false};
     fields[0].value=label;fields[0].dispatchEvent(new Event('input',{bubbles:true}));return {ok:true};
   }
@@ -135,23 +193,31 @@ export async function ledgerControls({url,wp,action,label}){
     for(let n=0;n<80;n++){
       await new Promise(resolve=>setTimeout(resolve,90));
       if(location.href!==url||!panel.isConnected)return {values:[],end:false};
-      for(const option of all(panel,'[role=option]'))values.add(compact(option.getAttribute('aria-label')||option.innerText));
+      for(const option of laidOut(panel,'[role=option],.p-dropdown-item'))values.add(compact(option.getAttribute('aria-label')||option.innerText));
       if(!box||box.scrollTop+box.clientHeight>=box.scrollHeight-1)return {values:[...values],end:true};
       box.scrollTop+=Math.max(1,Math.floor(box.clientHeight*0.8));
     }
     return {values:[...values],end:false};
   }
   if(action==='choose'){
-    const options=all(panel,'[role=option]').filter(o=>compact(o.getAttribute('aria-label')||o.innerText)===label&&o.getAttribute('aria-disabled')!=='true');
+    const options=laidOut(panel,'[role=option],.p-dropdown-item').filter(o=>compact(o.getAttribute('aria-label')||o.innerText)===label&&
+      !o.matches('[aria-disabled=true],:disabled,.p-disabled'));
     if(options.length!==1)return {ok:false};
     const host=table.closest('p-table,.p-datatable,[data-pc-name=datatable]')||table.parentElement;
+    current.beforeChoosing=new Set(attachedPanels());
     return refresh(options[0],host,'Filtered');
   }
-  if(action==='dismiss'){
-    const trigger=picker.querySelector('.p-dropdown-trigger');
-    if(visible(trigger))trigger.click();
-  }
   return {ok:false};
+}
+
+async function waitForPickerAction(act,action){
+  const deadline=Date.now()+5000;
+  do{
+    const result=await act(action);
+    if(result?.ok)return result;
+    await new Promise(resolve=>setTimeout(resolve,120));
+  }while(Date.now()<deadline);
+  return null;
 }
 
 export async function ledgerYearRanges({run,id,url,wp,years,checkpoint}){
@@ -165,12 +231,10 @@ export async function ledgerYearRanges({run,id,url,wp,years,checkpoint}){
     };
     choices.add(year+'-01-12');
     if(!(await act('open'))?.ok){unconfirmed.push(year);continue;}
-    try{
-      if(!(await act('search'))?.ok){unconfirmed.push(year);continue;}
-      const options=await act('ranges');
-      if(!options?.end||!options.values.some(v=>v.endsWith(' '+year)))unconfirmed.push(year);
-      for(const label of options?.values||[]){const value=visibleRange(label,year);if(value)choices.add(value);}
-    }finally{await act('dismiss');}
+    if(!await waitForPickerAction(act,'search')){unconfirmed.push(year);continue;}
+    const options=await act('ranges');
+    if(!options?.end||!options.values.some(v=>v.endsWith(' '+year)))unconfirmed.push(year);
+    for(const label of options?.values||[]){const value=visibleRange(label,year);if(value)choices.add(value);}
   }
   return {choices:[...choices],unconfirmed};
 }
@@ -186,17 +250,11 @@ export async function selectLedgerMonth({run,id,url,wp,month,checkpoint}){
   const initial=await act('state');
   if(!initial)return null;
   if(initial.selected)return {label,initial:true};
-  if(!(await act('open'))?.ok)throw Error('Pilihan masa buku besar belum dapat dibuka.');
-  try{
-    if(!(await act('search'))?.ok)throw Error('Kolom pencarian masa buku besar belum tersedia.');
-    for(let n=0;n<10;n++){
-      const selected=await act('choose');
-      if(selected?.ok){
-        if(!(await act('state'))?.selected)throw Error('Masa yang tampil berbeda dari masa yang dipilih.');
-        return {label,refreshed:selected.refreshed,totalsRefreshed:selected.totalsRefreshed};
-      }
-      await new Promise(resolve=>setTimeout(resolve,100));
-    }
-    throw Error('Pilihan masa ini belum ditemukan pada Coretax.');
-  }finally{await act('dismiss');}
+  if(!(await act('open'))?.ok)
+    throw Object.assign(Error('Pilihan masa buku besar belum dapat dibuka.'),{reopenPicker:true});
+  if(!await waitForPickerAction(act,'search'))throw Error('Kolom pencarian masa buku besar belum tersedia.');
+  const selected=await waitForPickerAction(act,'choose');
+  if(!selected)throw Error('Pilihan masa ini belum ditemukan pada Coretax.');
+  if(!(await act('state'))?.selected)throw Error('Masa yang tampil berbeda dari masa yang dipilih.');
+  return {label,refreshed:selected.refreshed,totalsRefreshed:selected.totalsRefreshed};
 }

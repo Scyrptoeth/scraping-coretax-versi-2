@@ -7,16 +7,18 @@ import {renderDataTables} from './read-tables.js';
 import {dashboardMetrics} from './dashboard-metrics.js';
 import {dashboardFollowUp} from './dashboard-follow-up.js';
 import {dashboardIndicationReview} from './work.js';
-import {exportControls,financialPosition,formPanel,formReceipts,indicativeDates,openForm,periodTitle,printSptList,summaryPanels} from './spt-forms.js';
+import {exportControls,financialPosition,formPanel,formReceipts,indicativeDates,openForm,periodTitle,printSptList,reportDateBasis,summaryPanels} from './spt-forms.js';
 import {fieldValue,presentRows} from './display-fields.js';
+import {normalizeId} from '../app-data.js';
+import {planSptDetails,rangeIsValid,sptListContext} from '../app-spt-plan.js';
 
 function yearPicker(state,show) {
   if (!state.pkg.years.length) return el('span','Periode mengikuti isi paket.','hint');
   return select(state.pkg.years,state.year,value=>{state.year=value;show();},'Tahun pajak');
 }
 const printer=()=>button('Cetak / PDF',()=>window.print());
-function integerCard(name,value) {
-  return box('kpi',el('small',name),el('b',value==null?'—':count(value)));
+function integerCard(name,value,status='') {
+  return box('kpi',el('small',name),el('b',value==null?'—':count(value)),status&&el('small',status));
 }
 function summation(rows,key) {
   const items=rows.filter(r=>Object.hasOwn(r,key));
@@ -63,19 +65,24 @@ export function renderDashboard(target,state) {
     const signature=el('p',pkg.report.valid?'Semua sidik jari yang diperiksa cocok.':'Paket memiliki peringatan integritas.','notice');
     const annual=current.find(f=>f.type==='OP' || f.type==='BADAN');
     const annualFact=annual&&facts.find(r=>r.Jenis===typeNames[annual.type]);
-    const corporate=pkg.forms.some(f=>f.type==='BADAN');
+    const allMetrics=dashboardMetrics(pkg,state.year);
+    const corporate=pkg.forms.some(f=>f.type==='BADAN')||allMetrics.find(m=>m.id==='sales').sources.length>0;
     const coverage=[integerCard('Masa dan jenis SPT tersedia',current.length),integerCard('Pembetulan terakhir',current.filter(f=>f.version>0).length),
       integerCard('PPN keluaran dari induk yang tersedia',summation(facts,'PPN keluaran')),integerCard('PPN masukan dari induk yang tersedia',summation(facts,'PPN masukan'))];
-    if(corporate){
-      const metrics=dashboardMetrics(pkg,state.year);
-      const evidence=metrics.map(m=>({Indikator:m.label,'Nilai (Rp)':m.value,Perhitungan:m.detail,'Berkas sumber':m.sources.join('\n')}));
-      target.append(card('Ringkasan '+state.year,signature,box('grid',...metrics.map(m=>integerCard(m.label,m.value))),
-        detail('Perhitungan dan sumber indikator',dataTable(evidence,{wp,name:'Sumber indikator dasbor'})),
-        detail('Cakupan SPT tahun ini',box('grid',...coverage))));
-    }else{
-      target.append(card('Ringkasan '+(state.year||''),signature,box('grid',
-        integerCard('PPh terutang tahunan',annualFact?.['PPh terutang']),integerCard('Penyerahan PPN pada induk yang tersedia',summation(facts,'Penyerahan')),...coverage)));
-    }
+    const metrics=allMetrics.filter(m=>corporate||(['payments','outstanding'].includes(m.id)&&m.sources.length));
+    const display=metrics.map(m=>{
+      const value=m.value??m.observedValue??null;
+      return {...m,displayValue:value,status:value===null?'Belum dapat dihitung':m.incomplete?'Data sebagian':'Sesuai cakupan paket'};
+    });
+    const evidence=display.map(m=>({Indikator:m.label,'Nilai (Rp)':m.displayValue,Cakupan:m.status,
+      Perhitungan:m.detail,'Berkas sumber':m.sources.join('\n')}));
+    const overview=corporate?[]:[integerCard('PPh terutang tahunan',annualFact?.['PPh terutang']),
+      integerCard('Penyerahan PPN pada induk yang tersedia',summation(facts,'Penyerahan')),...coverage];
+    const summary=card('Ringkasan '+(state.year||''),signature,box('grid',...overview,
+      ...display.map(m=>integerCard(m.label,m.displayValue,m.incomplete||m.displayValue===null?m.status:''))));
+    if(evidence.length)summary.append(detail('Perhitungan dan sumber indikator',dataTable(evidence,{wp,name:'Sumber indikator dasbor'})));
+    if(corporate)summary.append(detail('Cakupan SPT tahun ini',box('grid',...coverage)));
+    target.append(summary);
     target.append(dashboardFollowUp(state));
     target.append(card('Butir yang dapat ditelusuri',el('p','Pemeriksaan ini mencakup pembetulan, tanggal pelaporan pada paket, dan kelengkapan berkas.','hint'),dataTable(issuesFound,{wp,name:'Butir',filename:'Butir-'+state.year})));
   } else if(mode==='butir'){
@@ -108,6 +115,59 @@ export function renderEntries(target,state,profile=false) {
   if(profile)return renderProfile(target,state);
   return renderDataTables(target,state);
 }
+
+function submittedList(pkg) {
+  const entries=pkg.entries.filter(entry=>entry.path==='spt/daftar.json'||entry.cap?.sumber==='sptdaftar');
+  const records=entries.flatMap(rowsOf);
+  if(!records.length)return null;
+  const captured=new Map();
+  for(const form of pkg.forms.filter(form=>form.listedRow)){
+    const row=form.listedRow;
+    captured.set(row,captured.has(row)?null:form);
+  }
+  const readable=(key,value,unknown)=>{
+    const displayed=fieldValue(key,value);
+    return /^[A-Z0-9]+(?:_[A-Z0-9]+)+$/.test(displayed)?unknown:displayed;
+  };
+  const links=new Map();
+  const items=records.map(row=>{
+    const {form,period,revision,typeConflict}=sptListContext(row);
+    const selected=captured.get(row);
+    const parent=selected?.parts.get('induk');
+    const data={
+      'Jenis SPT':form&&!typeConflict?readable('ReturnSheetTypeCode',form,'Jenis belum dikenali'):'Jenis belum dikenali',
+      'Masa pajak':period?periodTitle(period.label):row['Masa Pajak']||null,
+      Versi:revision===null?'Versi belum diketahui':revision===0?'Normal':'Pembetulan '+revision,
+      'Status pelaporan':readable('ReturnSheetStatusCode',row.ReturnSheetStatusCode??row['Status SPT'],'Status belum dikenali'),
+      'Nomor bukti penerimaan':row['Nomor Bukti Penerimaan']??row.BpsNo??row.DocumentReceiptNumber??null,
+      ...(pkg.forms.length?{'Isi SPT':parent?(parent.cap?.konteks?.cuplikanTampilan?'Cuplikan induk':'Induk tersedia'):
+        selected?'Lampiran tersedia':captured.has(row)?'Perlu dicocokkan':'Belum tercocok dengan paket'}:{})
+    };
+    if(selected)links.set(data,selected);
+    return {year:period?.year?.toString(),data};
+  });
+  const years=[...new Set(items.map(item=>item.year).filter(Boolean))].sort().reverse();
+  const kinds=[...new Set(items.map(item=>item.data['Jenis SPT']))].sort(compare);
+  const table=box(''),total=el('p',null,'hint');
+  let year='',kind='';
+  const repaint=()=>{
+    const shown=items.filter(item=>(!year||item.year===year)&&(!kind||item.data['Jenis SPT']===kind)).map(item=>item.data);
+    total.textContent=count(shown.length)+' dari '+count(items.length)+' baris daftar SPT ditampilkan.';
+    table.replaceChildren(dataTable(shown,{wp:pkg.manifest.wp,name:'Daftar pelaporan SPT',filename:'Daftar-pelaporan-SPT',csv:true,
+      rowAction:pkg.forms.length?{title:'Rincian',control:row=>links.has(row)?
+        button('Buka',()=>openForm(links.get(row),pkg)):el('span','—')}:undefined}));
+  };
+  const wp=normalizeId(pkg.manifest.wp?.npwp),period=pkg.manifest.opsi?.periode;
+  const planned=!pkg.forms.length&&wp&&rangeIsValid(period)?planSptDetails({wp,period,items:entries,strictReceipts:true}).counts.versions:0;
+  repaint();
+  return box('',el('p',pkg.forms.length?'Daftar pelaporan mencakup masa dan versi yang tercatat pada sumber. Kolom Isi SPT menunjukkan formulir yang dapat dicocokkan dengan paket.':
+    planned?count(planned)+' versi dalam periode tarikan tercatat pada daftar. Induk dan lampirannya masih perlu ditarik.':
+    'Daftar pelaporan tersedia dalam paket. Induk dan lampiran dapat dilihat setelah berhasil ditarik.','hint'),
+    box('toolbar',select([['','Semua tahun'],...years],'',value=>{year=value;repaint();},'Tahun pajak'),
+      select([['','Semua jenis SPT'],...kinds],'',value=>{kind=value;repaint();},'Jenis SPT')),
+    total,table);
+}
+
 export function renderSpt(target,state) {
   const pkg=state.pkg,wp=pkg.manifest.wp,mode=state.section==='ringkasan'?'ringkasan':'daftar';
   target.append(card('SPT',box('toolbar',mode==='ringkasan'?yearPicker(state,state.repaint):null,button('KKP',()=>state.go('kerja','kkp')),button('KKA',()=>state.go('kerja','kka')),printer()),toggleSet([['daftar','Daftar & isi SPT'],['ringkasan','Ringkasan SPT']],mode,key=>state.go('spt',key))));
@@ -124,15 +184,17 @@ export function renderSpt(target,state) {
   }
   const forms=pkg.forms;
   if(!forms.length){
-    target.append(card('Daftar dan isi SPT',el('p','Paket ini belum memuat induk atau lampiran SPT yang bisa dibuka.','hint'),archiveTables));
+    const list=submittedList(pkg);
+    target.append(card('Daftar dan isi SPT',list??el('p','Paket ini belum memuat induk atau lampiran SPT yang bisa dibuka.','hint'),archiveTables));
     return;
   }
   const filters=state.sptFilters;const results=box('');
+  const submitted=submittedList(pkg);
   const kinds=[...new Set(forms.map(f=>f.type))].sort((a,b)=>compare(typeNames[a]||a,typeNames[b]||b));
   if(!kinds.includes(filters.type))filters.type='';
   const position=new Map();
   function balance(form){
-    if(!position.has(form))position.set(form,financialPosition(form));
+    if(!position.has(form))position.set(form,financialPosition(form,wp));
     return position.get(form);
   }
   const dates=indicativeDates(forms,pkg);
@@ -152,11 +214,12 @@ export function renderSpt(target,state) {
       const r={Jenis:typeNames[f.type]||f.type,Masa:f.period,Versi:f.version?'Pembetulan '+f.version:'Normal','Status nilai':status,'Nilai pada induk':amount,
         ...formReceipts(f.meta),'Status pelaporan':fieldValue('ReturnSheetStatusCode',f.meta.ReturnSheetStatusCode)||null,'Dasar nilai':basis,
         'Tanggal lapor':f.reportDate,'Batas pada sumber':f.dueDate,'Batas setelah akhir pekan':f.filingDueDate,
-        Ketepatan:f.filingLate==null?'—':f.filingLate?'Lewat batas':'Tepat',Kanal:fieldValue('ChannelCode',f.meta.ChannelCode)||null};
+        Ketepatan:f.filingLate==null?'—':f.filingLate?'Lewat batas':'Tepat',Kanal:fieldValue('ChannelCode',f.meta.ChannelCode)||null,
+        'Dasar tanggal lapor':reportDateBasis(f)};
       if(dates.has(f))r['Tanggal setoran indikatif']=dates.get(f);
       links.set(r,f);return r;
     });
-    for(const key of ['Kanal','Tanggal lapor','Batas pada sumber'])if(!rows.some(r=>r[key]))for(const r of rows)delete r[key];
+    for(const key of ['Kanal','Tanggal lapor','Batas pada sumber','Dasar tanggal lapor'])if(!rows.some(r=>r[key]))for(const r of rows)delete r[key];
     const panel=el('section',null,'spt-preview-panel'),list=box('spt-result-list');
     panel.setAttribute('aria-label','Formulir SPT pilihan');panel.id='spt-selected-form';panel.tabIndex=-1;
     const mark=form=>{
@@ -193,7 +256,9 @@ export function renderSpt(target,state) {
     const cb=el('input');cb.type='checkbox';cb.checked=filters[key];cb.onchange=()=>{filters[key]=cb.checked;repaint();};const title=el('label');title.append(cb,document.createTextNode(' '+text));controls.append(title);
   }
   const basisNote=forms.some(f=>f.type==='UNIFIKASI')?el('p','Untuk PPh Unifikasi, kolom nilai memakai jumlah yang disetor pada induk. Periksa buku besar untuk menentukan sisa kewajiban.','hint'):null;
-  target.append(card('Daftar dan isi SPT',years.element,types.element,controls,results,basisNote,dates.size?el('p','Tanggal setoran berasal dari pembayaran dengan KAP dan masa yang sama dengan kewajiban SPT di buku besar. Periksa alokasi pembayaran pada dokumen sumber.','hint'):null,archiveTables));repaint();
+  const later=forms.some(f=>f.laterListed)?el('p','Sebagian masa memiliki versi lebih baru pada daftar pelaporan. Lepaskan centang Versi terakhir untuk melihat formulir yang sudah tersedia.','hint'):null;
+  target.append(card('Daftar dan isi SPT',years.element,types.element,controls,later,results,basisNote,dates.size?el('p','Tanggal setoran berasal dari pembayaran dengan KAP dan masa yang sama dengan kewajiban SPT di buku besar. Periksa alokasi pembayaran pada dokumen sumber.','hint'):null,
+    submitted?detail('Daftar pelaporan dan ketersediaan formulir',submitted):null,archiveTables));repaint();
 }
 
 function filterCounts(title,all,values,change){

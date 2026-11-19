@@ -61,3 +61,20 @@ test('generated formulas recalculate edited figures, preserve unknowns and leave
   const last=decodeText(zip.get('xl/worksheets/sheet'+(output.sheets.length+1)+'.xml').data);
   assert.ok(last.includes('=12+11'));assert.ok(!last.includes('<f>'));
 });
+
+test('KKA L-6 traces missing filing dates and retains indication review outside the potential recap',()=>{
+  const make=(period,ReturnDate)=>({ReturnSheetTypeCode:'VAT_VATR',TaxPeriodCode:period,ReturnSheetModel:'Normal',
+    ReturnSheetStatusCode:'SUBMITTED',ReturnDate,BpsNo:'BPE-FIKTIF'});
+  const directory={path:'spt/daftar.json',cap:{sumber:'sptdaftar',konteks:{npwp:pkg.manifest.wp.npwp}},pages:[
+    {Payload:{Data:[make('01012025','0001-01-01'),make('02022025','2025-03-01'),make('12122024','0001-01-01')]}}
+  ]};
+  const work={rows:[],scopes:{kka:'verified'},indicationReviews:{'vat-facility':'explained'}};
+  const output=workpaper({...pkg,entries:[...pkg.entries,directory]},'2025',work,'kka','AR');
+  const summary=output.tables.find(t=>t.workbookTarget==='KKA_L6_1');
+  assert.deepEqual(summary.rows.find(r=>r[0]==='Tanggal lapor belum tercatat').slice(0,2),['Tanggal lapor belum tercatat',1]);
+  const appendix=output.sheets.find(s=>s.name==='L-6 Hasil analisis');
+  assert.deepEqual(appendix.rows.find(r=>r[3]==='BPE-FIKTIF').slice(1),['2025-01','Normal','BPE-FIKTIF',directory.path]);
+  assert.ok(appendix.rows.some(r=>r[2]==='N.5'&&r[3]==='Terjelaskan'));
+  assert.ok(!output.selected.some(r=>r.reference==='N.5'));
+  assert.deepEqual(appendix.targets,[{name:'KKA_L6_1',row:1}]);
+});

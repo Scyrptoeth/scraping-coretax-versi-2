@@ -5,7 +5,7 @@ import {linkedPaymentGroups,packageLedger} from './profile.js';
 import {annualVat} from './annual-vat.js';
 import {monthlyWithholding} from './monthly-withholding.js';
 import {vatCoverage} from './vat-coverage.js';
-import {sourceAmount as formAmount,withholdingForm,withholdingPeriods,withholdingSections,withholdingSheetRows} from './withholding-forms.js';
+import {sourceAmount as formAmount,withholdingForm,withholdingPeriods,withholdingSections,withholdingSheetRows,withholdingSnapshot} from './withholding-forms.js';
 import {fieldLabel,fieldValue,presentRows,sourceLabel} from './display-fields.js';
 import {sptChoice,sptField} from './spt-labels.js';
 
@@ -42,10 +42,10 @@ export function indicativeDates(forms,pkg) {
 
 function withholdingAmount(data) {
   const groups=[
-    {fields:[['A21IncomeTaxUnderpaidOverpaid','KB/LB PPh 21'],['A26IncomeTaxUnderpaidOverpaid','KB/LB PPh 26']]},
-    {fields:[['A21IncomeTaxWithheld','potongan PPh 21'],['A26IncomeTaxWithheld','potongan PPh 26']],deduction:'A21IncomeTaxBorneByGovernment'}
+    {kind:'balance',fields:[['A21IncomeTaxUnderpaidOverpaid','KB/LB PPh 21'],['A26IncomeTaxUnderpaidOverpaid','KB/LB PPh 26']]},
+    {kind:'withholding',fields:[['A21IncomeTaxWithheld','potongan PPh 21'],['A26IncomeTaxWithheld','potongan PPh 26']],deduction:'A21IncomeTaxBorneByGovernment'}
   ];
-  for(const {fields,deduction} of groups){
+  for(const {kind,fields,deduction} of groups){
     const terms=fields.map(([key,label])=>({value:formAmount(data[key]),label})).filter(term=>term.value!==null);
     if(!terms.length)continue;
     let amount=terms.reduce((sum,term)=>sum+term.value,0);
@@ -55,23 +55,35 @@ function withholdingAmount(data) {
       amount-=borne;
       basis+=' − PPh 21 ditanggung pemerintah';
     }
-    return {amount,basis};
+    return {amount,basis,kind};
   }
   return {amount:null,basis:null};
 }
 
-export function financialPosition(f) {
+export function financialPosition(f,wp) {
   const data=main(f);
-  let amount=null,basis=null;
+  let amount=null,basis=null,kind='balance';
   switch(f.type){
     case 'PPN': amount=formAmount(data.VATUnderOrOverPaid?.VAT);basis='PPN kurang/(lebih) bayar';break;
     case 'OP': amount=formAmount(data.UnderOrOverPaymentTax);basis='PPh OP kurang/(lebih) bayar';break;
     // The corporate overpayment field is a refund option, not a monetary credit.
     case 'BADAN': amount=formAmount(data.MainFormData?.UnderpaymentIncomeTax);basis='PPh Badan kurang/(lebih) bayar';break;
-    case 'UNIFIKASI': amount=formAmount(data.TotalIncomeTaxPaid);basis='Jumlah PPh disetor pada induk';break;
-    case 'PPH2126': ({amount,basis}=withholdingAmount(data));break;
+    case 'UNIFIKASI': amount=formAmount(data.TotalIncomeTaxPaid);basis='Jumlah PPh disetor pada induk';kind='reported-payment';break;
+    case 'PPH2126': {
+      const snapshot=withholdingSnapshot(f,wp);
+      if(snapshot.length){
+        const terms=['A21IncomeTaxUnderpaidOverpaid','A26IncomeTaxUnderpaidOverpaid']
+          .map(key=>snapshot.find(item=>item.key===key));
+        if(terms.every(term=>Number.isFinite(term?.value))){
+          amount=terms[0].value+terms[1].value;
+          basis='KB/LB PPh 21 + KB/LB PPh 26 pada cuplikan induk · '+terms.map(term=>term.source).join(' / ');
+        }
+      }else ({amount,basis,kind}=withholdingAmount(data));
+      break;
+    }
   }
-  return {amount,basis:amount===null?null:basis,status:amount===null?'Belum tersedia':amount===0?'Nihil':amount>0?'Kurang bayar':'Lebih bayar'};
+  return {amount,basis:amount===null?null:basis,kind:amount===null?null:kind,
+    status:amount===null?'Belum tersedia':amount===0?'Nihil':amount>0?'Kurang bayar':'Lebih bayar'};
 }
 
 export function partTitle(form,part){
@@ -171,8 +183,17 @@ function comparisonRows(rows){
   })));
 }
 function header(f,pkg){
+  const receipts=Object.entries(formReceipts(f.meta));
+  const captured=f.parts?.values().next().value?.cap?.konteks?.spt?.nomor;
+  if(!receipts.length&&captured)receipts.push(['Nomor bukti penerimaan',captured]);
   return [['Jenis',typeNames[f.type]||f.type],['Masa / tahun',f.period],['Versi',versionName(f)],
-    ['WP',pkg.manifest.wp?.nama??''],['NPWP',pkg.manifest.wp?.npwp??''],...Object.entries(formReceipts(f.meta)),['Tanggal lapor',f.reportDate??submittedDay(f.meta)]];
+    ['WP',pkg.manifest.wp?.nama??''],['NPWP',pkg.manifest.wp?.npwp??''],...receipts,['Tanggal lapor',f.reportDate??submittedDay(f.meta)],
+    ...(f.reportDateField?[['Dasar tanggal lapor',reportDateBasis(f)],['Berkas tanggal lapor',f.reportSource]]:[])];
+}
+export function reportDateBasis(form) {
+  return {ReturnDate:'Tanggal lapor pada daftar',ReceiptDate:'Tanggal penerimaan pada daftar',EnteredDate:'Tanggal perekaman pada daftar',
+    DateOfSubmit:'Tanggal submit pada daftar','Tanggal Penerimaan':'Tanggal penerimaan pada daftar',
+    'Tanggal Submit SPT':'Tanggal submit pada daftar','konteks.spt.tanggal':'Tanggal pada metadata formulir'}[form.reportDateField]||null;
 }
 export function formSheets(forms,pkg,raw=false) {
   const sheets=[];
@@ -330,7 +351,8 @@ export function formPanel(form,pkg,onVersionChange){
       const summary=coverage.received+' dari 8 berkas diterima · '+coverage.verified+' dari 8 bagian terverifikasi';
       content.append(detail('Cakupan SPT PPN · '+summary,box('',
         dataTable(coverage.rows,{wp,name:'Cakupan delapan bagian PPN'}),
-        button('Excel cakupan PPN',()=>exportSheets([{name:'Cakupan PPN',rows:[...header(form,pkg),['ID rekaman',form.id],
+        button('Excel cakupan PPN',()=>exportSheets([{name:'Cakupan PPN',rows:[...header(form,pkg),
+          [/^cuplikan-[a-f0-9]{64}$/.test(form.id)?'Referensi lokal paket':'ID rekaman',form.id],
           ['Berkas diterima',coverage.received],['Bagian terverifikasi',coverage.verified],[],...worksheet(coverage.rows)]}],
           'Cakupan-PPN-'+form.period+'-P'+form.version,wp)))));
     }
@@ -346,11 +368,13 @@ export function formPanel(form,pkg,onVersionChange){
         }:undefined;
         const visible=items.map(({Isian,Sumber,...row})=>{
           if(row.Jenis)row.Jenis=sptFieldValue('Type',row.Jenis);
+          if(potput.snapshot&&items===potput.values){row.Isian=Isian;row.Sumber=Sumber;}
           return row;
         });
         content.append(el('h4',name),dataTable(visible,{wp,name,openRow,incremental:true,filename:name+'-'+form.period+'-P'+form.version}));
       }
       content.append(...potput.notes.map(note=>el('p',note,'hint')));
+      if(potput.snapshot)content.append(detail('Sel tersimpan pada induk',table));
     }else if(part==='induk'&&form.type==='PPN'&&!raw&&!locate){
       const summary=vatFormSummary(form);
       if(!summary.length){content.append(table);return;}
@@ -387,16 +411,19 @@ export function summaryPanels(forms,year,wp) {
   });
   const payments=withholdingPeriods(forms,year,wp);
   const calendar=forms.map(f=>({Masa:f.period,Jenis:typeNames[f.type]||f.type,Versi:versionName(f),'Batas pada sumber':f.dueDate??sptDay(f.meta.ExpectedReturnDate),
-    'Batas setelah akhir pekan':f.filingDueDate,'Tanggal lapor':f.reportDate??submittedDay(f.meta),Ketepatan:f.filingLate==null?'Belum dinilai':f.filingLate?'Lewat batas':'Tepat'}));
+    'Batas setelah akhir pekan':f.filingDueDate,'Tanggal lapor':f.reportDate??submittedDay(f.meta),Ketepatan:f.filingLate==null?'Belum dinilai':f.filingLate?'Lewat batas':'Tepat',
+    'Dasar tanggal lapor':reportDateBasis(f),'Berkas tanggal lapor':f.reportDate?f.reportSource:null}));
   const annual=annualVat(forms,year);
-  const withholding=monthlyWithholding(forms,year);
+  const withholding=monthlyWithholding(forms,year,wp);
   const annualPanel=annual?card('Rekap PPN tahunan',
-    el('p',annual.available+' dari 12 masa mempunyai versi SPT terakhir. Kompensasi dan posisi kurang/lebih bayar dibaca per masa. Kolom lainnya dijumlahkan untuk masa yang tersedia.','hint'),
+    el('p',annual.available+' dari 12 masa mempunyai formulir versi terakhir. Angka induk dapat dibaca pada '+annual.withAmounts+
+      ' masa. Kompensasi dan posisi kurang/lebih bayar dibaca per masa. Jumlah ditampilkan bila angka tersedia pada semua formulir yang digunakan.','hint'),
     dataTable(annual.rows,{wp,name:'Rekap PPN tahunan',filename:'Rekap-PPN-'+year}),
     annual.notes.length?detail('Sumber angka PK',dataTable(annual.notes,{wp,name:'Sumber angka PK'})):null):null;
   const withholdingPanel=withholding.columns.length>1 || withholding.warnings.length?card('Rekap PPh potong/pungut',
     el('p','Nilai memakai versi terakhir per jenis dan masa. Buka sumber per pasal untuk melihat isian asal dan perhitungannya.','hint'),
-    withholding.unreportedColumns.length?el('p','Kolom tanpa angka pada seluruh masa: '+withholding.unreportedColumns.join(', ')+'. Jumlah nilai tersedia pada kolom tersebut adalah 0.','hint'):null,
+    withholding.sources.some(row=>row['Cakupan sumber']==='Cuplikan induk')?el('p','Sebagian angka PPh berasal dari cuplikan induk. Ringkasan menjumlahkan nilai yang tersedia per kolom.','hint'):null,
+    withholding.unreportedColumns.length?el('p','Jumlah masih kosong untuk kolom tanpa angka pada seluruh masa: '+withholding.unreportedColumns.join(', ')+'.','hint'):null,
     ...withholding.warnings.map(text=>el('p',text,'notice')),
     withholding.columns.length>1?dataTable([...withholding.rows,withholding.total],{wp,name:'Rekap PPh potong/pungut',filename:'Rekap-PPh-'+year}):null,
     withholding.sources.length?detail('Sumber per pasal',dataTable(withholding.sources,{wp,name:'Sumber per pasal'})):null):null;

@@ -64,6 +64,16 @@ function submittedEvidence(pkg,form,owner){
   return {day:submittedDay(r),due:sptDay(r.ExpectedReturnDate),path:source.path+' · '+form.id};
 }
 
+function genericVatBalanceSource(form,debt,owner){
+  if(form.type!=='PPN'||debt.ReferenceType!=='TaxReturn'||debt.AccountingTypeDetailCode!=='N'||!debt.ReferenceNumber)return '';
+  const entry=form.parts.get('induk'),bodies=rowsOf(entry),body=bodies[0];
+  if(bodies.length!==1||body.VATUnderOrOverPaid?.VAT!==-debt.Amount||
+    body.TaxPeriodYear!=null&&Number(body.TaxPeriodYear)!==Number(form.year)||
+    body.TaxPeriodMonth!=null&&Number(body.TaxPeriodMonth)!==Number(form.period.slice(5))||
+    body.TIN&&normalizeId(body.TIN)!==owner)return '';
+  return entry.path+' · VATUnderOrOverPaid.VAT';
+}
+
 export function directStp(pkg,year,work={}){
   const rows=[],facts=[],notes=new Set(),ledgerCache=new Map(),unconfirmed=new Map(),lists=new Map(),grouped=new Map(),observations=[];
   const owner=normalizeId(pkg.manifest.wp?.npwp),planned=sptDay(work.simulation?.end),cutoff=sptDay(pkg.manifest.dibuat);
@@ -116,7 +126,9 @@ export function directStp(pkg,year,work={}){
       const liabilities=ledgerGroup.filter(r=>r.AccountingTypeCode==='TaxReturn');
       if(!liabilities.length)continue;
       const [debt]=liabilities;
-      if(liabilities.length!==1||debt.ReferenceType!==kinds[f.type]||!Number.isSafeInteger(debt.Amount)||debt.Amount>=0)continue;
+      if(liabilities.length!==1||!Number.isSafeInteger(debt.Amount)||debt.Amount>=0)continue;
+      const genericSource=debt.ReferenceType===kinds[f.type]?'':genericVatBalanceSource(f,debt,owner);
+      if(debt.ReferenceType!==kinds[f.type]&&!genericSource)continue;
       if(amended){notes.add(group+' · Ada pembetulan atau daftar versi belum cocok. Periksa alokasi pembayaran ke versi SPT.');continue;}
       const balance=Number.isSafeInteger(debt.AmountLeft)&&debt.AmountLeft<=0?-debt.AmountLeft:null;
       const source=ledger.path+' · '+debt.RecordId;
@@ -124,9 +136,10 @@ export function directStp(pkg,year,work={}){
       if(balance>0&&(!planned||!cutoff||planned>=cutoff)){
         const detail='Buku besar pada tanggal paket masih mencatat sisa kewajiban. Periksa pelunasan, pemindahbukuan dan dasar penagihan. '+(f.type==='PPN'?
           'Pasal 14 ayat (1) huruf a mengatur PPh dalam tahun berjalan.':'PPh pemotongan pada SPT masa ini berbeda dari angsuran PPh Pasal 25.');
-        register(f,source,detail,[cutoff||null,due,null,null,null,null,null,balance],'Sisa kewajiban tercatat','balance/'+group+'/'+debt.RecordId,
+        register(f,[source,genericSource].filter(Boolean).join(' · '),detail,[cutoff||null,due,null,null,null,null,null,balance],'Sisa kewajiban tercatat','balance/'+group+'/'+debt.RecordId,
           {ledgerId:debt.RecordId,balance});
       }
+      if(genericSource)continue;
       const payments=ledgerGroup.filter(r=>r.AccountingTypeCode==='Payment'&&String(r.PaymentCode)==='100');
       if(!payments.length)continue;
       if(payments.some(r=>!size(r.Amount)||!size(r.AmountLeft)||r.AmountLeft>r.Amount||!sptDay(r.TransactionDate)||!r.ReferenceNumber||r.AccountingTypeDetailCode!=='CASH')||

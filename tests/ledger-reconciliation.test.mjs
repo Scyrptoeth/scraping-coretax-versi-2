@@ -15,7 +15,7 @@ function fixture(){
 test('compare the signed balance to the filtered total for the same period and leave underlying movements intact',()=>{
   const f=fixture();assert.equal(f.run().Hasil,'Saldo cocok');assert.equal(f.run()['Baris total'],'Filtered');
   f.total.pages[0].Payload[1].Balance=0;assert.equal(f.run()['Selisih (Rp)'],20);
-  f.detail.pages[0].Payload.Data=[];assert.equal(f.run()['Jumlah Amount (Rp)'],0);
+  f.detail.pages[0].Payload.Data=[];assert.equal(f.run()['Jumlah rincian (Rp)'],0);
   f.detail.cap.lengkap=false;assert.match(f.run().Cakupan,/baris tersimpan/);
   f.total.pages[0].Payload.splice(1);assert.equal(f.run()['Saldo pembanding (Rp)'],901);
 });
@@ -25,6 +25,19 @@ test('a query limit repeated as a total cannot certify a complete population fro
   f.detail.pages[0].Payload.TotalRecords=10000;
   assert.equal(f.run().Hasil,'Saldo cuplikan cocok');
   assert.equal(f.run()['Selisih (Rp)'],0);
+});
+test('displayed book amounts and filtered balances support a snapshot comparison',()=>{
+  const f=fixture();
+  const row=amount=>({'Nomor Transaksi':'FIKTIF','Jenis Pencatatan':'Pembayaran','Masa Pajak':'Januari 2025',
+    Jumlah:amount,'Mata Uang':'IDR'});
+  f.detail.pages[0].Payload.Data=[row('50.125'),row('-30.025')];
+  f.detail.cap.lengkap=false;
+  f.total.pages[0].Payload[1]={Key:'Filtered',Saldo:'20.100'};
+  assert.equal(f.run()['Saldo pembanding (Rp)'],20100);
+  assert.equal(f.run()['Selisih (Rp)'],0);
+  assert.equal(f.run().Hasil,'Saldo cuplikan cocok');
+  f.total.pages[0].Payload[1].Saldo='20.100,25';
+  assert.equal(f.run()['Selisih (Rp)'],null);
 });
 test('missing ownership, period, currency, ID uniqueness, matching filters or an unambiguous source total withholds the difference',()=>{
   for(const change of [f=>f.total.cap.konteks.npwp='0000000000000099',f=>f.total.cap.konteks.masa=2,

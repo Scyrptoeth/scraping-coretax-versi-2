@@ -167,6 +167,12 @@ export function renderIndex(target,state,work,index){
   const wp=state.pkg.manifest.wp;
   const reviewed=new Map(work.rows.filter(r=>r.kkpLine).map(r=>[r.kkpLine,r]));
   const downloadBook=()=>exportSheets(completeIndexBook(state.pkg,state.year,index,reviewed,work.indexNotes,work.indexDocuments,work.simulation,work),'KKP-Indeks-'+state.year,wp);
+  if(index.coverage.length)target.append(card('Cakupan induk SPT',
+    el('p','Daftar pelaporan mencatat masa berikut. Sebagian induk pembetulan terakhir belum tersedia atau sumbernya belum dapat dipastikan.'),
+    dataTable(index.coverage,{wp,name:'Induk SPT terakhir yang belum terkonfirmasi'})));
+  if(index.snapshots.length)target.append(detail('PPh dipotong yang terlihat pada cuplikan induk',box('stack',
+    el('p','Angka menunjukkan nilai pada versi yang tercantum. Kelengkapan induk dan lampiran masih perlu diperiksa.'),
+    dataTable(index.snapshots,{wp,name:'PPh dipotong pada cuplikan induk'}))));
   if(!index.groups.length){
     target.append(card('Indeks KKP',el('p','Belum ada isian SPT yang dapat dipetakan ke indeks pada tahun ini.'),
       button('Excel semua KKP',downloadBook),

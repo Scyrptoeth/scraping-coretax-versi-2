@@ -91,7 +91,9 @@ async function verify(encrypted){
     assert.deepEqual(entry.pages.flatMap(p=>p.Payload.Data.map(r=>r['ID SPT'])),pages.flat().map(r=>r.at(-1)));
     const handoff=ctx.waitForEvent('page');await ui.getByRole('button',{name:'Buka di Analisis'}).first().click();
     const viewer=await handoff;await viewer.getByText(/1 berkas diperiksa/).first().waitFor();
-    await viewer.locator('#navigation').getByRole('button',{name:'SPT',exact:true}).click();await viewer.locator('summary').getByText('Daftar SPT dilaporkan',{exact:true}).click();
+    await viewer.locator('#navigation').getByRole('button',{name:'SPT',exact:true}).click();
+    await viewer.locator('summary').getByText('Tabel SPT hasil tarikan',{exact:true}).click();
+    await viewer.locator('summary').getByText('Daftar SPT dilaporkan',{exact:true}).click();
     await viewer.getByRole('table',{name:'Daftar SPT dilaporkan',exact:true}).getByRole('cell',{name:'JAN-BETUL',exact:true}).waitFor();
     ui.once('dialog',d=>d.accept());await saved.getByRole('button',{name:'Hapus pratinjau tersimpan'}).click();
     await durable.waitFor({state:'detached'});assert.equal((await raw(ui)).length,1);assert.deepEqual(unexpected,[]);

@@ -9,12 +9,22 @@ const rules=[
 ];
 const present=v=>v!==null&&v!==undefined&&v!=='';
 
-function identityProblem(pkg,form,entry,row){
+export function withholdingParentIdentityProblem(pkg,form,entry,row){
   const body=entry.pages[0]?.Payload??entry.pages[0],owner=normalizeId(pkg.manifest.wp?.npwp),month=form.period.slice(-2);
   const periodCode=month+month+form.year;
+  // Migrated forms can retain an aggregate ID or a period without leading zeroes in the form body.
+  // Accept those fields only when the filed record, request and response envelope confirm the same version.
+  const migration=form.meta?.IsMigrated===true&&form.meta.RecordId===form.id&&form.meta.TaxPeriodCode===periodCode&&
+    entry.cap?.payload?.RecordId===form.id&&entry.cap?.konteks?.spt?.recordId===form.id&&normalizeId(body.TIN)===owner&&body.PeriodCode===periodCode;
+  const legacyMonth=String(Number(month));
+  const legacyPeriod=migration&&form.type==='PPH2126'&&row.RecordId===form.id&&
+    Number(row.TaxPeriodMonth)===Number(month)&&String(row.TaxPeriodYear)===form.year&&String(row.TaxPeriodCode)===legacyMonth+legacyMonth+form.year;
+  const legacyRecord=migration&&form.type==='UNIFIKASI'&&present(row.ReturnSheetAggregateIdentifier)&&
+    row.ReturnSheetRecordIdentifier===row.ReturnSheetAggregateIdentifier;
+  const validPeriod=value=>!present(value)||[form.period,periodCode].includes(String(value));
   if(body.IsFound===false||[body.TIN,row.TaxIdentificationNumber].filter(present).some(id=>normalizeId(id)!==owner)||
-    [body.PeriodCode,row.TaxPeriodCode].filter(present).some(v=>![form.period,periodCode].includes(String(v)))||
-    present(row.ReturnSheetRecordIdentifier)&&row.ReturnSheetRecordIdentifier!==form.id)return 'Identitas WP, masa atau rekaman induk tidak cocok.';
+    !validPeriod(body.PeriodCode)||(!validPeriod(row.TaxPeriodCode)&&!legacyPeriod)||
+    present(row.ReturnSheetRecordIdentifier)&&row.ReturnSheetRecordIdentifier!==form.id&&!legacyRecord)return 'Identitas WP, masa atau rekaman induk tidak cocok.';
   return '';
 }
 
@@ -35,7 +45,7 @@ export function projectWithholdingTax(groups,pkg,year,periods,registrations,sour
       let why=!form?(latest.length?'Beberapa rekaman memiliki nomor pembetulan terakhir yang sama.':'Induk atas masa yang tercatat pada daftar SPT belum tersedia.'):
         revisionProblem(register.get(month)||[],versions,form)||sourceProblem(pkg,form,'induk',entry);
       const rows=!why?rowsOf(entry):[],row=rows.length===1?rows[0]:null;
-      if(!why)why=row?identityProblem(pkg,form,entry,row):'Induk tunggal tidak tersedia.';
+      if(!why)why=row?withholdingParentIdentityProblem(pkg,form,entry,row):'Induk tunggal tidak tersedia.';
       if(!why&&usesOtherCurrency(form.meta,entry.cap,entry.cap?.konteks,entry.pages[0]?.Payload,row))why='Mata uang induk belum dapat dijumlahkan dalam rupiah pada KKP.';
       const matches=legacy.lines.filter(l=>l.period===month&&l.version===max&&l.id.endsWith(type==='PPH2126'?'#'+field:'.'+field));
       if(!why&&matches.length!==1)why=matches.length?'Subtotal pasal muncul beberapa kali pada induk.':'Subtotal pasal belum tersedia pada induk.';

@@ -47,13 +47,15 @@ export async function createDocx({ title, paragraphs = [], tables = [], companio
   for (const table of tables) {
     if (table.title) body.push(paragraph(table.title, { bold: true, size: 24, after: 100, keep: true }));
     if(companionWorkbook&&table.workbookTarget){
-      const targetSheet=/^KKA_L(7|13)_[0-9_]+$/.exec(table.workbookTarget);
+      const targetSheet=/^KKA_L(1|2B|2C|3A|3B|4A|4B|5|6|7|8|9|10|11|12|13)_[0-9_]+$/.exec(table.workbookTarget);
       if(!/^[^/\\:#?]+\.xlsx$/i.test(companionWorkbook)||!targetSheet)
         throw Error('Nama berkas atau tujuan tautan KKA tidak dikenali.');
       const id='workbook'+(workbookLinks.length+1);
       const target=encodeURIComponent(companionWorkbook)+'#'+table.workbookTarget;
+      const caption=targetSheet[1]==='9'?'Buka rincian temuan indikatif di Excel KKA · L-9':
+        'Buka lampiran di Excel KKA · L-'+targetSheet[1].toLowerCase();
       workbookLinks.push('<Relationship Id="'+id+'" Type="'+hyperlinkRel+'" Target="'+target+'" TargetMode="External"/>');
-      body.push('<w:p><w:hyperlink r:id="'+id+'"><w:r><w:rPr><w:color w:val="0563A1"/><w:u w:val="single"/></w:rPr><w:t>Buka dasar perhitungan di Excel KKA · L-'+targetSheet[1]+'</w:t></w:r></w:hyperlink></w:p>');
+      body.push('<w:p><w:hyperlink r:id="'+id+'"><w:r><w:rPr><w:color w:val="0563A1"/><w:u w:val="single"/></w:rPr><w:t>'+caption+'</w:t></w:r></w:hyperlink></w:p>');
     }
     body.push(tableFor(table.rows), paragraph("", { after: 30 }));
   }

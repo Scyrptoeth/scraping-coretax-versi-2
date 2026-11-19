@@ -4,8 +4,9 @@ import {ledgerCancellation} from '../ledger-status.js';
 import {flatten, ledgerDocumentReference, receiptFields, rowsOf, sptDay, submittedDay, typeNames, worksheet} from './model.js';
 import {box, button, card, dataTable, detail, el, exportSheets} from './ui.js';
 import {fieldLabel,fieldValue,presentRows,sourceLabel} from './display-fields.js';
-import {profileOverview,registryTable} from './profile-overview.js';
-import {filingCalendar,lateFilings} from './profile-filing.js';
+import {ledgerAnalysisRow,ledgerDetailLabels,ledgerTypeLabels} from './ledger-table.js';
+import {generalProfile,profileDay,profileOverview,registryTable} from './profile-overview.js';
+import {filingCalendar,lateFilings,submittedReturnRows} from './profile-filing.js';
 
 const first = rows => rows[0] || {};
 const list = value => Array.isArray(value)?value:[];
@@ -21,10 +22,14 @@ const identity = value => {
 const nameKey = name => String(name ?? '').trim().replace(/\s+/g, ' ').toLocaleUpperCase('id');
 const total = values => values.length && values.every(v=>number(v)!==null) ? values.reduce((a,b)=>a+b,0) : null;
 
+export function activeShareholders(registry,asOf) {
+  return registry.filter(r=>number(r.Percentage)>0 &&
+    (!asOf || ((!date(r.ValidTo) || date(r.ValidTo)>=asOf) && (!date(r.ValidFrom) || date(r.ValidFrom)<=asOf))));
+}
+
 // Match exact identifiers first. Name matching requires a unique row on each side.
 export function compareShareholders(registry, reported, {hasRegistry, hasReport, asOf}) {
-  const active = registry.filter(r=>number(r.Percentage)>0 &&
-    (!asOf || ((!date(r.ValidTo) || date(r.ValidTo)>=asOf) && (!date(r.ValidFrom) || date(r.ValidFrom)<=asOf))));
+  const active = activeShareholders(registry,asOf);
   const left = active.map(r=>({id:identity(r.PersonNIKTIN),name:r.PersonName,pct:number(r.Percentage)}));
   const right = reported.map(r=>({id:identity(r.TIN),name:r.Name,pct:number(r.PaidInCapitalPercentage)}));
   const used = new Set();
@@ -76,7 +81,7 @@ function ledgerRows(entries,includeUncertain) {
       for(const raw of rowsOf({pages:[page]})){
         const primary=ledgerCancellation(raw,selection);
         const status=copies.some(s=>ledgerCancellation(raw,s)!==primary)?'unknown':primary;
-        const row={...raw,'Berkas sumber':entry.path};
+        const row={...ledgerAnalysisRow(raw),'Berkas sumber':entry.path};
         records.push({row,status,hasSelection:Boolean(selection)||copies.some(Boolean)});
         if(!row.RecordId||status==='unknown')continue;
         if(statuses.has(row.RecordId)&&statuses.get(row.RecordId)!==status)conflicts.add(row.RecordId);
@@ -92,7 +97,7 @@ function ledgerRows(entries,includeUncertain) {
       seen.add(row.RecordId);
       return true;
     }
-    const p=String(row.PeriodCode ?? ''),month=/^\d{8}$/.test(p)?p.slice(4)+'-'+p.slice(0,2):'';
+    const p=String(row.PeriodCode ?? ''),month=/^(0[1-9]|1[0-2])\1\d{4}$/.test(p)?p.slice(4)+'-'+p.slice(0,2):'';
     return !(row['Berkas sumber'].includes('setahun') && monthly.has(month));
   }).map(({row,status,hasSelection})=>({...row,'Status pembatalan untuk analisis':status==='active'?'Aktif':
     hasSelection?'Belum diketahui':'Belum diketahui pada paket lama'}));
@@ -123,8 +128,11 @@ function relate(pkg) {
 }
 function timeline(groups) {
   const rows=[];
-  for(const [section,items,keys] of groups) for(const item of items) for(const key of keys) {
-    const d=date(item[key]);if(d) rows.push({Tanggal:d,Bagian:section,Peristiwa:key,Keterangan:item.PersonName||item.ActivityDescription||item.DocumentTitle||item.TaxTypeCode||item.ActivityName||'','Berkas sumber':item['Berkas sumber']});
+  for(const [section,items,fields] of groups) for(const item of items) for(const [key,visible] of fields) {
+    const day=profileDay(item[key]??item[visible]);
+    if(day)rows.push({Tanggal:day,Bagian:section,Peristiwa:key,
+      Keterangan:item.PersonName||item.ActivityDescription||item.DocumentTitle||item.TaxTypeCode||item.ActivityName||
+        item['Jenis Pajak']||item['Jenis TKU']||'','Berkas sumber':item['Berkas sumber']});
   }
   return rows.sort((a,b)=>b.Tanggal.localeCompare(a.Tanggal));
 }
@@ -187,13 +195,14 @@ export function profileSections(pkg) {
       (!wp||!e.cap?.konteks?.npwp||normalizeId(e.cap.konteks.npwp)===wp))]));
   const input=Object.fromEntries(Object.entries(files).map(([k,arr])=>[k,sourceRows(arr)]));
   if(wp)input.info=input.info.filter(r=>{
-    const id=(r.GeneralInformation||r).UniqueIdentificationNumber;
-    return !id||normalizeId(id)===wp;
+    const ids=[generalProfile(r).UniqueIdentificationNumber,r['Nomor Pokok Wajib Pajak']].filter(Boolean);
+    return ids.every(id=>normalizeId(id)===wp);
   });
   const forms=pkg.forms||[], latest=forms.filter(f=>f.latest);
   const annual=latest.filter(f=>f.type==='BADAN').sort((a,b)=>b.period.localeCompare(a.period));
-  const op=latest.filter(f=>f.type==='OP'), general=first(input.info).GeneralInformation || first(input.info);
-  const isOp=general.TaxpayerType==='TA001' || (!general.TaxpayerType && (general.TaxpayerCategory==='I_IN'||(op.length>0 && !annual.length)));
+  const op=latest.filter(f=>f.type==='OP'), general=generalProfile(first(input.info));
+  const isOp=['ta001','orang pribadi'].includes(String(general.TaxpayerType??'').trim().toLowerCase()) ||
+    (!general.TaxpayerType && (general.TaxpayerCategory==='I_IN'||(op.length>0 && !annual.length)));
   const last=annual[0], body=first(rowsOf(last?.parts.get('induk'))), owned=body.ListOfOwnership;
   const sections=[];
   const reg='Identitas dan registrasi', related='Pihak terkait', obligations='Kewajiban dan kepatuhan', payment='Pembayaran dan tagihan', assets='Harta dan objek pajak';
@@ -211,7 +220,13 @@ export function profileSections(pkg) {
   add('identitas',reg,'Identitas lain, sertifikat dan dokumen',[...input.nomorlain,...input.sertel,...input.dokumen],'',fpaths(['nomorlain','sertel','dokumen']));
   sections.at(-1).blocks=[['nomorlain','Nomor identitas lain'],['sertel','Sertifikat elektronik'],['dokumen','Dokumen WP di Coretax']]
     .map(([key,title])=>({title,rows:registryTable(key,input[key],presentRows),empty:files[key].length?'Tidak ada isian yang dapat ditampilkan dari berkas ini.':'Berkas ini belum tersedia di dalam paket.'}));
-  add('waktu',reg,'Garis waktu',timeline([['KLU',input.klu,['ValidFrom','ValidTo']],['Alamat',input.alamat,['ValidFrom','ValidTo']],['Pihak terkait',input.pihak,['ValidFrom','ValidTo']],['Jenis pajak',input.jenispajak,['RegistrationDate','DeregistrationDate']],['Dokumen',input.dokumen,['DocumentDate']]]));
+  const validDates=[['ValidFrom'],['ValidTo']];
+  add('waktu',reg,'Garis waktu',timeline([
+    ['KLU',input.klu,validDates],['Alamat',input.alamat,[['ValidFrom','Tanggal Mulai'],['ValidTo','Tanggal Berakhir']]],
+    ['Pihak terkait',input.pihak,validDates],
+    ['Jenis pajak',input.jenispajak,[['RegistrationDate','Tanggal Pendaftaran'],['DeregistrationDate','Tanggal Pencabutan Pendaftaran']]],
+    ['Dokumen',input.dokumen,[['DocumentDate']]]
+  ]));
   add('cabang',reg,'Cabang dan tempat kegiatan usaha',input.alamat.filter(r=>r.TypeOfAddress==='TKU'||r.ActivityType==='BRNCH'),'Alamat pusat dan alamat identitas disajikan pada Histori alamat.',fpaths(['alamat']));
   add('alamat',reg,'Histori alamat',input.alamat,'',fpaths(['alamat']));
   const mainCode=first(input.info).MainEconomicCode;
@@ -235,7 +250,9 @@ export function profileSections(pkg) {
   add('pihak',related,'Daftar pihak terkait',input.pihak,'',fpaths(['pihak']));
   add('relasi',related,'Relasi transaksi',relate(pkg),'PPN dan Unifikasi memakai versi terakhir tiap masa dalam paket. Rekap memisahkan sumber serta identitas yang tersedia.');
   const led=packageLedger(pkg);
-  const filed=sourceRows(pkg.entries.filter(e=>e.cap?.sumber==='sptdaftar'||e.path==='spt/daftar.json'));
+  const ledgerNote=pkg.entries.some(e=>e.cap?.lengkap===false&&(e.cap.sumber==='bb'||e.path.startsWith('bukubesar/')))?
+    'Rincian buku besar dalam paket ini belum lengkap. Hasil mengikuti transaksi yang tersedia.':'';
+  const filed=submittedReturnRows(pkg).map(({meta})=>meta);
   const dates=filed.map(row=>{
     const reported=submittedDay(row), deadline=sptDay(row.ExpectedReturnDate);
     return {Jenis:row.ReturnSheetTypeCode==='LBT_LBTR'?'SPT PBB':fieldValue('ReturnSheetTypeCode',row.ReturnSheetTypeCode),
@@ -253,19 +270,21 @@ export function profileSections(pkg) {
     {title:'Rincian berdasarkan tanggal batas asli, semua masa',fold:true,rows:readableRows(sections.at(-1).rows)}],
     note:'Perbandingan mengikuti periode paket dan menyesuaikan Sabtu atau Minggu. Periksa hari libur, relaksasi, dan STP sebelum menilai sanksi Pasal 7 KUP. Potensi denda hanya ditampilkan bila pengujian memiliki bukti yang cukup.'});
   add('bank',payment,'Rekening bank',input.bank,'',fpaths(['bank']));
-  add('tagihan',payment,'Sisa tagihan',led.filter(r=>number(r.AmountLeft)!==null && r.AmountLeft<0));
-  add('kredit',payment,'Saldo kredit dan pengembalian',led.filter(r=>r.AccountingTypeCode==='Refund'||number(r.AmountLeft)>0));
+  add('tagihan',payment,'Sisa tagihan',led.filter(r=>number(r.AmountLeft)!==null && r.AmountLeft<0),ledgerNote);
+  add('kredit',payment,'Saldo kredit dan pengembalian',led.filter(r=>r.AccountingTypeCode==='Refund'||number(r.AmountLeft)>0),ledgerNote);
   const deposits=led.filter(r=>r.AccountingTypeCode==='Payment');
-  add('pembayaran',payment,'Rincian pembayaran',deposits);
+  add('pembayaran',payment,'Rincian pembayaran',deposits,ledgerNote);
   const grouped=new Map();
   for(const r of deposits){const y=date(r.PostingDate).slice(0,4),tax=r.RevenueCode ?? '',way=r.AccountingTypeDetailCode ?? '',k=JSON.stringify([y,tax,way]);
     if(!grouped.has(k))grouped.set(k,{Tahun:y,KAP:tax,Cara:way,values:[]});
     grouped.get(k).values.push(r.Amount);
   }
-  add('rekap-bayar',payment,'Ikhtisar pembayaran',[...grouped.values()].map(({values,...r})=>({...r,Transaksi:values.length,Nilai:total(values)})));
-  add('pemenuhan-bayar',payment,'Pemenuhan pembayaran',reconcilePayments(forms,led),'Hanya kewajiban buku besar yang merujuk SPT versi terakhir yang dibandingkan dengan setoran pada KAP dan masa yang sama. Kesesuaian jumlah perlu dikonfirmasi dengan alokasi pembayaran.');
-  add('pbk',payment,'Pemindahbukuan',led.filter(r=>r.AccountingTypeDetailCode==='BT'||/^Balance Transfer/.test(r.ReferenceType)));
-  add('produk-hukum',payment,'Produk hukum',led.filter(r=>r.AccountingTypeCode==='TaxNotice'||['NoticeOfTaxCollection','TaxAssessment'].includes(r.ReferenceType)));
+  add('rekap-bayar',payment,'Ikhtisar pembayaran',[...grouped.values()].map(({values,...r})=>({...r,Transaksi:values.length,Nilai:total(values)})),ledgerNote);
+  add('pemenuhan-bayar',payment,'Pemenuhan pembayaran',reconcilePayments(forms,led),
+    ['Kewajiban yang merujuk SPT versi terakhir dibandingkan dengan setoran pada KAP dan masa yang sama. Periksa alokasi pembayaran.',
+      ledgerNote].filter(Boolean).join(' '));
+  add('pbk',payment,'Pemindahbukuan',led.filter(r=>r.AccountingTypeDetailCode==='BT'||/^Balance Transfer/.test(r.ReferenceType)),ledgerNote);
+  add('produk-hukum',payment,'Produk hukum',led.filter(r=>r.AccountingTypeCode==='TaxNotice'||['NoticeOfTaxCollection','TaxAssessment'].includes(r.ReferenceType)),ledgerNote);
   add('pbb',reg,'Objek pajak (PBB)',input.pbb,'',fpaths(['pbb']));
   sections.at(-1).blocks=[{title:'Daftar objek PBB',rows:registryTable('pbb',input.pbb,presentRows)}];
   if(!isOp){
@@ -306,7 +325,10 @@ function readableRows(rows){
     }
     return out;
   });
-  return presentRows(data);
+  return presentRows(data,{value:(key,value)=>{
+    const labels=key==='AccountingTypeCode'?ledgerTypeLabels:key==='AccountingTypeDetailCode'?ledgerDetailLabels:null;
+    return labels&&Object.hasOwn(labels,value)?labels[value]:fieldValue(key,value);
+  }});
 }
 function blockSheets(section){
   const blocks=section.blocks||[{title:section.title,rows:readableRows(section.rows)}];

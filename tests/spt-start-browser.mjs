@@ -164,7 +164,19 @@ async function run(mode){
       assert.equal(await page.locator('#ids').inputValue(),wp);
       assert.equal(await page.locator('#officer').inputValue(),'Penguji fiktif');
       assert.equal(await page.locator('#consent').isChecked(),false);
-      await page.locator('#consent').check();await resume.click();
+      await page.locator('#consent').check();
+      if(mode==='stop'){
+        const beforeSnapshot=visited.length;
+        await page.getByRole('button',{name:'Simpan hasil sementara',exact:true}).click();
+        const snapshot=await readResult(page);
+        assert.ok(snapshot.manifest.cek.some(note=>note.kode==='TARIKAN-SEBAGIAN'&&note.tingkat==='TINGGI'));
+        assert.ok(snapshot.entries.some(e=>e.path==='spt/daftar.json'));
+        assert.ok(!snapshot.entries.some(e=>e.cap.konteks?.spt?.recordId===records[1].id));
+        assert.equal(visited.length,beforeSnapshot);
+        await resume.waitFor();
+      }
+      await resume.click();
+      if(mode==='stop')await resume.waitFor({state:'detached'});
     }
     const pkg=await readResult(page);
     assert.deepEqual(pkg.manifest.opsi.sumber.slice().sort(),(mode==='import'?['sptdaftar','sptarsip']:['sptdaftar','sptisi']).sort());

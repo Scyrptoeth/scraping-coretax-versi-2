@@ -37,7 +37,7 @@ test('unified tax nodes and matching annex slips populate article columns indepe
   const row=result.rows[0];
   assert.equal(row[field('4 ayat (2)','PPh')],9);assert.equal(row[field('4 ayat (2)','objek')],10);
   assert.equal(row[field('22','objek')],0);assert.equal(row[field('22','PPh')],0);assert.equal(row[field('23','objek')],null);
-  assert.equal(result.total[field('23','objek')],0);assert.ok(result.unreportedColumns.includes(field('23','objek')));
+  assert.equal(result.total[field('23','objek')],null);assert.ok(result.unreportedColumns.includes(field('23','objek')));
   assert.ok(!result.columns.includes(field('15','PPh')));
   assert.equal(result.rows[1]['PPh Unifikasi · PPh'],0);assert.equal(result.rows[1]['PPh Unifikasi · objek'],null);
   assert.match(result.sources[0]['Sumber objek'],/d1-bpu\.json/);assert.match(result.sources[0]['Sumber pajak'],/IncomeTaxes\[0\]/);
@@ -50,7 +50,7 @@ test('an incomplete annex and an ambiguous final revision cannot inflate monthly
     form(unif,'2025-01',0,'first','d1-bpu',{Data:[{TaxArticle:'Pasal 23',TaxBase:100}]},false),
     form(unif,'2025-02',1,'second','induk',monthly()),form(unif,'2025-02',1,'third','induk',monthly())
   ]),'2025');
-  assert.equal(result.total[field('23','PPh')],7);assert.equal(result.total[field('23','objek')],0);
+  assert.equal(result.total[field('23','PPh')],7);assert.equal(result.total[field('23','objek')],null);
   assert.ok(result.unreportedColumns.includes(field('23','objek')));
   assert.equal(result.rows[1][field('23','PPh')],'');assert.equal(result.warnings.length,2);
 });

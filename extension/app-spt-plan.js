@@ -1,6 +1,7 @@
 import {checkIdentity, forms, normalizeId, rowsOf} from './app-data.js';
 import {appendPackageEntry, isSptList, listRowType} from './app-package-entries.js';
 import {stageSptSource,queuedSptEvidence,filteredSptSource} from './app-spt-snapshots.js';
+import {wholePreview} from './app-spt-progress.js';
 
 const months = 'januari februari maret april mei juni juli agustus september oktober november desember'.split(' ');
 const annualTypes = new Set(['ICT_RCITR', 'ICT_PITR']);
@@ -8,6 +9,27 @@ const keyOf = (...values) => JSON.stringify(values);
 const labelKey = text => String(text).toLowerCase().replace(/[^a-z0-9]/g, '');
 const textValue = value => ['number','string'].includes(typeof value) ? String(value).trim() : '';
 const referenceValue = value => !value || /^(?:[-–—]+|n\/?a|null|tidak ada)$/i.test(value) ? '' : value;
+const nativeId=/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i;
+export const linkedSptTypes=new Set(['ICT_WITR','VAT_VATR']);
+export const submittedRowKey=row=>keyOf(Object.entries(row).sort(([a],[b])=>a.localeCompare(b)));
+
+function completeSubmittedDirectory(items,owner){
+  const pages=items.filter(item=>item.source==='sptdaftar');
+  const first=pages[0],binding=first?.previewBinding,report=first?.proof?.daftarPratinjau;
+  if(!binding || binding.scope?.wp!==owner || !/^\/returnsheets\/id-ID\/submitted-returnsheets\/[a-f0-9-]{36}\/?$/i.test(binding.route) ||
+      !wholePreview(report) || !report.id || pages.length!==report.pages ||
+      pages.reduce((n,item)=>n+rowsOf(item.page).length,0)!==report.rows)return new Set();
+  const numbers=new Set();
+  for(const page of pages){
+    const proof=page.proof,number=proof?.halamanDaftar;
+    if(page.wp!==owner || page.previewBinding?.route!==binding.route || page.previewBinding?.scope?.wp!==owner ||
+        proof?.daftarPratinjau?.id!==report.id || !wholePreview(proof.daftarPratinjau) ||
+        proof.ownerEvidence!=='Panel WP pada SPT Dilaporkan' || proof.indexScope!=='Daftar SPT lintas masa' ||
+        !Number.isInteger(number) || number<1 || number>pages.length || numbers.has(number))return new Set();
+    numbers.add(number);
+  }
+  return new Set(pages);
+}
 
 function columns(row) {
   return Object.fromEntries(Object.entries(row || {}).map(([key, value]) => [labelKey(key), textValue(value)]));
@@ -71,10 +93,11 @@ export function matchSptVersions(a,b){
   if(!sameRecord && (new Set(Object.values(fields)).size>1 || !a.receipt || a.receipt!==b.receipt))return null;
   return {...a,receiptFields:fields,recordVerified:sameRecord};
 }
-export function sptListContext(row, c = columns(row)) {
-  const type = listRowType(row);
+export function sptListContext(row,{fields:c=columns(row),includeListOnly=true}={}) {
+  const identify=value=>listRowType(value,{includeListOnly});
+  const type = identify(row);
   const typeKeys = ['returnsheettypecode','taxreturntypecode','jenisspt','jenissuratpemberitahuanpajak'];
-  const declaredTypes = new Set(typeKeys.filter(k => c[k]).map(k => listRowType({[k]:c[k]}) || c[k]));
+  const declaredTypes = new Set(typeKeys.filter(k => c[k]).map(k => identify({[k]:c[k]}) || c[k]));
   const form = type || c.returnsheettypecode || c.taxreturntypecode || c.jenisspt || c.jenissuratpemberitahuanpajak || '';
   const date = c.taxperiodcode || c.masapajak || c.periodepajak || c.taxperiod || c.tahunpajak || c.taxyear;
   const period = periodOf(date,annualTypes.has(type));
@@ -85,7 +108,8 @@ export function sptListContext(row, c = columns(row)) {
 }
 function readIndex(row, owner, strictReceipts) {
   const c = columns(row);
-  const {type,form,date,period,amendment,revision,typeConflict,revisionConflict} = sptListContext(row,c);
+  const {type,form,date,period,amendment,revision,typeConflict,revisionConflict} =
+    sptListContext(row,{fields:c,includeListOnly:false});
   const records = new Set([c.recordid,c.taxreturnrecordid,c.idrekamspt,c.idspt].map(referenceValue).filter(Boolean));
   const record = [...records][0] || '';
   const receiptFields={};let refsConflict=false;
@@ -120,6 +144,8 @@ function partEvidence(item, wp, failed, reusable=false) {
   const ready = !error && (item.cap.lengkap === true || reusable) && !filteredSptSource(item.cap.payload) && pages.length > 0 &&
     pages.every(p => p && typeof p === 'object' && p.Payload != null);
   return {slot:keyOf(spt.jenis,period.label,revision),record:textValue(spt.recordId),receipt:referenceValue(textValue(spt.nomor)),part,
+    linkedRecord:ctx.cuplikanTampilan===true && spt.dariTautanDaftar===true && nativeId.test(spt.recordId??'') && !error &&
+      pages.length>0 && pages.every(p=>p?.Payload!=null),
     status:error ? 'retry' : ready ? 'ready' : 'pending'};
 }
 function sameDocument(doc,part){
@@ -137,11 +163,12 @@ export function matchedSptDocument(item,wp,versions){
 
 // Plans from material already present. Every attachment requires a source naming that section.
 // Optional failures use the same cap.konteks.spt and cap.konteks.bagian as a capture.
-export function planSptDetails({wp,period,types = forms.map(([type]) => type),items = [],failures = [],strictReceipts=false}) {
+export function planSptDetails({wp,period,types = forms.map(([type]) => type),items = [],failures = [],strictReceipts=false,allowLinkedRows=false}) {
   const owner = normalizeId(wp);
   if (!owner) throw Error('Rencana detail SPT memerlukan satu NPWP.');
   if (!rangeIsValid(period)) throw Error('Periode rencana detail SPT tidak valid.');
   const selected = new Set(types), seen = new Set(), slots = new Map(), referenceSlots = new Map(), evidence = [], staged=new Map(), blocked=new Set();
+  const unnumbered=new Map(),directory=allowLinkedRows?completeSubmittedDirectory(items,owner):new Set();
   const counts = {periods:0, versions:0, unknown:0, outside:0, excludedType:0, conflicts:0, duplicateRows:0,
     missing:0, readyParts:0, pendingParts:0, retryParts:0, drafts:0, failedIndexPages:0, unmatchedParts:0};
   for (const item of items) {
@@ -174,8 +201,18 @@ export function planSptDetails({wp,period,types = forms.map(([type]) => type),it
         if (!inPeriod(data.period,annualTypes.has(data.type),period)) { counts.outside++; continue; }
         if (!data.type) { counts.unknown++; continue; }
         if (!selected.has(data.type)) { counts.excludedType++; continue; }
-        if (data.revision === null || !(data.record || data.receipt)) { counts.missing++; continue; }
+        if (data.revision === null) { counts.missing++; continue; }
         const slot = keyOf(data.type,data.period.label,data.revision);
+        if(!(data.record||data.receipt)){
+          counts.missing++;
+          if(source==='sptdaftar'&&linkedSptTypes.has(data.type)){
+            const group=unnumbered.get(slot);
+            if(group)group.rows++;
+            else unnumbered.set(slot,{rows:1,type:data.type,period:data.period.label,revision:data.revision,
+              linkedRow:directory.has(item)?submittedRowKey(row):null});
+          }
+          continue;
+        }
         if (!slots.has(slot)) slots.set(slot,{type:data.type,period:data.period.label,revision:data.revision,
           records:new Set(),nativeReceipts:new Set(),receipts:new Set(),receiptFields:{},fieldConflict:false,rows:0});
         const group = slots.get(slot);
@@ -197,6 +234,30 @@ export function planSptDetails({wp,period,types = forms.map(([type]) => type),it
   for (const associations of referenceSlots.values()) if (associations.size > 1) {
     for (const slot of associations) blocked.add(slot);
   }
+  for(const samples of staged.values()){
+    const {primary,reusable}=queuedSptEvidence(samples);
+    evidence.push(partEvidence(primary,owner,false,reusable));
+  }
+  const recordLinks=new Map(),recordSlots=new Map();
+  for(const part of evidence){
+    if(!part?.linkedRecord||part.receipt)continue;
+    const records=recordLinks.get(part.slot)??new Set(),owners=recordSlots.get(part.record)??new Set();
+    records.add(part.record);owners.add(part.slot);
+    recordLinks.set(part.slot,records);recordSlots.set(part.record,owners);
+  }
+  for(const [slot,group] of unnumbered){
+    if(group.rows!==1||slots.has(slot)||blocked.has(slot))continue;
+    const records=recordLinks.get(slot)??new Set(),[recordId]=records;
+    if(records.size>1||recordId&&recordSlots.get(recordId).size>1){
+      counts.conflicts++;continue;
+    }
+    if(!recordId&&!group.linkedRow)continue;
+    if(recordId&&[...(referenceSlots.get(keyOf('record',recordId,group.revision))??[])].some(key=>key!==slot)){
+      counts.conflicts++;continue;
+    }
+    counts.missing--;
+    slots.set(slot,{...group,records,nativeReceipts:new Set(),receipts:new Set(),receiptFields:{}});
+  }
   const documents = [], bySlot = new Map(), periods = new Set();
   for (const [slot,group] of slots) {
     const [recordId] = group.records, [receipt] = group.receipts;
@@ -207,6 +268,7 @@ export function planSptDetails({wp,period,types = forms.map(([type]) => type),it
     const key = keyOf(owner,group.type,group.period,group.revision);
     const doc = {key,type:group.type,period:group.period,revision:group.revision,recordId:recordId || null,
       receipt:receipt || [...group.nativeReceipts].sort()[0] || null,parts:[],
+      ...(group.linkedRow?{linkedRow:group.linkedRow}:{}),
       ...(!group.fieldConflict?{receiptFields:group.receiptFields}:{})};
     const sections = new Map([['induk','pending']]);
     bySlot.set(slot,{doc,sections});
@@ -215,10 +277,6 @@ export function planSptDetails({wp,period,types = forms.map(([type]) => type),it
     counts.duplicateRows += group.rows-1;
   }
   const statusRank = {pending:0,retry:1,ready:2};
-  for(const samples of staged.values()){
-    const {primary,reusable}=queuedSptEvidence(samples);
-    evidence.push(partEvidence(primary,owner,false,reusable));
-  }
   for (const failed of failures) evidence.push(partEvidence(failed,owner,true));
   for (const part of evidence) {
     const group = part && bySlot.get(part.slot);

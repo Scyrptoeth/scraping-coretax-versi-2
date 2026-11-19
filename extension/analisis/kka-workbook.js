@@ -1,7 +1,7 @@
 import {differenceCell,groupedAmountCell,numericReference,ratioCell,signedSumCell} from '../archive/table.js';
 
 // The screen and Word keep their source values. Excel also carries their dependencies.
-export function wireKkaWorkbook(recap,financial,numberOfKinds,numberOfFindings){
+export function wireKkaWorkbook(recap,financial,numberOfKinds,numberOfFindings,comparableRows){
   recap.rows=recap.rows.map(row=>row.slice());
   financial.rows=financial.rows.map(row=>row.slice());
   const section=(sheet,name)=>sheet.targets.find(t=>t.name===name).row;
@@ -19,8 +19,8 @@ export function wireKkaWorkbook(recap,financial,numberOfKinds,numberOfFindings){
   }
 
   const comparison=section(financial,'KKA_L13_4_1')+2;
-  for(let i=comparison-1;financial.rows[i]?.length>1;i++){
-    const cells=financial.rows[i],row=i+1;
+  for(let row=comparison;row<comparison+comparableRows;row++){
+    const cells=financial.rows[row-1];
     cells[3]=differenceCell(row,2,3,cells[3]);
     cells[4]=ratioCell({row,column:4},{row,column:2},cells[4],{percentageChange:true});
   }

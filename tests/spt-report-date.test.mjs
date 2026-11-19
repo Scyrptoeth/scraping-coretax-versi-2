@@ -57,3 +57,38 @@ test('filing-list status adjusts weekends independently of the source date and d
     assert.equal(indexed.forms.find(f=>f.amended).filingLate,null);
   }
 });
+
+test('displayed return lists bind to snapshots by identity, receipt, period and revision', () => {
+  const wp={npwp:'0000000000000017'},receipt='BPE-UJI-0002';
+  const row={'Jenis Surat Pemberitahuan Pajak':'SPT Masa PPh Pasal 21/26','Masa Pajak':'Februari 2025',
+    'Model SPT':'Pembetulan 1','Nomor Bukti Penerimaan':receipt,'Tanggal Penerimaan':'18-03-2025',
+    'Tanggal Jatuh Tempo':'20-03-2025','Tanggal Submit SPT':'17-03-2025','Status SPT':'Dilaporkan',
+    Kanal:'Portal Wajib Pajak'};
+  const form={path:'spt/PPH2126/2025-02/p01_cuplikan-'+ 'a'.repeat(64)+'/induk.json',
+    cap:{konteks:{cuplikanTampilan:true,bagian:'induk',npwp:wp.npwp,
+      spt:{jenis:'ICT_WITR',masa:'02022025',pemb:1,nomor:receipt}}},pages:[{Payload:{Data:[]}}]};
+  const directory={path:'spt/daftar.json',cap:{konteks:{npwp:wp.npwp}},pages:[{Payload:{Data:[row]}}]};
+  const check=()=>indexPackage({manifest:{wp},entries:[form,directory]}).forms[0];
+  const matched=check();
+  assert.equal(matched.listedRow,row);
+  assert.equal(matched.meta.BpsNo,receipt);
+  assert.equal(matched.meta.ChannelCode,'Portal Wajib Pajak');
+  assert.equal(matched.reportDate,'2025-03-18');
+  assert.equal(matched.reportDateField,'Tanggal Penerimaan');
+  assert.equal(matched.reportSource,directory.path);
+  assert.equal(matched.dueDate,'2025-03-20');
+  assert.equal(matched.latest,true);
+  assert.equal(matched.meta.ReturnSheetTypeCode,'ICT_WITR');
+  assert.equal(matched.meta.ReturnSheetModel,'Amendment 1');
+  assert.equal(matched.meta.TaxPeriodCode,'02022025');
+  assert.equal(Object.hasOwn(row,'BpsNo'),false);
+
+  directory.pages[0].Payload.Data.push({...row,'Model SPT':'Pembetulan 2','Nomor Bukti Penerimaan':'BPE-UJI-0003'});
+  assert.equal(check().latest,false);
+  assert.equal(check().laterListed,true);
+  directory.pages[0].Payload.Data.push({...row});
+  assert.deepEqual(check().meta,{});
+  directory.pages[0].Payload.Data.pop();
+  form.cap.konteks.npwp='0000000000000028';
+  assert.deepEqual(check().meta,{});
+});

@@ -41,11 +41,33 @@ try{
   const main=decodeText(docx.zip.get('word/document.xml').data),rels=decodeText(docx.zip.get('word/_rels/document.xml.rels').data);
   const workbook=decodeText(xlsx.zip.get('xl/workbook.xml').data);
   const worksheets=[...xlsx.zip].filter(([n])=>/^xl\/worksheets\/sheet\d+\.xml$/.test(n)).map(([,e])=>decodeText(e.data));
-  for(const anchor of ['KKA_L13_4_1','KKA_L13_4_2','KKA_L13_5_3','KKA_L7_5','KKA_L7_5_1']){
+  const attachments=new Map([
+    ['KKA_L1_1','L-1 Profil WP'],
+    ['KKA_L2B_1','L-2b Pemegang Saham'],['KKA_L2C_1','L-2c Penyertaan'],
+    ['KKA_L3A_1','L-3a KLU'],['KKA_L3B_1','L-3b Probis dan Uji Data'],
+    ['KKA_L4A_1','L-4a Kepatuhan Formal'],['KKA_L5_1','L-5 Ikhtisar SPT'],['KKA_L6_1','L-6 Hasil analisis'],
+    ['KKA_L4B_1','L-4b Pemenuhan Kewajiban'],['KKA_L11_1','L-11 Ketertagihan'],
+    ['KKA_L8_1','L-8 Temuan langsung'],['KKA_L9_1','L-9. Temuan indikatif'],['KKA_L10_1','L-10 Pembanding sektoral'],
+    ['KKA_L12_1','L-12 Mitra transaksi utama']
+  ]);
+  const anchors=['KKA_L13_4_1','KKA_L13_4_2','KKA_L13_5_3','KKA_L7_5','KKA_L7_5_1',...attachments.keys()];
+  for(const anchor of anchors){
     assert.ok(rels.includes(encodeURIComponent(xlsx.file)+'#'+anchor));
     assert.ok(workbook.includes('name="'+anchor+'"'));
   }
-  assert.equal((main.match(/<w:hyperlink /g)||[]).length,5);
+  assert.equal((main.match(/<w:hyperlink /g)||[]).length,anchors.length);
+  const definedNames=new Map([...workbook.matchAll(/<definedName name="([^"]+)">(.+?)<\/definedName>/g)]
+    .map(([,name,address])=>[name,address.replaceAll('&apos;',"'")]));
+  for(const [anchor,sheet] of attachments)assert.equal(definedNames.get(anchor),"'"+sheet+"'!$A$1");
+  const initialTitle='L-9 · Nilai awal B.7';
+  const indicationSheet=worksheets.find(xml=>xml.includes('Cara hitung dan batas data')&&xml.includes(initialTitle));
+  assert.ok(indicationSheet,'L-9 Excel memuat rincian awal B.7');
+  assert.match(main,/L-9 · Nilai awal B\.7/);
+  for(const xml of [main.slice(main.indexOf(initialTitle)),indicationSheet.slice(indicationSheet.indexOf(initialTitle))]){
+    for(const value of ['akun 5314','akun 5321','2294283089','586627942','1173255883','586627941','l9-1-2.json','l11a-2.json']){
+      assert.ok(xml.includes(value),value);
+    }
+  }
   assert.equal(worksheets.filter(xml=>xml.includes('Buka rincian L-13')).length,3);
   assert.equal(worksheets.filter(xml=>xml.includes('Buka rincian L-7')).length,2);
   assert.ok(worksheets.some(xml=>xml.includes('IF(ISNUMBER(')&&xml.includes('L-13')));
@@ -63,6 +85,13 @@ try{
   const fac='Fasilitas PPN pada faktur kode 07 atau 08';
   const baseline=await denominator();assert.equal(baseline,5354535550);
   await scope.selectOption('verified');assert.equal(await denominator(),63045480);
+  const verifiedWord=await exportFile('Word'),verifiedExcel=await exportFile('Excel kertas kerja');
+  const verifiedLinks=decodeText(verifiedWord.zip.get('word/_rels/document.xml.rels').data);
+  assert.doesNotMatch(verifiedLinks,/KKA_L9_1/);
+  assert.ok(verifiedLinks.includes(encodeURIComponent(verifiedExcel.file)+'#KKA_L8_1'));
+  assert.match(verifiedLinks,/KKA_L6_1/);
+  assert.doesNotMatch(decodeText(verifiedExcel.zip.get('xl/workbook.xml').data),/KKA_L9_1/);
+  assert.ok(!decodeText(verifiedWord.zip.get('word/document.xml').data).includes(initialTitle));
   await scope.selectOption('all');
   const amountColumn=(await audit.locator('thead th').allTextContents()).indexOf('Potensi pokok (Rp)');
   assert.ok(amountColumn>=0);const facilityAmount=number(await item(fac).locator('td').nth(amountColumn).innerText());
@@ -88,5 +117,5 @@ try{
     assert.equal(await item(label).locator('td').nth(amountColumn).innerText(),value||'—');
   }
   assert.equal(await denominator(),baseline);
-  assert.deepEqual(errors,[]);console.log('KKA AR: lima tautan Word dan Excel L-7/L-13, lingkup, penelaahan TI/KKA, pemulihan sesi, pokok nol dan nominal kosong lulus.');
+  assert.deepEqual(errors,[]);console.log('KKA AR: tautan Word–Excel, lingkup, penelaahan TI/KKA, pemulihan sesi, pokok nol dan nominal kosong lulus.');
 }finally{await browser?.close();await rm(profile,{recursive:true,force:true});}

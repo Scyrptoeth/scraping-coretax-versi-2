@@ -119,11 +119,20 @@ try{
     await viewer.waitForFunction(owner=>document.querySelector('#taxpayer option:checked')?.textContent.includes(owner),owner)
       .catch(async error=>{throw new Error('Pemutar fiktif: '+await viewer.locator('#status').innerText(),{cause:error});});
     await viewer.getByRole('button',{name:'SPT',exact:true}).first().click();
+    await viewer.locator('summary').getByText('Tabel SPT hasil tarikan',{exact:true}).click();
     await viewer.locator('summary').getByText('Daftar SPT dilaporkan',{exact:true}).click();
     const table=viewer.getByRole('table',{name:'Daftar SPT dilaporkan',exact:true});
-    assert.deepEqual(await table.locator('thead th').allInnerTexts(),headers);
+    const displayHeaders=headers.map(header=>header==='Jenis Pajak'?'Jenis pajak':header);
+    assert.deepEqual(await table.locator('thead th').allInnerTexts(),displayHeaders);
     const display=await table.locator('tbody tr').evaluateAll(rs=>rs.map(r=>[...r.cells].map(c=>c.innerText)));
-    assert.deepEqual(display,values.map(row=>row.map(v=>v || '—')));
+    const displayedTypes=new Map([
+      ['VAT_VATTRNTEVATC','SPT Masa PPN pemungut'],
+      ['ICT_WITR','SPT Masa PPh Pasal 21/26'],
+      ['ICT_WTR','SPT Masa PPh Unifikasi'],
+      ['ICT_PITR','SPT Tahunan PPh Orang Pribadi']
+    ]);
+    assert.deepEqual(display,values.map(row=>row.map((value,index)=>
+      index===2 ? displayedTypes.get(value)??value : value || '—')));
     await viewer.close();
   }
   await captureTable([0,1,2,3,4],{VAT_VATR:3,ICT_RCITR:2},0,0);

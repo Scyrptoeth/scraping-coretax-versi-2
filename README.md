@@ -1,8 +1,8 @@
 # Scraping Coretax Versi 2
 
-**Prarilis 0.18.2.** Setelah login di beranda Coretax, isi satu NPWP dan periode di ekstensi. **Mulai tarik** mencari WP dan membuka sumber pilihan di tab kerja. Di pemutar, Anda dapat memeriksa profil, SPT dan transaksi buku besar. Rincian mutu data menunjukkan sumber yang masih kurang.
+**Prarilis 0.18.18.** Setelah login di beranda Coretax, isi satu NPWP dan periode di ekstensi. **Mulai tarik** mencari WP dan membuka sumber pilihan di tab kerja. Di pemutar, Anda dapat memeriksa profil, SPT dan transaksi buku besar. Rincian mutu data menunjukkan sumber yang masih kurang.
 
-[Unduh dan pasang melalui GitHub Pages](https://scyrptoeth.github.io/scraping-coretax-versi-2/) · [Situs Vercel](https://scraping-coretax-versi-2.vercel.app/) · [Paket prarilis GitHub](https://github.com/Scyrptoeth/scraping-coretax-versi-2/releases/tag/v0.18.2)
+[Unduh dan pasang melalui GitHub Pages](https://scyrptoeth.github.io/scraping-coretax-versi-2/) · [Situs Vercel](https://scraping-coretax-versi-2.vercel.app/) · [Paket prarilis GitHub](https://github.com/Scyrptoeth/scraping-coretax-versi-2/releases/tag/v0.18.18)
 
 ## Mencoba ekstensi
 
@@ -16,7 +16,7 @@
 
 Prarilis ini dikembangkan secara mandiri dengan acuan VERITAX v1.32.0. Penarikan seluruh modul Coretax dalam satu perintah, kesetaraan seluruh UI, perhitungan fiskal, dan kelengkapan kertas kerja masih memerlukan pengembangan dan pembandingan.
 
-Pemutar mencocokkan saldo buku besar dengan baris sumber per periode. Di **Kertas Kerja → KKA**, Anda dapat menelusuri angka potensi per jenis pajak sampai ke butir dan bukti yang mendasarinya. Lima tautan di Word membuka rekap potensi, perbandingan SPT, rasio, dan kemampuan membayar di Excel. [Hasil dan batas pengujian](docs/KESETARAAN.md#hasil-prarilis-0140)
+Pemutar mencocokkan saldo buku besar dengan baris sumber per periode. Di **Kertas Kerja → KKA**, Anda dapat menelusuri angka potensi per jenis pajak sampai ke butir dan bukti yang mendasarinya. Tautan di Word membuka rekap dan lampiran pendamping di Excel. [Hasil dan batas pengujian](docs/KESETARAAN.md#hasil-luring-01818)
 
 - [Matriks kesetaraan dan sumber bukti](docs/KESETARAAN.md)
 - [Penggunaan penarik, paginasi dan simpanan lokal](docs/SCRAPING.md)

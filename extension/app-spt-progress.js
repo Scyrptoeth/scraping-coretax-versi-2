@@ -28,6 +28,10 @@ export function savedPages(records,draft){
         d.indexScope!=='Daftar SPT lintas masa' || d.rows.some(r=>!r || typeof r!=='object'||Array.isArray(r)) ||
         !d.rows.length && d.range?.total!==0)throw Error('Halaman tersimpan belum dapat dicocokkan dengan pratinjau ini.');
     const prev=pages.at(-1),range=d.range;
+    if(prev && Boolean(prev.pageNumber)!==Boolean(d.pageNumber) || d.pageNumber!=null &&
+        (!Number.isSafeInteger(d.pageNumber) || d.pageNumber<1 ||
+          prev && d.pageNumber!==prev.pageNumber+1 || !prev && draft.report.fromFirst && d.pageNumber!==1))
+      throw Error('Nomor halaman tersimpan tidak sesuai dengan cakupan pratinjau.');
     if(prev && Boolean(prev.range)!==Boolean(range) || range && (
         ![range.first,range.last,range.total].every(Number.isSafeInteger) || range.total!==draft.report.total ||
         (d.rows.length?range.first<1 || range.last>range.total || range.last-range.first+1!==d.rows.length:

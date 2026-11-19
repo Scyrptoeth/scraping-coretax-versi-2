@@ -3,6 +3,7 @@ import {probisRequestKey,probisSourceFields,validatedProbisSource} from '../prob
 import {compare, rowsOf, typeNames, worksheet} from './model.js';
 import {filingAndPaymentRows} from './formal-compliance.js';
 import {businessSheets} from './business-work.js';
+import {selfCollectedBase} from './annual-vat.js';
 import {benchmarkSheet} from './benchmark-work.js';
 import {companyAnnexIndices} from './kkp-company-annexes.js';
 import {simulationTables} from './sanksi.js';
@@ -13,10 +14,9 @@ import {rateSourceLabel} from './rate-updates.js';
 import {withoutReturnIndices} from './kkp-without-return.js';
 import {workAuditRows} from './team-work.js';
 import {findingKey,findingRows,findingsFor} from './findings.js';
-import {normalizeId} from '../app-data.js';
-import {sourceProblem,listedReturns as withholdingReturnList,revisionProblem,usesOtherCurrency} from './return-source.js';
-import {projectWithholdingTax} from './kkp-withholding-tax.js';
-import {sourceAmount} from './withholding-forms.js';
+import {sourceProblem,listedReturns,revisionProblem,taxCodes,usesOtherCurrency} from './return-source.js';
+import {projectWithholdingTax,withholdingParentIdentityProblem} from './kkp-withholding-tax.js';
+import {sourceAmount,withholdingSnapshot} from './withholding-forms.js';
 import {companySupportWorksheet} from './kkp-company-controls.js';
 import {validateDocumentOrigin} from './document-requests-output-model.js';
 
@@ -53,8 +53,7 @@ const vat=[
   ['N.5','Penyerahan tidak dipungut','Penyerahan dengan PPN tidak dipungut','DomesticDeliveriesUncollectedVAT.SellingPrice']
 ];
 const withholding=[
-  ['C','Induk PPh Pasal 21','PPh Pasal 21 dipotong','A21IncomeTaxWithheld'],
-  ['C.2.1','Objek PPh Pasal 21','Penghasilan bruto pada Form 1A','Form1A.GrossIncome']
+  ['C','Induk PPh Pasal 21','PPh Pasal 21 dipotong','A21IncomeTaxWithheld']
 ];
 const accounts={
   '4020':['B.1','Peredaran usaha'],'5020':['B.2','Harga pokok penjualan'],'5400':['B.3','Biaya usaha'],
@@ -64,25 +63,27 @@ const formFields={BADAN:annualCompany,OP:annualIndividual,PPN:vat,PPH2126:withho
 const readValue=(row,path)=>path.split('.').reduce((v,k)=>v?.[k],row);
 const pathText=(path,field)=>path+' · '+field;
 
-const salesFields=['DomesticDeliveriesOtherThanOtherValue','DomesticDeliveriesUsingOtherValue','DomesticDeliveriesToTourist','DomesticDeliveriesSelfCollected'];
 const taxableSales='DeliveryOfTaxableGoodsSubjectToVAT',exportsSales='ExportTangibleTaxableGoods';
+const additionalVatBases=[['N.4','Penyerahan kepada Pemungut PPN','DomesticDeliveriesCollectedByVATCollector'],
+  ['N.6','Penyerahan yang dibebaskan dari PPN','DomesticDeliveriesExemptedVAT'],
+  ['N.7','Penyerahan yang tidak terutang PPN','DeliveriesOfGoodsNoVAT']];
 const articleBases=[['E.2.1','22','PPh Pasal 22'],['G.2.1','23','PPh Pasal 23'],['K.2.1','4(2)','PPh Pasal 4 ayat (2)']];
 const given=v=>v!==null&&v!==undefined&&v!=='';
+const payrollKey='Form1A.GrossIncome',payrollTotal='TotalGrossIncomeAndIncomeTaxBorneByGovernmentAndIncomeTaxWithheld.GrossIncome';
+const payrollFields=['Form1A.'+payrollTotal,'Form1B.'+payrollTotal,
+  'Form3.Article21GrossIncomeAndIncomeTaxWithheld.GrossIncome','Form3.Article21GrossIncomeAndIncomeTaxBorneByGovernment.GrossIncome'];
 
-function selfCollectedBase(row){
-  const listed=salesFields.filter(k=>Object.hasOwn(row,k));
-  if(!listed.length)return {reason:'Belum ada komponen DPP dipungut sendiri yang dapat dicocokkan dengan subtotal induk.'};
-  const amounts=listed.map(k=>sourceAmount(row[k]?.SellingPrice));
-  const direct=listed.map(k=>k+'.SellingPrice').join(' + ');
-  if(amounts.some(v=>!Number.isFinite(v)))return {reason:'Ada komponen penyerahan yang nominalnya belum terbaca.'};
-  const sum=amounts.reduce((a,b)=>a+b,0);
-  if(listed.length===salesFields.length)return {amount:sum,source:direct};
-  // Older forms omit unused groups. Confirm the reduced set against a separate subtotal.
-  const taxable=sourceAmount(row[taxableSales]?.SellingPrice),exported=sourceAmount(row[exportsSales]?.SellingPrice);
-  if(!Number.isFinite(taxable)||!Number.isFinite(exported))return {reason:'Komponen DPP dipungut sendiri belum lengkap dan subtotal konfirmasi belum tersedia.'};
-  const remainder=taxable-exported;
-  if(remainder<0||Math.abs(remainder-sum)>1e-6)return {reason:'DPP berdasarkan komponen dan subtotal induk belum dapat dicocokkan.'};
-  return {amount:sum,source:direct+' · Dicocokkan dengan '+taxableSales+'.SellingPrice − '+exportsSales+'.SellingPrice'};
+function declaredPayrollGross(pkg,form,entry,row){
+  const legacy=readValue(row,payrollKey);
+  if(Number.isFinite(legacy))return {amount:legacy,source:payrollKey,topic:'Penghasilan bruto pada Form 1A'};
+  const source=payrollFields.join(' + '),topic='Penghasilan bruto PPh Pasal 21 pada induk';
+  const problem=sourceProblem(pkg,form,'induk',entry)||withholdingParentIdentityProblem(pkg,form,entry,row);
+  if(problem)return {source,topic,reason:problem};
+  if(usesOtherCurrency(form.meta,entry.cap,entry.cap?.konteks,entry.pages[0]?.Payload,row,row.Form1A,row.Form1B,row.Form3))
+    return {source,topic,reason:currencyIssue};
+  const parts=payrollFields.map(field=>sourceAmount(readValue(row,field)));
+  if(parts.some(n=>n===null))return {source,topic,reason:'Sebagian bruto L-I A, L-I B atau Pasal 21 pada L-III belum tersedia.'};
+  return {amount:parts.reduce((a,b)=>a+b,0),source,topic};
 }
 
 function ranges(positions){
@@ -107,11 +108,8 @@ function article22Tax(pkg,form,entry,row){
   if(problem)return {source,reason:problem};
   if(!row||!Array.isArray(row.IncomeTaxes))return {source,reason:'Daftar pasal pada induk belum tersedia.'};
   const body=entry.pages[0]?.Payload??entry.pages[0];
-  const owner=normalizeId(pkg.manifest.wp?.npwp),month=form.period.slice(-2),periodCode=month+month+form.year;
-  if(body.IsFound===false||[body.TIN,row.TaxIdentificationNumber].filter(given).some(v=>normalizeId(v)!==owner)||
-    [body.PeriodCode,row.TaxPeriodCode].filter(given).some(v=>![periodCode,form.period].includes(String(v)))||
-    given(row.ReturnSheetRecordIdentifier)&&String(row.ReturnSheetRecordIdentifier)!==form.id)
-    return {source,reason:'Identitas WP, masa atau rekaman pada isi induk tidak cocok.'};
+  const identity=withholdingParentIdentityProblem(pkg,form,entry,row);
+  if(identity)return {source,reason:identity};
   const formCurrencyIssue=usesOtherCurrency(form.meta,entry.cap,entry.cap?.konteks,body,row),matches=[];
   row.IncomeTaxes.forEach((node,i)=>{
     const wrapper=node?.data?'.data':node?.Data?'.Data':'',item=node?.data??node?.Data??node;
@@ -129,6 +127,8 @@ function withholdingBases(entry){
   const results=new Map(articleBases.map(([,code])=>[code,{amount:0,parts:[]}]));
   const cap=entry.cap,totals=[cap.total].filter(given),numbered=new Map(),anonymous=new Set();
   const cancelled22={amount:0,parts:[]};
+  const unknownArticles=[];
+  let unknownCount=0;
   let count=0,lastPageSize=0;
   for(const [pageIndex,page] of entry.pages.entries()){
     const body=Object.hasOwn(page,'Payload')?page.Payload:page;
@@ -138,7 +138,7 @@ function withholdingBases(entry){
     if(!Array.isArray(rows))return {reason:'Bentuk tabel D1-BPU belum dapat diperiksa.'};
     for(const t of [body?.TotalRecords,body?.TotalRecordCount,body?.TotalCount])if(given(t))totals.push(t);
     count+=rows.length;lastPageSize=rows.length;
-    const positions=new Map(),cancelledPositions=[];
+    const positions=new Map(),cancelledPositions=[],unknownPositions=[];
     for(const [i,r] of rows.entries()){
       const slip=r?.data??r?.Data??r;
       if(!slip||typeof slip!=='object'||Array.isArray(slip))return {reason:'Ada baris D1-BPU yang tidak terbaca.'};
@@ -177,7 +177,7 @@ function withholdingBases(entry){
         }
         continue;
       }
-      if(!code)return {reason:'Ada baris D1-BPU dengan pasal yang belum dapat diidentifikasi.'};
+      if(!code){unknownPositions.push(i+1);continue;}
       const found=results.get(code);if(!found)continue;
       if(!positions.has(code))positions.set(code,[]);positions.get(code).push(i+1);
       const amount=sourceAmount(slip.TaxBase);
@@ -187,12 +187,16 @@ function withholdingBases(entry){
     }
     for(const [code,indices] of positions)results.get(code).parts.push('halaman '+(pageIndex+1)+' baris '+ranges(indices));
     if(cancelledPositions.length)cancelled22.parts.push('halaman '+(pageIndex+1)+' baris '+ranges(cancelledPositions));
+    if(unknownPositions.length){
+      unknownCount+=unknownPositions.length;
+      unknownArticles.push('halaman '+(pageIndex+1)+' baris '+ranges(unknownPositions));
+    }
   }
   const limit=cap.payload?.Rows;
   if(cap.total==null&&cap.payload?.First===0&&Number.isSafeInteger(limit)&&limit>0&&totals.every(t=>t===limit)&&count===limit&&lastPageSize>0)
     return {reason:'Jumlah baris mencapai batas permintaan dan halaman penutup belum tersedia.'};
   if(!totals.length||totals.some(t=>!Number.isSafeInteger(t)||t!==count)||(given(cap.baris)&&cap.baris!==count))return {reason:'Jumlah baris D1-BPU belum terkonfirmasi oleh total sumber.'};
-  return {results,count,cancelled22};
+  return {results,count,cancelled22,unknownArticles,unknownCount};
 }
 
 function annualArticle22(group,label,months,year,listed,grossByPeriod){
@@ -213,13 +217,41 @@ function annualArticle22(group,label,months,year,listed,grossByPeriod){
     Sumber:sources.join('\n'),Keterangan:missing.length?'Jumlah menunggu konfirmasi seluruh masa SPT yang tercatat.':'Jumlah hanya mencakup masa SPT yang tercatat pada paket.'});
 }
 
+function indexSourceGaps(pkg,periods,registrations){
+  const coverage=[];
+  for(const [type,listed] of Object.entries(registrations)){
+    if(!listed.size)continue;
+    const missing=[];
+    for(const [period,records] of listed){
+      const versions=periods.get(type+'/'+period)||[];
+      const current=versions.filter(f=>f.version===Math.max(...versions.map(v=>v.version)));
+      const form=current[0],entry=form?.parts.get('induk');
+      if(current.length!==1||revisionProblem(records,versions,form)||sourceProblem(pkg,form,'induk',entry)||rowsOf(entry).length!==1)
+        missing.push(period);
+    }
+    if(missing.length)coverage.push({'Jenis SPT':typeNames[type],'Masa pada daftar':listed.size,
+      'Induk terakhir terkonfirmasi':listed.size-missing.length,'Masa yang masih perlu dilengkapi':missing.sort().join(', '),
+      'Sumber daftar':[...new Set([...listed.values()].flatMap(rows=>rows.map(r=>r.path)))].join(', ')});
+  }
+  return coverage;
+}
+
 export function buildIndex(pkg,year) {
-  const groups=new Map(), warnings=[];
-  const listed=withholdingReturnList(pkg,year,'ICT_WTR'),months22=new Set(listed.keys()),gross22ByPeriod=new Map();
+  const groups=new Map(), warnings=[],snapshots=[];
+  const registrations=Object.fromEntries(Object.entries(taxCodes).map(([type,code])=>[type,listedReturns(pkg,year,code)]));
+  const listed=registrations.UNIFIKASI,months22=new Set(listed.keys()),gross22ByPeriod=new Map();
+  const listedVat=registrations.PPN;
   let hasArticle22Base=false,hasArticle22Tax=false;
   const periods=new Map();
   for(const form of pkg.forms.filter(f=>f.year===String(year))){
     if(form.type==='UNIFIKASI')months22.add(form.period);
+    if(form.type==='PPH2126'&&pkg.report?.valid!==false){
+      for(const item of withholdingSnapshot(form,pkg.manifest.wp)){
+        if(!['A21IncomeTaxWithheld','A26IncomeTaxWithheld'].includes(item.key)||!Number.isFinite(item.value))continue;
+        snapshots.push({Masa:form.period,'Pembetulan SPT':form.version,Uraian:item.label,
+          'Nilai yang terlihat (Rp)':item.value,Sumber:pathText(item.path,item.source)});
+      }
+    }
     const period=form.type+'/'+form.period;
     if(!periods.has(period))periods.set(period,[]);
     periods.get(period).push(form);
@@ -247,11 +279,17 @@ export function buildIndex(pkg,year) {
       return line;
     }
     if(form.type==='PPN'){
-      const reason=sourceProblem(pkg,form,'induk',entry);
+      const reason=revisionProblem(listedVat.get(form.period)||[],versions,form)||sourceProblem(pkg,form,'induk',entry);
       const basis=!reason&&row?selfCollectedBase(row):{};
       const own=addSource('N.3','DPP penyerahan yang dipungut sendiri',kind,'induk','DPP-dipungut-sendiri',basis.amount,
         reason||basis.reason||(!row?'Induk belum memuat satu formulir yang dapat diperiksa.':''),basis.source||'SellingPrice · Penyerahan dalam negeri');
+      own.completedBasis=basis.completedBasis===true&&!reason;
       if(!reason&&row){
+        for(const [ref,title,key] of additionalVatBases){
+          const field=key+'.SellingPrice',amount=sourceAmount(readValue(row,field));
+          if(Object.hasOwn(row,key))addSource(ref,title,kind,'induk',field,amount,
+            amount===null?'DPP pada induk kosong atau bukan angka.':'',field);
+        }
         const taxable=sourceAmount(row[taxableSales]?.SellingPrice),exported=sourceAmount(row[exportsSales]?.SellingPrice);
         if(Number.isFinite(taxable)&&Number.isFinite(exported)){
           const group=groups.get(own.groupKey);
@@ -273,12 +311,22 @@ export function buildIndex(pkg,year) {
       for(const [ref,code,tax] of articleBases){
         const group=bases.results?.get(code);
         const source=['TaxArticle / TaxBase · '+tax+(code==='22'?' · bukti aktif':''),...(group?.parts||[])];
-        if(group&&!group.parts.length)source.push('Tidak ada bukti aktif pasal ini pada '+bases.count+' baris sumber yang diperiksa.');
-        const reason=(code==='22'&&(revisionIssue||declared.formCurrencyIssue&&currencyIssue))||bases.reason||group?.reason;
+        if(group&&!group.parts.length)source.push('Tidak ditemukan bukti aktif yang mencantumkan pasal ini.');
+        if(bases.unknownCount)source.push('Pasal belum terbaca pada '+bases.unknownCount+' baris aktif · '+bases.unknownArticles.join(' · '));
+        const reason=revisionIssue||(code==='22'&&declared.formCurrencyIssue&&currencyIssue)||bases.reason||group?.reason||
+          (bases.unknownCount?'Jumlah masa belum dapat dikonfirmasi karena sebagian bukti belum mencantumkan pasal yang terbaca.':'');
         const line=addSource(ref,'Objek '+tax,tax,part,'TaxBase-per-pasal-'+code,group?.amount,reason,source.join(' · '));
+        if(bases.unknownCount&&!revisionIssue&&group?.parts.length&&!group.reason&&!(code==='22'&&declared.formCurrencyIssue)){
+          (groups.get(line.groupKey).support??=[]).push({Uraian:'Subtotal DPP dari bukti aktif yang mencantumkan pasal',Masa:form.period,
+            Pembetulan:form.version,Nilai:group.amount,'Baris aktif dengan pasal belum terbaca':bases.unknownCount,
+            Sumber:line.source,Keterangan:'Subtotal ini hanya mencakup bukti dengan pasal yang dapat dibaca.'});
+        }
         if(code==='22'){
           const cancelled=bases.cancelled22;
           if(declared.present&&(bases.reason||group?.reason))warnings.push('DPP PPh Pasal 22 '+form.period+' · '+line.source);
+          if(bases.unknownCount&&!revisionIssue&&declared.present&&!declared.formCurrencyIssue&&!group?.reason&&group?.amount>0){
+            hasArticle22Base=true;hasArticle22Tax=true;
+          }
           if(line.amount>0||cancelled?.amount>0){
             if(declared.present){hasArticle22Base=true;hasArticle22Tax=true;}
             else{
@@ -307,6 +355,13 @@ export function buildIndex(pkg,year) {
     }
     if(row){
       for(const [ref,title,topic,field] of formFields[form.type]||[])add(ref,title,topic,entry,field,readValue(row,field));
+      if(form.type==='PPH2126'&&(Object.hasOwn(row,'Form1A')||entry.cap?.lengkap===true)){
+        const basis=declaredPayrollGross(pkg,form,entry,row);
+        const reason=revisionProblem(registrations.PPH2126.get(form.period)||[],versions,form)||basis.reason;
+        const line=addSource('C.2.1','Objek PPh Pasal 21',kind,'induk',payrollKey,basis.amount,reason,basis.source);
+        line.topic=basis.topic;
+        line.completedBasis=Number.isFinite(line.amount)&&basis.source!==payrollKey;
+      }
       if(form.type==='BADAN'){
         const optionField='MainFormData.OverpaymentIncomeTax',option=readValue(row,optionField);
         const line=add('B','Induk PPh Badan','Kode pilihan pengembalian',entry,optionField,null);
@@ -359,6 +414,10 @@ export function buildIndex(pkg,year) {
       }
     }
   }
+  for(const [ref] of additionalVatBases){
+    const key='PPN/'+ref;
+    if(!groups.get(key)?.lines.some(l=>Number.isFinite(l.amount)&&l.amount!==0))groups.delete(key);
+  }
   const months=[...months22].sort();
   if(hasArticle22Base){
     const group=groups.get('UNIFIKASI/E.2.1');
@@ -367,13 +426,14 @@ export function buildIndex(pkg,year) {
   }else groups.delete('UNIFIKASI/E.2.1');
   if(hasArticle22Tax)annualArticle22(groups.get('UNIFIKASI/E.2.2'),'Jumlah PPh Pasal 22 menurut induk',months,year,listed);
   else groups.delete('UNIFIKASI/E.2.2');
-  projectWithholdingTax(groups,pkg,year,periods,{UNIFIKASI:listed,PPH2126:withholdingReturnList(pkg,year,'ICT_WITR')},sourceProblem,revisionProblem,usesOtherCurrency);
+  projectWithholdingTax(groups,pkg,year,periods,registrations,sourceProblem,revisionProblem,usesOtherCurrency);
   const provisional=withoutReturnIndices(pkg,year);
   const company=companyAnnexIndices(pkg,year,{groups});
   for(const group of [...provisional.groups,...company.groups])groups.set(group.key,group);
   const byId=new Map();
   for(const group of groups.values())for(const line of group.lines)byId.set(line.id,line);
-  return {groups:[...groups.values()].sort((a,b)=>compare(a.ref,b.ref)||compare(a.tax,b.tax)),byId,warnings:[...warnings,...provisional.warnings,...company.warnings]};
+  return {groups:[...groups.values()].sort((a,b)=>compare(a.ref,b.ref)||compare(a.tax,b.tax)),byId,
+    coverage:indexSourceGaps(pkg,periods,registrations),snapshots,warnings:[...warnings,...provisional.warnings,...company.warnings]};
 }
 
 export function assessLine(line,{value,document,note='',officer,classification='indicative',principal=null,prefillBasis}){
@@ -440,9 +500,15 @@ export function restoreIndexedRows(rawRows,rows,index){
       throw Error('Indeks atau nilai SPT pada berkas kerja berbeda dari sumber.');
     seen.add(raw.kkpLine);
     if(Object.hasOwn(line,'refundCode'))return restoreRefundCode(raw,row,line);
-    if(row.menurutWp!==line.amount)throw Error('Indeks atau nilai SPT pada berkas kerja berbeda dari sumber.');
-    const result=assessLine(line,{value:row.menurutPetugas,document:raw.document,note:raw.kkpNote,officer:row.petugas,
-      classification:row.evidence==='none'?'indicative':row.evidence,principal:row.principal,prefillBasis:raw.kkpPrefill});
+    const input={value:row.menurutPetugas,document:raw.document,note:raw.kkpNote,officer:row.petugas,
+      classification:row.evidence==='none'?'indicative':row.evidence,principal:row.principal,prefillBasis:raw.kkpPrefill};
+    if(row.menurutWp!==line.amount){
+      if(row.menurutWp!==null||!line.completedBasis)throw Error('Indeks atau nilai SPT pada berkas kerja berbeda dari sumber.');
+      assessLine({...line,amount:null},input);
+      const history=row.menurutPetugas===line.amount&&row.principal!==null?' Pokok yang tercatat saat itu Rp'+row.principal+'.':'';
+      input.note=raw.kkpNote.trim()+' Saat pengujian, nilai SPT belum tersedia. Selisih dihitung ulang setelah nilai SPT terbaca.'+history;
+    }
+    const result=assessLine(line,input);
     return {...result,review:row.review};
   });
 }
@@ -593,6 +659,9 @@ export function completeIndexBook(pkg,year,index,reviewed,notes,documents=[],sim
   const selectedWork={...work,simulation,rows:work.rows??[...reviewed.values()]};
   const reports=packageFindingReports(pkg,year,selectedWork,index);
   if(index.warnings.length)source.push([],['Keterangan cakupan sumber'],...index.warnings.map(s=>[s]));
+  if(index.coverage?.length)source.push([],['Induk SPT terakhir yang belum terkonfirmasi'],...worksheet(index.coverage));
+  if(index.snapshots?.length)source.push([],['PPh dipotong yang terlihat pada cuplikan induk'],
+    ['Angka menunjukkan nilai pada versi yang tercantum. Kelengkapan induk dan lampiran masih perlu diperiksa.'],...worksheet(index.snapshots));
   if(sim.summary.length)main.push([],['Simulasi ketetapan per jenis pajak'],...worksheet(sim.summary));
   const formal=filingAndPaymentRows(pkg,year);
   const audit=workAuditRows(work);

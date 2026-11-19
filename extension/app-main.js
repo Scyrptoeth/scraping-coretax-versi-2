@@ -20,6 +20,7 @@ import {readHomeAccount,watchHomeAccount} from './app-home-session.js';
 import {collectHomeWithholding} from './app-home-withholding.js';
 import {finishHomeTable} from './app-home-coverage.js';
 import {resultAssignment,sameSptAssignment,verifiedIndexItems,recoverSptResult,remainingSptChecks,readPreviousSptPackage} from './app-spt-results.js';
+import {captureProgress,durationLabel} from './app-task-progress.js';
 
 const $ = id => document.getElementById(id);
 const coretax = 'https://coretax.intranet.pajak.go.id';
@@ -35,6 +36,27 @@ const sleep = ms => new Promise(resolve => setTimeout(resolve,ms));
 const checked = id => [...$(id).querySelectorAll('input:checked')].map(el => el.value);
 const val = id => $(id).value.trim();
 const formatDate = ts => new Date(ts).toLocaleString('id-ID');
+const taskProgress = captureProgress({panel:$('capture-progress'),bar:$('progress'),
+  label:$('progress-label'),estimate:$('progress-estimate')});
+function showSptLoading(status, ms, part='daftar SPT') {
+  const text='Menunggu Coretax selesai memuat '+part+'… Sisa batas tunggu '+durationLabel(ms/1000)+'.';
+  if(status.textContent!==text)status.textContent=text;
+}
+function indexProgress(items, scope, route, limit) {
+  const prior=items.find(item=>wholePreview(item.proof?.daftarPratinjau) &&
+    sameScope(item.sptAssignment,scope) && (!item.previewBinding || item.previewBinding.route===route));
+  const expectedPages=prior?.proof.daftarPratinjau.pages;
+  let firstPageSize;
+  taskProgress.start('Membaca daftar SPT dilaporkan');
+  return report=>{
+    firstPageSize ??= report.rows;
+    if(Number.isSafeInteger(report.total)&&report.total>0&&report.fromFirst)
+      taskProgress.update(report.rows,Math.min(report.total,limit*firstPageSize),'baris daftar');
+    else if(expectedPages && expectedPages<=limit && report.fromFirst && !report.filtered)
+      taskProgress.update(report.pages,expectedPages,'halaman daftar',true);
+    else taskProgress.update(report.pages,null,'halaman daftar');
+  };
+}
 function message(text,problem = false) {
   messages.push({text,problem,when:new Date().toLocaleTimeString('id-ID')});
   renderLog();
@@ -224,9 +246,9 @@ async function checkTabs() {
 function isHomeTab(tab){
   return [coretax+'/home/id-ID/',coretax+'/home/id-ID'].includes(tab.url?.split(/[?#]/,1)[0]);
 }
-async function findHomeTab(){
+async function findHomeTab(coretaxTabs){
   if(!ext)return null;
-  const homes=(await ext.tabs.query({url:coretax+'/home/id-ID*'})).filter(isHomeTab);
+  const homes=(coretaxTabs??await ext.tabs.query({url:coretax+'/home/id-ID*'})).filter(isHomeTab);
   return homes.find(tab=>tab.id===Number(val('tab'))) || homes.find(tab=>tab.active) || homes[0] || null;
 }
 async function verifiedHomeDirectory(home,wp,checkpoint,owned){
@@ -530,7 +552,8 @@ function stagePreview(wp,range,fresh,report,old,binding=null,items=queue,append=
   for(const [i,data] of fresh.entries()){
     const zero=data.range?.total===0 && !data.rows.length;
     const proof={daftarPratinjau:{...report,id:batchId},indexScope:data.indexScope,ownerEvidence:data.ownerEvidence,columns:data.columns,
-      halamanDaftar:i+1,...(data.range?{rentangDaftar:data.range}:{}),...(zero?{nolPadaSumber:true}:{}),
+      halamanDaftar:i+1,...(data.range?{rentangDaftar:data.range}:{}),...(data.pageNumber?{nomorHalamanSumber:data.pageNumber}:{}),
+      ...(zero?{nolPadaSumber:true}:{}),
       ...(i===fresh.length-1 && data.canAdvance?{morePagesAvailable:true}:{})};
     append({wp,source:'sptdaftar',spt:'',period:range,proof,sptAssignment:binding?.scope||previewScope(),...(binding?{previewBinding:binding}:{})},{Payload:{Data:data.rows,...(zero?{TotalRecords:0}:{})}},'Daftar SPT Dilaporkan · halaman pratinjau '+(i+1),'Tabel tampak');
   }
@@ -581,6 +604,7 @@ async function previewFromTab(force=false,resumeId=null,home=null){
     let writer=null,storageError='',keptSaved=false;
     const owned=new Set(),profileItems=[];
     try{
+      taskProgress.start('Mencari Wajib Pajak');
       status.textContent='Mencari daftar SPT Dilaporkan untuk WP yang dipilih…';
       const tab=home?await verifiedHomeDirectory(home,wp,checkpoint,owned):await findSubmittedTab(ext,wp,chosenPreviewTab,checkpoint);
       if(!tab){status.textContent='';if(force)throw Error('Tab daftar SPT Dilaporkan belum ditemukan.');return showPreview();}
@@ -601,9 +625,12 @@ async function previewFromTab(force=false,resumeId=null,home=null){
         }
         if(saveProgress)writer=previewWriter(records,scope,route,vault.save);
       }
-      const report=await readSubmittedPreview(ext,tab,wp,{limit,checkpoint,async onPage(data,progress){
+      const showIndex=indexProgress(matching,scope,route,limit);
+      const report=await readSubmittedPreview(ext,tab,wp,{limit,checkpoint,workTab:Boolean(home),
+        onLoading:ms=>showSptLoading(status,ms),async onPage(data,progress){
         fresh.push(data);let persisted=false;
         if(writer && !storageError){try{check();persisted=await writer.page(data,progress);}catch(error){storageError=error.message;}}
+        showIndex(progress);
         status.textContent=progress.pages+' halaman dan '+progress.rows+' baris daftar sudah dibaca.'+(persisted?' Kemajuan tersimpan di perangkat.':'');
       }});
       check();if(val('tab')!==selectedAtStart)throw Error('Tab yang dipilih berubah. Buka kembali pratinjau.');
@@ -629,6 +656,7 @@ async function previewFromTab(force=false,resumeId=null,home=null){
       }
       if(plan.entries.length){showPreview();message(error.message,true);}else throw error;
     }finally{
+      taskProgress.hide();
       await closeWorkTabs(owned);
       actions.replaceChildren();autoSpt=false;jobButtons();
       if(writer){try{await refresh();}catch(error){storageError=error.message;}}
@@ -748,7 +776,9 @@ function sptErrorText(error) {
 }
 function sptProof(doc,result){
   return {recordId:result.recordId,receipt:result.receipt,period:doc.period,revision:doc.revision,
-    part:result.part,label:result.label,docKey:doc.key,...(result.identityBasis?{dasarIdentitas:result.identityBasis}:{})};
+    part:result.part,label:result.label,docKey:doc.key,...(result.localId?{localId:result.localId}:{}),
+    ...(doc.linkedRow && result.recordId && result.linkedRecordId===result.recordId?{dariTautanDaftar:true}:{}),
+    ...(result.identityBasis?{dasarIdentitas:result.identityBasis}:{})};
 }
 function sptPlayback(actions,status,check){
   let paused=false,stopped=false;
@@ -817,12 +847,19 @@ function currentSptParts(docs,reread){
     return [doc.key,new Set(reread?[]:match.parts.filter(p=>p.status==='ready').map(p=>p.name))];
   }));
 }
-async function collectVersions({tab,wp,bounds,docs,parts,limit,indexLimit,checkpoint,createSink,status,allowLinkedReturn=false}){
-  const directory=await sptDirectory(ext,tab.id,wp,{expectedUrl:tab.url});
-  const candidates=docs.map(doc=>({doc,navigation:sptNavigation({ext,wp,period:bounds,doc,allowLinkedReturn})}));
-  return collectSptQueue({directory,candidates,tabId:tab.id,limit,indexLimit,checkpoint,
+async function collectVersions({tab,wp,bounds,docs,parts,limit,indexLimit,checkpoint,createSink,status,allowLinkedReturn=false,showProgress=false,reopenWorkTab}){
+  if(showProgress){
+    taskProgress.start('Mengambil induk dan lampiran SPT');
+    taskProgress.update(0,docs.length,'versi SPT');
+  }
+  const directory=await sptDirectory(ext,tab.id,wp,{expectedUrl:tab.url,workTab:allowLinkedReturn,checkpoint,reopenWorkTab,
+    onLoading:ms=>showSptLoading(status,ms)});
+  const candidates=docs.map(doc=>({doc,navigation:sptNavigation({ext,wp,period:bounds,doc,allowLinkedReturn,
+    onLoading:ms=>showSptLoading(status,ms,'formulir SPT')})}));
+  return collectSptQueue({directory,candidates,limit,indexLimit,checkpoint,
     createSink:c=>({...createSink(c.doc),skipParts:parts.get(c.doc.key)}),
-    onOpen:c=>{status.textContent='Membuka SPT '+c.doc.period+' · pembetulan '+c.doc.revision+'…';}});
+    onOpen:c=>{status.textContent='Membuka SPT '+c.doc.period+' · pembetulan '+c.doc.revision+'…';},
+    onSettled:showProgress?done=>taskProgress.update(done,docs.length,'versi SPT'):undefined});
 }
 function batchSptControls(selected,pageLimit,directoryLimit,reread){
   const block=document.createElement('div'),actions=document.createElement('div'),status=document.createElement('span');
@@ -943,7 +980,7 @@ function jobButtons() {
   $('start').disabled = disabled; $('preview').disabled = disabled;
   $('pack-queue').disabled = disabled || paging || batch.active || otherSources?.active;
   $('pause').hidden = !busy; $('pause').textContent = paused ? 'Lanjutkan' : 'Jeda';
-  $('stop').hidden = !busy; $('progress').hidden = !busy;
+  $('stop').hidden = !busy;
   for (const b of $('pending-jobs').querySelectorAll('button')) b.disabled=busy;
 }
 // Earlier versions kept one plan per WP and advanced a cursor after saving each result.
@@ -968,6 +1005,7 @@ function checkJobAssignment(job){
 async function acquireJob(job,persist){
   const owned=new Set();
   try{return await readJobSources(job,persist,owned);}
+  catch(error){owned.delete(error?.keepTabId);throw error;}
   finally{await closeWorkTabs(owned);}
 }
 async function readJobSources(job,persist,owned){
@@ -998,8 +1036,12 @@ async function readJobSources(job,persist,owned){
     try{await persist();}catch(error){entries.splice(0,entries.length,...before);throw error;}
   };
   await checkpoint();
-  if(!ext||!state.route&&entries.length&&entries.every(e=>e.origin==='Ekspor lokal')&&!(await ext.tabs.query({url:coretax+'/*'})).length)return;
-  const home=await findHomeTab();
+  if(!ext)return;
+  const coretaxTabs=await ext.tabs.query({url:coretax+'/*'});
+  if(!state.route&&entries.length&&entries.every(e=>e.origin==='Ekspor lokal')&&!coretaxTabs.length)return;
+  const home=await findHomeTab(coretaxTabs);
+  if(!home&&!coretaxTabs.length&&!entries.length&&!state.fromHome)
+    throw Error('Buka beranda Coretax dan login dengan akun penugasan, lalu pilih Mulai tarik kembali.');
   let homeDirectory=null;
   if(home || state.fromHome){
     if(!home)throw Error('Untuk melanjutkan, buka beranda Coretax dan login kembali dengan akun penugasan.');
@@ -1012,13 +1054,15 @@ async function readJobSources(job,persist,owned){
     homeDirectory=await verifiedHomeDirectory(home,plan.wp,checkpoint,owned);
     await checkpoint();
   }
-  if(!state.otherDone || homeDirectory && state.retryOther){
+  const pendingOther=!state.otherDone || Boolean(homeDirectory && state.retryOther);
+  const preferSpt=Boolean(homeDirectory && state.otherDone && state.indexDone && !selection.manual && sumber.includes('sptisi'));
+  async function readOtherSources(){
     status.textContent=homeDirectory?'Membaca sumber pilihan untuk WP yang ditemukan…':'Mencocokkan sumber terpilih dengan tab Coretax yang terbuka…';
     const other=homeDirectory
       ? await collectHomeSources({ext,origin:coretax,tabId:homeDirectory.id,wp,period:scope.period,sources:sumber.filter(s=>s!=='bplawan'),types:jenisSpt,items:entries,checkpoint,enqueue:savePage,replace:replacePages,includeCancelled:job.meta.opsi.bbBatal})
       : await otherSources.collectSelected({scope:{wp,period:scope.period,sources:sumber,
         assignment:[scope.role,scope.basis,scope.letter,scope.date,scope.officer,scope.nip]},items:entries,checkpoint,enqueue:savePage});
-    state.issues=other.issues||[];
+    state.issues=[...state.issues.filter(issue=>issue.startsWith('SPT · ')),...(other.issues||[])];
     if(homeDirectory && sumber.includes('bplawan')){
       status.textContent='Membaca laporan bukti potong yang diterima WP…';
       const slips=await collectHomeWithholding({ext,homeTab:home,wp,period:scope.period,items:entries,checkpoint,enqueue:savePage,replace:replacePages,onTab:id=>owned.add(id)});
@@ -1027,6 +1071,7 @@ async function readJobSources(job,persist,owned){
     state.otherDone=true;state.retryOther=Boolean(homeDirectory && state.issues.length);
     otherSources.invalidate();
   }
+  if(pendingOther && !preferSpt)await readOtherSources();
   if(!selection.manual&&ext&&(sumber.includes('sptdaftar')||homeDirectory&&sumber.includes('sptisi'))){
     await navigator.locks.request('scv2-spt-navigation',{ifAvailable:true},async lock=>{
       if(!lock)throw Error('Pembacaan SPT sedang berjalan di tab lain.');
@@ -1052,27 +1097,49 @@ async function readJobSources(job,persist,owned){
       if(state.indexProgress?.pages.length){stage(state.indexProgress.pages,state.indexProgress.report);delete state.indexProgress;}
       if(!state.indexDone){
         const pages=[];
-        const report=await readSubmittedPreview(ext,tab,wp,{limit:homeDirectory?Infinity:state.previewLimit,checkpoint,onPage:async(data,progress)=>{
+        const limit=homeDirectory?Infinity:state.previewLimit;
+        const showIndex=indexProgress(old(),scope,route,limit);
+        const onLoading=ms=>showSptLoading(status,ms);
+        const report=await readSubmittedPreview(ext,tab,wp,{limit,checkpoint,
+          workTab:Boolean(homeDirectory),onLoading,onPage:async(data,progress)=>{
           await checkpoint();pages.push(data);
           state.indexProgress={pages,report:{...progress,toLast:false,note:'Pembacaan daftar sedang berjalan.'}};
-          await persist();status.textContent=progress.pages+' halaman daftar SPT telah dibaca.';
+          await persist();showIndex(progress);status.textContent=progress.pages+' halaman daftar SPT telah dibaca.';
         }});
         if(pages.length){stage(pages,report);delete state.indexProgress;await persist();}
         await checkpoint();
         // Reconfirm ownership after partial pagination, before accepting the snapshot.
-        await sptDirectory(ext,tab.id,wp,{expectedUrl:tab.url,previewIndex:true});
-        state.indexDone=true;
+        await sptDirectory(ext,tab.id,wp,{expectedUrl:tab.url,previewIndex:true,workTab:Boolean(homeDirectory),checkpoint,onLoading});
+        state.indexDone=!homeDirectory || wholePreview(report);
       }
       if(!sumber.includes('sptisi'))return;
-      const {documents}=planSptDetails({wp,period:periode,types:jenisSpt,items:entries,strictReceipts:true});
+      const {documents}=planSptDetails({wp,period:periode,types:jenisSpt,items:entries,strictReceipts:true,
+        allowLinkedRows:Boolean(homeDirectory)&&state.indexDone});
       const docs=documents.filter(doc=>chosenDocument(selection,doc));
       if(!docs.length)return;
+      // The list tab can keep its last page after reload. Select the taxpayer in a fresh work tab for the forms.
+      let detailTab=tab;
+      if(homeDirectory){
+        status.textContent='Membuka daftar SPT di tab kerja baru untuk mengambil formulir…';
+        detailTab=await verifiedHomeDirectory(home,wp,checkpoint,owned);
+        if(new URL(detailTab.url).pathname!==route)
+          throw Object.assign(Error('Alamat daftar SPT berubah sebelum formulir dibuka.'),{code:'SCOPE'});
+      }
       const parts=new Map(docs.map(d=>[d.key,new Set(selection.reread?[]:d.parts.filter(p=>p.status==='ready').map(p=>p.name))]));
-      const result=await collectVersions({tab,wp,bounds:periode,docs,parts,limit:homeDirectory&&!selection.customPartLimit?Infinity:selection.limit,indexLimit:homeDirectory?Infinity:selection.indexLimit,checkpoint,status,allowLinkedReturn:Boolean(homeDirectory),
-        createSink:doc=>{
+      const reopenWorkTab=homeDirectory?async({tabId,expectedUrl})=>{
+        await checkpoint(true);
+        if(!owned.has(tabId)||(await ext.tabs.get(tabId)).url!==expectedUrl)
+          throw Object.assign(Error('Tab kerja SPT berubah sebelum daftar dapat dibuka kembali.'),{code:'SCOPE'});
+        await ext.tabs.remove(tabId);owned.delete(tabId);
+        status.textContent='Membuka kembali daftar SPT untuk melanjutkan versi berikutnya…';
+        return verifiedHomeDirectory(home,wp,checkpoint,owned);
+      }:undefined;
+      const result=await collectVersions({tab:detailTab,wp,bounds:periode,docs,parts,limit:homeDirectory&&!selection.customPartLimit?Infinity:selection.limit,indexLimit:homeDirectory?Infinity:selection.indexLimit,checkpoint,status,allowLinkedReturn:Boolean(homeDirectory),showProgress:true,
+        reopenWorkTab,createSink:doc=>{
           const sink=sptPageSink(doc,wp,scope.period,status,{items:entries,append,assignment:scope});
           return {...sink,onPage:async data=>{await checkpoint();sink.onPage(data);await persist();}};
         }});
+      if(result.problem?.code==='IDENTITY' && homeDirectory)await checkpoint(true);
       if(result.problem&&['IDENTITY','STOP','SCOPE','HOME_ACCOUNT'].includes(result.problem.code))throw result.problem;
       await checkpoint();
     }).catch(error=>{
@@ -1080,6 +1147,7 @@ async function readJobSources(job,persist,owned){
       state.issues.push('SPT · '+sptErrorText(error));
     });
   }
+  if(pendingOther && preferSpt)await readOtherSources();
   await checkpoint(true);
   for(const id of sumber){
     if(supportedSources.includes(id)||entries.some(e=>e.source===id))continue;
@@ -1088,12 +1156,13 @@ async function readJobSources(job,persist,owned){
   job.liveChecks=[...new Set(state.issues)].map(pesan=>({tingkat:'SEDANG',kode:'SUMBER-TARIKAN',pesan}));
   if(state.fromHome&&!state.homeAccountFingerprint)job.liveChecks.push({tingkat:'INFO',kode:'AKUN',pesan:'Nama penarik diisi pada penugasan. Identitas akun pada beranda belum dapat dibaca.'});
 }
-async function run(resume,{queueOnly=false}={}) {
+async function run(resume,{queueOnly=false,savedOnly=false}={}) {
   if (busy || paging || autoSpt || batch.active || otherSources.active) return;
   await navigator.locks.request('scv2-capture-job',{ifAvailable:true},async lock => {
     if (!lock) throw new Error('Tarikan sedang berjalan pada tab penarik lainnya.');
     if (busy || paging || autoSpt || batch.active || otherSources.active) return;
     busy = true; paused = false; stop = false;
+    taskProgress.start('Menyiapkan tarikan');
     try {
       renderQueue();
       await refresh();
@@ -1123,19 +1192,23 @@ async function run(resume,{queueOnly=false}={}) {
       let packagingSession=null;
       if(job.acquisition){
         checkJobAssignment(job);
-        try{if(!job.acquisition.complete)await acquireJob(job,persist);}
+        try{if(!job.acquisition.complete&&!savedOnly)await acquireJob(job,persist);}
         catch(error){
           await persist();
           if(error.code==='STOP'){$('status').textContent=persisted?'Pembacaan dihentikan. Kemajuan tersimpan dan dapat dilanjutkan.':'Pembacaan dihentikan sebelum ada sumber yang tersimpan.';return;}
+          $('status').textContent=sptErrorText(error);
           throw error;
         }
         const selected=plan.entries.filter(e=>job.meta.opsi.sumber.includes(e.source));
-        if(!selected.length)throw Error(job.acquisition.fromHome?
-          (job.acquisition.issues.join(' ')||'Sumber pilihan belum menghasilkan data yang dapat diverifikasi di Coretax.'):
-          'Tambahkan tabel atau berkas yang sesuai dengan WP, periode, dan sumber terpilih.');
+        if(!selected.length){
+          $('status').textContent='Tarikan berhenti sebelum ada berkas yang tersimpan.';
+          throw Error(job.acquisition.fromHome?
+            (job.acquisition.issues.join(' ')||'Sumber pilihan belum menghasilkan data yang dapat diverifikasi di Coretax.'):
+            'Tambahkan tabel atau berkas yang sesuai dengan WP, periode, dan sumber terpilih.');
+        }
         if(!selected.some(e=>selectSptListRows(e,job.meta.opsi.jenisSpt)))throw Error('Tidak ada baris untuk jenis SPT terpilih.');
-        job.acquisition.complete=true;await persist();
-        if(job.acquisition.fromHome && job.acquisition.homeAccountFingerprint){
+        if(!savedOnly){job.acquisition.complete=true;await persist();}
+        if(!savedOnly && job.acquisition.fromHome && job.acquisition.homeAccountFingerprint){
           const home=await findHomeTab();
           if(!home)throw Error('Buka beranda Coretax dengan akun penugasan untuk melanjutkan tarikan.');
           packagingSession=await watchHomeAccount({ext,homeTabId:home.id,expectedFingerprint:job.acquisition.homeAccountFingerprint});
@@ -1143,9 +1216,21 @@ async function run(resume,{queueOnly=false}={}) {
       }
       jobButtons();
       const seen = new Set(), ledgerCopies=new Map(), ledgerNotes=new Map(), grouped = new Map(), sections=new Map(), checks=[...(job.liveChecks||[])],indexReports=new Set();
-      const progress=$('progress'); progress.max=plan.entries.length; progress.value=0;
-      for (const queued of plan.entries) {
-        if(job.meta.opsi.sumber && !job.meta.opsi.sumber.includes(queued.source))continue;
+      if(savedOnly){
+        checks.push({tingkat:'TINGGI',kode:'TARIKAN-SEBAGIAN',pesan:'Tarikan belum selesai. Paket ini hanya berisi data yang sudah terbaca dan diperiksa. Lanjutkan dari tarikan tersimpan untuk mengambil sumber yang masih kurang.'});
+        for(const pesan of new Set(job.acquisition.issues||[]))checks.push({tingkat:'SEDANG',kode:'SUMBER-TARIKAN',pesan});
+      }
+      const selectedEntries=plan.entries.filter(queued=>!job.meta.opsi.sumber || job.meta.opsi.sumber.includes(queued.source));
+      taskProgress.start('Menyiapkan paket');
+      taskProgress.update(0,selectedEntries.length,'bagian antrean');
+      $('status').textContent='Memeriksa data sebelum menyimpan paket…';
+      let nextProgress=performance.now()+32;
+      for (const [index,queued] of selectedEntries.entries()) {
+        if(performance.now()>=nextProgress){
+          taskProgress.update(index,selectedEntries.length,'bagian antrean');
+          await sleep(0);
+          nextProgress=performance.now()+32;
+        }
         while (paused && !stop) {checkJobAssignment(job);await sleep(100);}
         if(stop) break;
         checkJobAssignment(job);
@@ -1161,7 +1246,6 @@ async function run(resume,{queueOnly=false}={}) {
         }
         for(const note of queued.sptAutoChecks || [])if(job.meta.opsi.jenisSpt?.includes(note.type))
           checks.push({tingkat:'SEDANG',kode:'SPT-TAMPILAN',pesan:note.pesan});
-        progress.value++;
         if(!source) continue;
         if(source.proof?.dariBeranda)verifyHomeRowOwners(rowsOf(source.page),{source:source.source,wp:plan.wp});
         else checkIdentity(rowsOf(source.page),plan.wp);
@@ -1183,7 +1267,7 @@ async function run(resume,{queueOnly=false}={}) {
           const observed=source.proof?.dariBeranda;
           const key=await vault.digest(JSON.stringify([source.source,source.spt,source.detailProof?.docKey,source.detailProof?.part,
             ...(observed?[packagePath(source),observed.bagian]:[]),
-            ...(source.proof?.daftarPratinjau&&source.proof.rentangDaftar?[source.proof.rentangDaftar]:[]),source.page]));
+            ...(source.proof?.daftarPratinjau?[source.proof.rentangDaftar??source.proof.nomorHalamanSumber??null]:[]),source.page]));
           if(seen.has(key) && job.meta.opsi.lewatiDuplikat) continue;
           seen.add(key);
         }
@@ -1206,13 +1290,14 @@ async function run(resume,{queueOnly=false}={}) {
             if(observations.length)(entry.cap.bagianSptTeramati ||= []).push(...observations);
           }
         }
-        await sleep(0);
       }
       if(stop) {
         await vault.save([],'Tarikan dihentikan',{npwp:plan.wp});
         $('status').textContent='Antrean NPWP '+plan.wp+' tersimpan dan dapat dilanjutkan.'; return;
       }
       checkJobAssignment(job);
+      taskProgress.update(selectedEntries.length,selectedEntries.length,'bagian antrean');
+      $('status').textContent='Menyimpan hasil tarikan…';
       checks.push(...ledgerNotes.values());
       finishSptSources(sections,grouped,checks,job.meta.opsi.lewatiDuplikat);
       checks.push(...remainingSptChecks(plan.entries,plan.wp,job.meta.opsi));
@@ -1228,7 +1313,14 @@ async function run(resume,{queueOnly=false}={}) {
       const remaining=pendingPlans(job).filter(p=>p!==plan);
       const pendingUpdate=remaining.length ? {id:job.id,value:{...job,plans:remaining,cursor:0}} : {id:job.id,remove:true};
       await packagingSession?.checkpoint(true);
-      await vault.save([{id:crypto.randomUUID(),value:{kind:'result',meta,entries}},pendingUpdate],'Tarikan WP',{npwp:plan.wp,berkas:entries.length,dasar:meta.penugasan.nomor,penarik:meta.penarik.nama});
+      const writes=[{id:crypto.randomUUID(),value:{kind:'result',meta,entries}}];
+      if(!savedOnly)writes.push(pendingUpdate);
+      await vault.save(writes,savedOnly?'Simpan hasil sementara':'Tarikan WP',{npwp:plan.wp,berkas:entries.length,dasar:meta.penugasan.nomor,penarik:meta.penarik.nama});
+      if(savedOnly){
+        $('status').textContent=entries.length+' berkas sementara disimpan. Tarikan tersimpan bisa dilanjutkan.';
+        message($('status').textContent);
+        return;
+      }
       const completed=new Set(plan.entries.filter(e=>selectSptListRows(e,job.meta.opsi.jenisSpt||forms.map(([code])=>code))).map(e=>e.id));
       for(let index=queue.length-1;index>=0;index--) {
         if(completed.has(queue[index].id)) queue.splice(index,1);
@@ -1240,7 +1332,7 @@ async function run(resume,{queueOnly=false}={}) {
         (missing.length?' Sumber yang belum menghasilkan berkas: '+missing.map(id=>sources[id]).join(', ')+'.':'');
       for(const issue of job.liveChecks||[])if(issue.tingkat!=='INFO')message(issue.pesan,true);
       message($('status').textContent);
-    } finally { busy = false; renderQueue(); await refresh(); }
+    } finally { taskProgress.hide(); busy = false; renderQueue(); await refresh(); }
   });
 }
 function download(blob,name) {
@@ -1320,9 +1412,12 @@ async function refresh() {
   pending.replaceChildren();
   for(const record of stored.filter(r=>r.kind==='job')) {
     for(const plan of pendingPlans(record)) {
+      const reference={id:record.id,runId:record.runId,wp:plan.wp};
       line(pending,'Tarikan tersimpan · NPWP '+plan.wp+' · '+plan.entries.length+' sumber',[
         ...(record.acquisition?[button('Muat penugasan tersimpan',()=>restoreAssignment(record))]:[]),
-        button('Lanjutkan NPWP '+plan.wp,()=>run({id:record.id,runId:record.runId,wp:plan.wp}))
+        ...(record.acquisition&&!record.acquisition.complete&&plan.entries.length
+          ?[button('Simpan hasil sementara',()=>run(reference,{savedOnly:true}))]:[]),
+        button('Lanjutkan NPWP '+plan.wp,()=>run(reference))
       ]);
     }
   }
@@ -1365,7 +1460,8 @@ async function secureState(unlocked=false) {
   if (!locked) await refresh();
 }
 function init() {
-  const y = new Date().getFullYear(), years = Array.from({length:Math.max(1,y-2021)},(_,i) => [String(y+1-i),String(y+1-i)]);
+  const y = new Date().getFullYear(), earliest=2021, latest=y+1;
+  const years = Array.from({length:Math.max(1,latest-earliest+1)},(_,i) => [String(latest-i),String(latest-i)]);
   const months = Array.from({length:12},(_,i) => [String(i+1).padStart(2,'0'),new Intl.DateTimeFormat('id-ID',{month:'long'}).format(new Date(2000,i,1))]);
   for (const end of ['start','end']) { choices($('month-'+end),months); choices($('year-'+end),years); $('year-'+end).value=String(y-1); }
   $('month-end').value='12';

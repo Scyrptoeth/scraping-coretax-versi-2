@@ -108,7 +108,11 @@ async function v2Evidence(browser,url){
     assert.equal(await t.locator('.spt-count').count(),entry===listed?1:0);await t.click();
     if(entry===listed){
       assert.equal(await t.locator('.spt-count').innerText(),'76');
-      await p.getByText('Paket ini belum memuat induk atau lampiran SPT yang bisa dibuka.').waitFor();
+      await p.getByText('76 dari 76 baris daftar SPT ditampilkan.').waitFor();
+      await p.getByRole('table',{name:'Daftar pelaporan SPT',exact:true}).waitFor();
+      await p.getByText(/Induk dan lampiran.*ditarik\./).waitFor();
+      await p.getByRole('combobox',{name:'Tahun pajak',exact:true}).selectOption('2025');
+      await p.getByText(/^(?!76 dari)\d+ dari 76 baris daftar SPT ditampilkan\.$/).waitFor();
       assert.equal(await p.getByRole('group',{name:'Filter jenis SPT'}).count(),0);
     }else await p.getByRole('button',{name:'Semua tahun, 73 formulir SPT',exact:true}).waitFor();
     await p.close();

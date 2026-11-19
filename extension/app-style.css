@@ -59,4 +59,8 @@ main>.notice{line-height:1.6}
 .capture-table details{margin:0}.capture-table summary{white-space:nowrap}
 .capture-table ul{min-width:18ch;margin:5px 0;padding-left:17px}
 .result-actions{display:flex;flex-wrap:wrap;gap:4px}.result-actions button{white-space:nowrap}
+#capture-progress{margin:12px 0;padding:12px 14px;background:#f3f8f6;border:1px solid var(--line);border-radius:8px}
+#progress-label{font-weight:650;margin:0}
+#capture-progress progress{display:block;width:100%;height:16px;margin:6px 0;accent-color:var(--green)}
+#progress-estimate{margin:0;font-variant-numeric:tabular-nums}
 @media(max-width:740px){.capture-table table{min-width:36rem}#results .capture-table table{min-width:54rem}}

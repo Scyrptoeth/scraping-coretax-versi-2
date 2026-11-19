@@ -25,6 +25,58 @@ const object=v=>v!==null&&typeof v==='object'&&!Array.isArray(v);
 const location=(entry,field)=>entry.path+' · '+field;
 const own=(v,k)=>Object.hasOwn(v,k);
 export const isWithholdingForm=f=>own(sections,f.type);
+const snapshotCell='Isian pada formulir';
+const snapshotLabels=[
+  [/^(?:pph|pajak penghasilan) pasal (21|26) yang dipotong$/,'IncomeTaxWithheld'],
+  [/^kelebihan penyetoran pph pasal (21|26) dari masa pajak sebelumnya$/,'CarryForward'],
+  [/^pembayaran pajak penghasilan pasal (21|26) dengan sp2d(?: \(hanya untuk instansi pemerintah\))?$/,'PaymentWithSP2D'],
+  [/^pph pasal (21|26) yang kurang \(lebih\) disetor \(1-2-3\)(?: .*)?$/,'IncomeTaxUnderpaidOverpaid'],
+  [/^pph pasal (21|26) yang kurang \(lebih\) disetor pada spt yang dibetulkan$/,'IncomeTaxPaidOnAmended'],
+  [/^pph pasal (21|26) yang kurang \(lebih\) disetor karena pembetulan(?: .*)?$/,'IncomeTaxUnderpaidOverpaidDueToAmendment'],
+  [/^(?:pph|pajak penghasilan) pasal (21|26) ditanggung pemerintah$/,'IncomeTaxBorneByGovernment']
+];
+
+function rupiahSnapshot(value){
+  const text=String(value??'').trim().replace(/^−/,'-');
+  if(!/^[+-]?(?:\d+|\d{1,3}(?:\.\d{3})+)(?:,\d+)?$/.test(text))return null;
+  return money(text.replaceAll('.','').replace(',','.'));
+}
+
+// Read the amounts shown on the form. The capture cannot prove that the complete form was saved.
+export function withholdingSnapshot(form,wp){
+  const entry=form.parts.get('induk'),ctx=entry?.cap?.konteks,spt=ctx?.spt;
+  const owner=normalizeId(wp?.npwp);
+  const onePage=entry?.pages?.length===1&&entry.pages[0]?.IsSuccessful!==false&&!entry.pages[0]?.Errors?.length;
+  if(form.type!=='PPH2126'||ctx?.cuplikanTampilan!==true||ctx.bagian!=='induk'||!spt||!onePage||
+    !owner||/^0+$/.test(owner)||!normalizeId(ctx.npwp||spt.npwp)||!matchesVersion(form,entry,wp)||
+    spt.jenis!=='ICT_WITR'||!spt.masa||spt.pemb==null||
+    entry.path!==form.key+'/induk.json'||
+    (!spt.recordId&&(!/^cuplikan-[a-f0-9]{64}$/i.test(form.id)||!String(spt.nomor??'').trim().replace(/^[-–—]+$/,''))))return [];
+  const tables=new Map(),items=new Map();
+  for(const row of rowsOf(entry)){
+    if(![row.Tabel,row.Baris,row.Kolom].every(n=>Number.isInteger(n)&&n>0))continue;
+    if(!tables.has(row.Tabel))tables.set(row.Tabel,[]);
+    tables.get(row.Tabel).push(row);
+  }
+  const normalized=v=>String(v??'').trim().replace(/\s+/g,' ').toLowerCase();
+  for(const [table,rows] of tables){
+    const caption=rows.filter(r=>normalized(r[snapshotCell])==='uraian');
+    const headings=rows.filter(r=>/^jumlah \(rp\.?\)$/.test(normalized(r[snapshotCell])));
+    if(caption.length!==1||headings.length!==1||caption[0].Baris!==headings[0].Baris)continue;
+    for(const row of rows){
+      if(row.Kolom!==caption[0].Kolom||row.Baris<=caption[0].Baris)continue;
+      const label=normalized(row[snapshotCell]);
+      const mapping=snapshotLabels.find(([pattern])=>pattern.test(label));
+      if(!mapping)continue;
+      const article=mapping[0].exec(label)[1],field=mapping[1],key='A'+article+field;
+      const values=rows.filter(r=>r.Baris===row.Baris&&r.Kolom===headings[0].Kolom);
+      const value=values.length===1?rupiahSnapshot(values[0][snapshotCell]):null;
+      const source='Tabel '+table+' · Baris '+row.Baris+' · Kolom '+headings[0].Kolom+' (Jumlah Rp)';
+      items.set(key,items.has(key)?null:{key,label:'PPh '+article+' · '+employeeFields[field],value,source,path:entry.path});
+    }
+  }
+  return [...items.values()].filter(Boolean);
+}
 
 function matchesVersion(form,entry,wp){
   const ctx=entry.cap?.konteks||{},spt=ctx.spt||{},taxType=form.type==='PPH2126'?'ICT_WITR':'ICT_WTR';
@@ -132,8 +184,16 @@ function attachments(form,wp){
 }
 export function withholdingForm(form,wp){
   if(!isWithholdingForm(form))return null;
-  const notes=[],parent=parentData(form,notes,wp);
+  const notes=[];
   const result={values:[],groups:[],articles:[],attachments:attachments(form,wp),notes};
+  const snapshot=withholdingSnapshot(form,wp);
+  if(snapshot.length){
+    result.snapshot=true;
+    result.values=snapshot.map(item=>({Uraian:item.label,Nilai:item.value,Isian:item.source,Sumber:item.path}));
+    notes.push('Angka berasal dari sel yang tersimpan pada cuplikan induk. Kelengkapan induk dan lampiran perlu diperiksa.');
+    return result;
+  }
+  const parent=parentData(form,notes,wp);
   if(parent)Object.assign(result,form.type==='PPH2126'?employeeFieldsFor(parent.data,parent.entry):unified(parent.data,parent.entry,notes));
   return result;
 }
@@ -156,18 +216,24 @@ export function withholdingPeriods(forms,year,wp){
   for(const versions of periods.values()){
     const form=versions[0],prefix=typeNames[form.type]+' '+form.period+' P'+form.version;
     if(versions.length!==1){notes.push(prefix+' memiliki beberapa rekaman. Periksa versi terakhir.');continue;}
-    const warnings=[],parent=parentData(form,warnings,wp),data=parent?.data||{};
+    if(form.laterListed){notes.push(prefix+' tersedia. Versi lebih baru tercatat pada daftar pelaporan dan belum tersedia di sini.');continue;}
+    const snapshot=withholdingSnapshot(form,wp),byKey=new Map(snapshot.map(item=>[item.key,item]));
+    const warnings=[],parent=snapshot.length?null:parentData(form,warnings,wp),data=parent?.data||{};
     const [gross,source]=parent&&form.type==='PPH2126'?gross1A(data,parent.entry,warnings):[null,null];
+    const amount=key=>byKey.get(key)?.value??money(data[key]);
     rows.push({Masa:form.period,Jenis:typeNames[form.type],Versi:form.version?'Pembetulan '+form.version:'Normal','Bruto L-I A':gross,
-      'PPh 21':money(data.A21IncomeTaxWithheld),'PPh 26':money(data.A26IncomeTaxWithheld),'PPh 21 DTP':money(data.A21IncomeTaxBorneByGovernment),
+      'PPh 21':amount('A21IncomeTaxWithheld'),'PPh 26':amount('A26IncomeTaxWithheld'),'PPh 21 DTP':amount('A21IncomeTaxBorneByGovernment'),
       'Potong/pungut Unifikasi':money(data.TotalWithholding),'Setor Unifikasi':money(data.TotalIncomeTaxPaid),
-      'Sumber bruto L-I A':source,'Sumber induk':parent?.entry.path??null});
+      'Sumber bruto L-I A':source,'Sumber induk':parent?.entry.path??snapshot[0]?.path??null,
+      ...(snapshot.length?{'Cakupan sumber':'Cuplikan induk',
+        'Sumber angka cuplikan':snapshot.filter(item=>['A21IncomeTaxWithheld','A26IncomeTaxWithheld','A21IncomeTaxBorneByGovernment'].includes(item.key))
+          .map(item=>item.label+' · '+item.source).join(' / ')}:{})});
     notes.push(...warnings.map(w=>prefix+' · '+w));
   }
   return {rows,notes};
 }
 export function withholdingSections(model){
-  return [['Ringkasan induk',model.values],['Bruto dan PPh menurut lampiran pada induk',model.groups],
+  return [[model.snapshot?'Angka pada cuplikan induk':'Ringkasan induk',model.values],['Bruto dan PPh menurut lampiran pada induk',model.groups],
     ['PPh per pasal dan rincian objek',model.articles],['Bukti pada lampiran versi ini',model.attachments]].filter(([,rows])=>rows.length);
 }
 export function withholdingSheetRows(model){

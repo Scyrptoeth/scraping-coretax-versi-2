@@ -45,6 +45,20 @@ test('matching exact counts, including zero and a local export without TotalReco
   assert.equal(monthIsComplete({manifest:{}},sentinel,owner,year,month,code),true); // Existing installment contract.
 });
 
+test('visible payment rows support an identified subtotal in an exclusive period, with no full total',()=>{
+  const visible={'Nomor Transaksi':'TRX-FIKTIF',Referensi:'REF-FIKTIF','Jenis Pencatatan':'Pembayaran',
+    'Masa Pajak':'November 2025','Tanggal Transaksi':'19-11-2025 15:04:00',Jumlah:'12.000',
+    Dibatalkan:'Tidak','Mata Uang':'IDR'};
+  const own=ledger([[visible,{...visible,Referensi:'REF-FIKTIF-2',Dibatalkan:'Ya'}]],{total:2,reported:2});
+  const {full,observed}=report([own]);
+  assert.equal(full[1],null);
+  assert.equal(observed[1],12000);
+  assert.match(observed[3],/1 baris pembayaran dari kolom tampilan/);
+  assert.ok(observed[3].includes(own.path));
+  assert.equal(report([ledger([[visible,visible]])]).observed,undefined);
+  assert.equal(report([own,ledger([[payment('native')]],{annual:true})]).observed,undefined);
+});
+
 test('a page-size sentinel needs contiguous offsets and an explicit end',()=>{
   const e=ledger([[payment('a')],[payment('b',4)]]);
   Object.assign(e.pages[0].Payload,{First:0,HasMore:true});

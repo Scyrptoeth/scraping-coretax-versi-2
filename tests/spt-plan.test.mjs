@@ -17,6 +17,31 @@ function section(part,extra = {}) {
     spt:{recordId:'r1',jenis:'VAT_VATR',masa:'06062025',pemb:0,npwp:owner,...spt}}},pages};
 }
 
+test('only a unique row in the complete submitted directory can be scheduled without a receipt',()=>{
+  const visible={'Jenis Surat Pemberitahuan Pajak':'SPT Masa PPh Pasal 21/26','Masa Pajak':'Juni 2025',
+    'Model SPT':'Pembetulan 1','Nomor Bukti Penerimaan':'-'};
+  const route='/returnsheets/id-ID/submitted-returnsheets/00000000-0000-4000-8000-000000000001';
+  const binding={scope:{wp},route};
+  const index={...table([visible]),previewBinding:binding,proof:{ownerEvidence:'Panel WP pada SPT Dilaporkan',
+    indexScope:'Daftar SPT lintas masa',halamanDaftar:1,daftarPratinjau:{id:'simulasi',pages:1,rows:1,fromFirst:true,toLast:true}}};
+  const options={allowLinkedRows:true,strictReceipts:true};
+  assert.equal(plan([index]).documents.length,0);
+  assert.equal(plan([index],options).documents[0].type,'ICT_WITR');
+  assert.equal(plan([index],options).documents[0].recordId,null);
+  assert.equal(plan([{...index,proof:{...index.proof,daftarPratinjau:{...index.proof.daftarPratinjau,toLast:false}}}],options).documents.length,0);
+  const ambiguous={...index,page:table([visible,visible]).page,
+    proof:{...index.proof,daftarPratinjau:{...index.proof.daftarPratinjau,rows:2}}};
+  assert.equal(plan([ambiguous],options).documents.length,0);
+  const recordId='00000000-0000-4000-8000-000000000002';
+  const captured=section('induk',{spt:{jenis:'ICT_WITR',recordId,pemb:1,dariTautanDaftar:true}});
+  captured.cap.konteks.cuplikanTampilan=true;
+  assert.equal(plan([table([visible]),captured]).documents[0].recordId,recordId);
+  assert.equal(plan([table([visible]),captured]).counts.readyParts,1);
+  const wrong=structuredClone(captured);
+  wrong.cap.konteks.spt.recordId='00000000-0000-4000-8000-000000000003';
+  assert.equal(plan([table([visible]),captured,wrong]).documents.length,0);
+});
+
 test('plan keeps each revision and annual year while reconciling archives and named visible columns', () => {
   const normal = row('r1',{DocumentReceiptNumber:'BPE-DEMO-1'});
   const amended = row('r2',{ReturnSheetModel:'Amendment 001'});

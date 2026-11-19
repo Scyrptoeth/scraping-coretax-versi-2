@@ -13,7 +13,11 @@ site = ROOT / "dist" / "site"
 site.mkdir(parents=True, exist_ok=True)
 for path in (ROOT / "site").iterdir():
     if path.is_file() and not path.name.startswith("."):
-        shutil.copy2(path, site / path.name)
+        destination = site / path.name
+        if path.name == "index.html":
+            destination.write_text(path.read_text(encoding="utf-8").replace("{{EXTENSION_VERSION}}", version), encoding="utf-8")
+        else:
+            shutil.copy2(path, destination)
 downloads = site / "download"
 downloads.mkdir(exist_ok=True)
 archive = downloads / f"scraping-coretax-v2-{version}.zip"

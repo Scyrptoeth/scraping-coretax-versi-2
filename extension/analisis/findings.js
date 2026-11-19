@@ -1,8 +1,17 @@
 import {periodFacts, rowsOf, sptDay, submittedDay, typeNames, worksheet} from './model.js';
 import {differenceCell,numericReference,sheetLink} from '../archive/table.js';
-import {kkaFigures} from './kka-figures.js';
+import {kkaFigures,kkaFilingOverview} from './kka-figures.js';
 import {wireKkaWorkbook} from './kka-workbook.js';
 import {kkaManagementSheet} from './kka-management.js';
+import {kkaAnalysisAppendix} from './kka-analysis.js';
+import {kkaBusinessAppendices} from './kka-business.js';
+import {kkaCollectabilityAppendix} from './kka-collectability.js';
+import {kkaCompliance} from './kka-compliance.js';
+import {kkaObligationsAppendix} from './kka-obligations.js';
+import {kkaOwnership} from './kka-ownership.js';
+import {kkaProfileAppendix} from './kka-profile.js';
+import {kkaBenchmarkAppendix} from './benchmark-work.js';
+import {kkaPartnersTable} from './kka-partners.js';
 import {kkaLegacyKey,kkaPotentials,kkaPrincipalTotals} from './kka-potentials.js';
 import {buildIndex} from './kkp-index.js';
 import {rateSourceLabel} from './rate-updates.js';
@@ -182,7 +191,7 @@ export function workpaper(pkg, year, work, mode, role, index) {
   const facts=periodFacts(pkg,year);
   const totals=potentials?.comparableTotals,principal=totals?.jumlah??null;
   const figures=mode==='kka'?kkaFigures(pkg,year,{principal}):null;
-  const destinations=new Map();
+  const destinations=new Map(), appendixSheets=new Map();
   function linkedTable(t,sheet,targetName){
     const row=sheet.rows.findIndex(r=>r[0]===t.title)+1;
     (sheet.targets??=[]).push({name:targetName,row});
@@ -198,6 +207,37 @@ export function workpaper(pkg, year, work, mode, role, index) {
   const figureTable=key=>linkedTable(figures.tables.find(t=>t.key===key),figures.sheet,'KKA_L13_'+key.replace('.','_'));
   const summaryTable=table('Tabel 5. Potensi per jenis pajak',principalRows);
   const detailTable=table('Tabel 5.1. Rincian titik potensi',kkaFindingRows(selected));
+  const directTitle='L-8 Temuan langsung';
+  const indications=figures&&scope==='all'&&{...table('L-9. Temuan indikatif',findingRows(indicative)),workbookTarget:'KKA_L9_1'};
+  const fiscalInitial=potentials?.initialFiscal;
+  const fiscalRows=indications?fiscalInitial.rows.filter(r=>r[7]):[];
+  const fiscalSection=fiscalRows.length?table('L-9 · Nilai awal B.7',[
+    ['Isian','Nilai'],...fiscalRows.flatMap(([,account,period,...values])=>[
+      [account,period],...values.map((value,i)=>[fiscalInitial.columns[i+3],value]),[]
+    ])
+  ]):null;
+  const [shareholders,investments]=figures?kkaOwnership(pkg,year):[];
+  const [klu,business]=figures?kkaBusinessAppendices(pkg,year,work):[];
+  const appendices=figures?[
+    ['1',kkaProfileAppendix(pkg,year)],
+    ['2B',shareholders],
+    ['2C',investments],
+    ['3A',klu],
+    ['3B',business],
+    ['4A',kkaCompliance(pkg,year)],
+    ['4B',kkaObligationsAppendix(pkg,year)],
+    ['5',kkaFilingOverview(pkg)],
+    ['6',kkaAnalysisAppendix(pkg,year,work,potentials.indicationChecks)],
+    ['8',{title:directTitle,rows:findingRows(verified),workbook:{name:directTitle,rows:evidenceRows(verified)}}],
+    ['10',kkaBenchmarkAppendix(pkg,year,work.benchmark)],
+    ['11',kkaCollectabilityAppendix(pkg,year,work,figures.ability)],
+    ['12',kkaPartnersTable(pkg,year)]
+  ].flatMap(([code,appendix])=>{
+    if(!appendix)return [];
+    const target='KKA_L'+code+'_1';
+    appendixSheets.set(target,{...appendix.workbook,targets:[{name:target,row:1}]});
+    return [{title:appendix.title,rows:appendix.rows,workbookTarget:target}];
+  }):[];
   if(figures)recap={name:'L-7 Rekap potensi',rows:[[summaryTable.title],...summaryTable.rows,[],[detailTable.title],...detailTable.rows,[],...potentials.notes.map(n=>[n])]};
   const allTables=mode==='kkp' ? [
     table('Identitas dan cakupan',context),table('A. Kolom pemeriksa',[header,...rows]),
@@ -207,23 +247,31 @@ export function workpaper(pkg, year, work, mode, role, index) {
     figureTable('4.1'),figureTable('4.2'),
     linkedTable(summaryTable,recap,'KKA_L7_5'),linkedTable(detailTable,recap,'KKA_L7_5_1'),
     figureTable('5.3'),table('III. Usulan',[['Keterangan','Isian petugas'],[analysisFields.proposal,work.analysis?.proposal]]),
-    ...(scope==='all'?[table('L-9. Temuan indikatif',findingRows(indicative))]:[])];
+    ...(indications?[indications]:[]),...(fiscalSection?[fiscalSection]:[]),...appendices];
   if(facts.length)allTables.push(table('SPT per masa',worksheet(facts)));
-  const sheets=allTables.map(t=>{
-    if(t.title==='L-9. Temuan indikatif')return {name:t.title,rows:evidenceRows(indicative)};
+  const sheets=allTables.filter(t=>t!==fiscalSection).map(t=>{
+    if(t===indications){
+      const rows=evidenceRows(indicative);
+      if(fiscalSection)rows.push([],[fiscalSection.title],fiscalInitial.columns,...fiscalRows);
+      return {name:t.title,rows,targets:[{name:t.workbookTarget,row:1}]};
+    }
+    if(appendixSheets.has(t.workbookTarget))return appendixSheets.get(t.workbookTarget);
     if(!t.workbookTarget)return {name:t.title,rows:t.rows};
     const {sheet,row}=destinations.get(t.workbookTarget);
     const numericColumns={KKA_L7_5:[1,2,3,4,5,6],KKA_L7_5_1:[7],KKA_L13_4_1:[1,2,3,4],KKA_L13_4_2:[2,3],KKA_L13_5_3:[1]};
-    const rows=t.rows.map((r,i)=>r.map((v,j)=>i>0&&numericColumns[t.workbookTarget].includes(j)?
-      numericReference(sheet,row+i+1,j+1,v):v));
+    const rows=t.rows.map((r,i)=>{
+      const subtotal=t.comparableRows!=null&&i>t.comparableRows;
+      return r.map((v,j)=>i>0&&numericColumns[t.workbookTarget].includes(j)&&(!subtotal||j<3)?
+        numericReference(sheet,row+i+1,j+1,v):v);
+    });
     rows.push([],[sheetLink(sheet,'Buka rincian '+sheet.name.split(' ')[0],row)]);
     return {name:t.title,rows};
   });
   if(figures){
-    wireKkaWorkbook(recap,figures.sheet,summary.length,selected.length);
+    wireKkaWorkbook(recap,figures.sheet,summary.length,selected.length,figures.tables[0].comparableRows);
     const management=kkaManagementSheet(pkg);
     if(management)sheets.splice(1,0,management);
-    sheets.push(recap,{name:'L-8 Temuan langsung',rows:evidenceRows(verified)},figures.sheet);
+    sheets.push(recap,figures.sheet);
     const previous=annualComparison(pkg,year);
     if(previous.length>1)sheets.push({name:'Isian induk SPT dua tahun',rows:previous});
   }

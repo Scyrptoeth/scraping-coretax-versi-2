@@ -59,7 +59,8 @@ async function scenario(mode){
       await ui.getByRole('button',{name:'Gunakan tab yang sedang dipilih untuk pratinjau'}).click();
     }
     if(nextClick){await nextClick;await ui.getByRole('button',{name:'Hentikan pembacaan SPT'}).click();}
-    const plan=ui.getByRole('table',{name:'SPT dalam periode terpilih'});await plan.waitFor();
+    const plan=ui.getByRole('table',{name:'SPT dalam periode terpilih'});
+    await plan.waitFor().catch(async error=>{throw Error(mode+': '+await ui.locator('#log').innerText(),{cause:error});});
     const partial=['batas','ulang','jumlah','ganti','henti','tengah','filter-ganti'].includes(mode);
     let expected=mode==='kosong'?[]:mode==='tengah'?pages[1]:partial?pages[0]:pages.flat();
     const totals=mode==='kosong'?['0','0']:mode==='tengah'?['2','2']:partial?['1','1']:['2','3'];
@@ -87,6 +88,12 @@ async function scenario(mode){
     if(mode==='utuh'){
       const handoff=ctx.waitForEvent('page');await ui.getByRole('button',{name:'Buka di Analisis'}).first().click();const viewer=await handoff;
       await viewer.getByText(/1 berkas diperiksa/).first().waitFor();await viewer.locator('#navigation').getByRole('button',{name:'SPT',exact:true}).click();
+      const submitted=viewer.getByRole('table',{name:'Daftar pelaporan SPT',exact:true});
+      await submitted.waitFor();
+      assert.equal(await submitted.locator('tbody tr').count(),4);
+      await viewer.getByRole('combobox',{name:'Tahun pajak',exact:true}).selectOption('2025');
+      assert.equal(await submitted.locator('tbody tr').count(),3);
+      await submitted.getByRole('cell',{name:'Pembetulan 1',exact:true}).waitFor();
       await viewer.locator('summary').getByText('Tabel SPT hasil tarikan',{exact:true}).click();
       await viewer.locator('summary').getByText('Daftar SPT dilaporkan',{exact:true}).click();
       const table=viewer.getByRole('table',{name:'Daftar SPT dilaporkan',exact:true});assert.equal(await table.locator('tbody tr').count(),4);

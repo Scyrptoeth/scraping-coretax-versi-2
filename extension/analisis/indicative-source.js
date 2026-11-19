@@ -59,7 +59,7 @@ export function company(pkg,year){
   if(!parent)return null;
   const body=parent.rows[0],main=body.MainFormData;
   const variants=Object.keys(body).filter(k=>/^L1[a-z]FormData$/i.test(k)&&body[k]&&typeof body[k]==='object');
-  if(!main||variants.length!==1||!/^L1[ac]FormData$/.test(variants[0]))return null;
+  if(!main||variants.length!==1||!/^L1[abc]FormData$/.test(variants[0]))return null;
   const prefix=variants[0].slice(0,3),l1=body[variants[0]],accounts=new Map(),tree=l1[prefix+'TreeData'];
   if(!Array.isArray(tree)||!tree.length)return null;
   function visit(nodes){
@@ -75,7 +75,8 @@ export function company(pkg,year){
     String(parent.form.meta?.TaxPeriodCode)==='0112'+year||
     sptDay(main.AccountingPeriodStart)===year+'-01-01'&&sptDay(main.AccountingPeriodEnd)===year+'-12-31';
   const end=sptDay(main.AccountingPeriodEnd)?.slice(0,7)||(calendarYear?year+'-12':null);
-  return {...parent,body,main,accounts,end,calendarYear,assets:l1[prefix+'Assets']||{}};
+  return {...parent,body,main,accounts,end,calendarYear,assets:l1[prefix+'Assets']||{},
+    liabilities:l1[prefix+'LiabilitiesAndEquity']||{}};
 }
 
 export function documentState(row){

@@ -77,6 +77,28 @@ test('missing amounts, mismatched owner, repeated article, later listed correcti
   assert.equal(g.support.at(-1)['Masa terkonfirmasi'],1);assert.equal(r['2025-07'],undefined);
 });
 
+test('migrated main forms require matching filed and captured identities before accepting body aliases',()=>{
+  const period='01012025';
+  const migrated=(type,row)=>{
+    const id='fiktif-'+type+'01-0';
+    const captured=entry(type,'01',0,row,{payload:{RecordId:id}});
+    Object.assign(captured.pages[0].Payload,{TIN:wp,PeriodCode:period});
+    const listRow={RecordId:id,TaxPeriodCode:period,ReturnSheetTypeCode:captured.cap.konteks.spt.jenis,
+      ReturnSheetModel:'Normal',IsMigrated:true};
+    return {captured,listRow};
+  };
+  const old21=migrated('PPH2126',{...employee(10,2),RecordId:'fiktif-PPH212601-0',
+    TaxPeriodCode:'112025',TaxPeriodMonth:1,TaxPeriodYear:2025});
+  const oldUni=migrated('UNIFIKASI',{...unif(16,20),TaxPeriodCode:period,
+    ReturnSheetAggregateIdentifier:'aggregate-fiktif',ReturnSheetRecordIdentifier:'aggregate-fiktif'});
+  const list={path:'spt/daftar.json',cap:{konteks:{npwp:wp}},pages:[{Payload:{Data:[old21.listRow,oldUni.listRow]}}]};
+  const index=()=>buildIndex(pack([list,old21.captured,oldUni.captured]),y);
+  assert.deepEqual(['C.2.2','G.2.2','K.2.2'].map(ref=>monthly(group(index(),ref))[0].Nilai),[12,16,20]);
+  delete old21.captured.cap.payload.RecordId;
+  oldUni.listRow.IsMigrated=false;
+  assert.deepEqual(['C.2.2','G.2.2','K.2.2'].map(ref=>group(index(),ref)),[undefined,undefined,undefined]);
+});
+
 const refs=process.env.STUDIO_CGK_DIR;
 test('three monthly and annual results follow the saved physical Studio workbook when withholding, payment and Article 26 intentionally differ',{skip:!refs},async()=>{
   const p=indexPackage(await readPackage(await readFile(join(refs,'contoh.zip')))),i=buildIndex(p,y);

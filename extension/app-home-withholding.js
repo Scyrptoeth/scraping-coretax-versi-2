@@ -14,12 +14,18 @@ const kinds={
 export function reportMenu({heading,path,expand}) {
   if(location.origin!=='https://coretax.intranet.pajak.go.id'||!/^\/home\/id-ID\/?$/.test(location.pathname))return null;
   const visible=el=>el.getClientRects().length && el.checkVisibility({visibilityProperty:true,opacityProperty:true});
-  const links=[...document.querySelectorAll('a[href]')].filter(a=>visible(a) && a.innerText.trim()===heading &&
-    a.origin===location.origin && a.pathname===path && !a.search && !a.hash && !a.username && !a.password);
-  if(links.length)return {url:links[0].href};
   const buttons=[...document.querySelectorAll('button')].filter(b=>visible(b) && b.innerText.trim()==='Laporan' && !b.disabled);
+  const menuState=Symbol.for('coretax-v2.withholding-report-menu');
+  const opened=buttons.length===1&&document[menuState]===buttons[0];
+  const links=[...document.querySelectorAll('a[href]')].filter(a=>
+    (visible(a)||opened&&a.getClientRects().length&&a.checkVisibility({visibilityProperty:true})) && a.innerText.trim()===heading &&
+    a.origin===location.origin && a.pathname===path && !a.search && !a.hash && !a.username && !a.password);
+  if(links.length===1)return {url:links[0].href};
   if(expand && buttons.length===1){
-    if(buttons[0].getAttribute('aria-expanded')!=='true')buttons[0].click();
+    if(!opened&&buttons[0].getAttribute('aria-expanded')!=='true'){
+      document[menuState]=buttons[0];
+      buttons[0].click();
+    }
     return {opened:true};
   }
   return null;

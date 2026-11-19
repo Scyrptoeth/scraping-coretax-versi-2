@@ -38,7 +38,14 @@ export async function watchHomeAccount({ext,homeTabId,expectedFingerprint}) {
   const session = {name:'',fingerprint:expectedFingerprint || '',checkpoint};
   let lastCheck = -Infinity, pending = null, failure = null;
   async function refresh() {
-    const current = await readHomeAccount(ext,homeTabId);
+    let current = await readHomeAccount(ext,homeTabId);
+    if (session.fingerprint && !current) {
+      const deadline=Date.now()+5000;
+      while (!current && Date.now()<deadline) {
+        await new Promise(resolve=>setTimeout(resolve,250));
+        current=await readHomeAccount(ext,homeTabId);
+      }
+    }
     if (session.fingerprint && current?.fingerprint !== session.fingerprint) {
       const message = current ? 'Akun atau peran Coretax telah berubah. Untuk melanjutkan, gunakan akun dan peran awal.'
         : 'Akun pada beranda Coretax tidak terbaca. Buka kembali beranda dengan akun awal untuk melanjutkan.';

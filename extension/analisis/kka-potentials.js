@@ -133,5 +133,5 @@ export function kkaPotentials(pkg,year,work={},index={groups:[],byId:new Map()},
   if(filingNotes)notes.push('Tanggal pelaporan dan batas setelah penyesuaian kalender atau relaksasi diperiksa pada Temuan langsung. Keterlambatan pelaporan saja tidak menghasilkan pokok pajak.');
   if(all.some(f=>f.basisClass==='saldo-tercatat'))notes.push('Sisa pokok pada buku besar sudah tercatat sebagai kewajiban. Rekap pembanding menampilkan bagiannya secara terpisah.');
   if(all.some(f=>f.basisClass==='skenario'))notes.push('Angka indikatif adalah skenario pokok. Periksa syarat, periode dan bukti tiap butir sebelum memutuskan tindak lanjut.');
-  return {all,notes,comparableTotals:totals(all,work)};
+  return {all,notes,indicationChecks:ti.candidates,initialFiscal:ti.initialFiscal,comparableTotals:totals(all,work)};
 }

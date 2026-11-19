@@ -1,6 +1,98 @@
 # Matriks kesetaraan terhadap VERITAX v1.32.0
 
-Prarilis 0.18.2, 19 November 2026 WIB. **Terverifikasi** berlaku untuk perilaku dan masukan yang disebutkan. **Berbeda** berarti ada selisih yang telah diketahui. **Belum teruji** berarti bukti pembandingan belum tersedia.
+19–20 November 2026 WIB. Build lokal 0.18.18. **Terverifikasi** berlaku untuk perilaku dan masukan yang disebutkan. **Berbeda** berarti ada selisih yang telah diketahui. **Belum teruji** berarti bukti pembandingan belum tersedia.
+
+## Hasil luring 0.18.18
+
+Bagian **Nilai awal B.7** di L-9 Word dan Excel memakai perhitungan yang sama dengan laporan Temuan Indikatif. Keluaran menyertakan akun, tahun, nilai menurut SPT, pembanding awal, selisih, status telaah, dan berkas sumber. Nilai menurut SPT berasal dari koreksi fiskal positif pada L1. Rekap pokok memakai proyeksi pada Tabel 5.1.
+
+| Paket dan tahun | Cocok dengan nilai SPT, pembanding awal, dan selisih di Excel Studio | Terverifikasi dari ZIP dan ditampilkan di Word serta Excel Versi 2 |
+| --- | --- | --- |
+| Badan fiktif 2024 | Akun 5321 | Akun 5314 dan 5321 |
+| Badan fiktif 2025 | Akun 5314 dan 5321 | Akun 5314 dan 5321 |
+| Badan Migrasi fiktif 2025 | Akun 5321 | Akun 5314 dan 5321 |
+
+Keenam rincian cocok dengan perhitungan ulang dari L1 dan lampiran di ZIP. Untuk akun 5314, sumber pembandingnya rincian aset L9. Untuk akun 5321, sumber pembandingnya daftar nominatif L11A tabel 2. Pada dua baris akun 5314 yang hanya tampil di Versi 2, ZIP mencatat seluruh tabel aset L9 lengkap dan kosong. Pada ZIP acuan 2025, dua akun ditampilkan dengan rujukan sumber dan nilai kosong karena nominal belum dapat diperiksa.
+
+Verifikasi memakai unduhan Chrome luring. Uji lingkup, status telaah, tautan Word–Excel, dan hitung ulang rumus di LibreOffice lulus. Seluruh 373 uji otomatis lulus, termasuk kelima uji yang memakai Excel pembanding lokal. [Uji ekspor KKA](../tests/kka-outputs-browser.mjs) · [Uji penelaahan dan rekap](../tests/kka-potentials.test.mjs)
+
+## Hasil luring 0.18.17
+
+Word KKA kini menaut ke L-8 di Excel pada pilihan **Berbukti saja** dan **Berbukti + indikatif**. Sebelumnya, lembar L-8 sudah tersedia di Excel Versi 2. Word belum memiliki tautannya. L-9 tetap tersedia pada pilihan yang menyertakan indikasi.
+
+Pada contoh Badan Migrasi 2025, referensi kewajiban di buku besar memakai kode umum `TaxReturn`. Baris debit PPN tersebut tunggal untuk WP, KAP, dan masa yang sama, dan nilai awalnya cocok dengan kurang bayar pada induk SPT normal. Versi 2 kini mencantumkan sisa pada L-8 sebagai saldo tercatat dengan rujukan ke kedua sumber. Ketiga saldo di dua contoh Badan cocok dengan Studio. Pada ZIP acuan 2023, pembanding kredit pada Studio tetap selisih. Versi 2 menunggu sumber yang cukup untuk memasangkan kredit SPT dan bukti yang sejenis.
+
+Pada L-9, pokok skenario N.5 cocok dengan Studio untuk tahun acuan 2023–2025. Pada contoh Badan, enam pokok skenario cocok. Lima langsung sebanding pada N.5, N.10, B.3, C.2.1 dan K.2.1. B.4 cocok setelah acuan bunga ilustrasi 8% dipilih untuk contoh fiktif. Rincian nilai awal B.7 dan analisis OP mempunyai cakupan berbeda. ZIP sementara belum memuat data yang cukup untuk menghitung pokok indikatif pada masa uji.
+
+Pembandingan Chrome luring memakai Word dan Excel dari kedua ZIP aktual serta empat ZIP fiktif. Tautan Word mengarah ke lembar yang sesuai, dan isian ringkasannya cocok dengan rincian dalam Excel. Uji KKA dan penghitungan ulang rumus di LibreOffice lulus. Kelima uji yang memakai Excel pembanding lokal ikut dijalankan. Seluruh 373 uji otomatis lulus. [Uji ekspor KKA](../tests/kka-outputs-browser.mjs) · [Uji saldo tercatat](../tests/direct-findings.test.mjs)
+
+## Hasil luring 0.18.16
+
+Pada paket Badan fiktif 2025, subtotal penyerahan terutang sudah mengecualikan penyerahan yang PPN-nya tidak dipungut. Versi 2 sebelumnya mengurangkan kelompok itu sekali lagi saat mencocokkan DPP dipungut sendiri. Pemutar kini menerima DPP bila komponen cocok dengan subtotal dan kelompok penyerahan lain dapat dicocokkan ke total pada induk. Nilai tetap kosong jika pemeriksaan itu gagal. Perbaikan berlaku di ringkasan PPN, KKP N.3, dan ekualisasi B.1.4.
+
+Kelima uji pembanding Excel yang dilewati pada 0.18.15 dijalankan dengan keluaran Studio yang tersimpan lokal. Uji memastikan DPP N.3 pada 12 masa dan ekualisasi B.1.4 cocok dengan pembanding yang sesuai. Seluruh 372 uji otomatis, termasuk kasus regresi baru, lulus. Pemasangan ZIP, ekspor KKP di Chrome, simulasi, dan penghitungan ulang rumus di LibreOffice juga lulus. [Uji N.3](../tests/kkp-index-source.test.mjs) · [Uji ekualisasi](../tests/kkp-company-annexes.test.mjs)
+
+## Hasil luring 0.18.15
+
+Studio dan Versi 2 membaca ZIP acuan yang sama sebagai AR untuk tahun pajak 2023–2025. ZIP sementara diperiksa terpisah di Versi 2. Lima lampiran berikut belum dihasilkan oleh 0.18.14. Pembentuk KKA kini memakai data per lampiran untuk menghasilkan ringkasan Word dan rincian Excel dengan tautan ke lembar tujuan.
+
+| Lampiran | Hasil pembandingan dan batas |
+| --- | --- |
+| L-1 Profil WP | Tujuh pemeriksaan Word dan 36 isian Excel cocok untuk setiap tahun acuan setelah penyesuaian format tampilan. Profil utama, alamat, kontak, dan penanggung jawab merujuk ke berkas asal. Contoh Badan cocok pada tujuh pemeriksaan Word dan 40 isian Excel. Contoh OP cocok pada tujuh pemeriksaan Word dan 24 dari 25 isian Excel yang sebanding. Dasar status PKP berbeda dan dua penanda yang tidak tersedia tetap kosong. |
+| L-3a KLU | Kode, uraian, dan masa berlaku yang ditampilkan cocok untuk tiga tahun acuan. ZIP acuan merekam daftar riwayat KLU kosong, sehingga KLU yang tersedia dari informasi umum diberi keterangan sesuai keadaan pada tanggal paket. Lima baris registrasi dari empat ZIP fiktif cocok termasuk status utama atau tambahan. ZIP sementara belum memuat KLU yang dapat ditetapkan. |
+| L-3b Probis dan Uji Data | KLU acuan, alur kegiatan, dan langkah uji konsisten antara Word dan Excel untuk tiga tahun acuan dan empat contoh fiktif. Panduan Versi 2 dan dokumen yang diminta pada pekerjaan yang terpilih ditampilkan sesuai sumber. Rincian modus, rezim, dan putusan pada katalog Studio belum dapat diverifikasi dari ZIP. |
+| L-4b Pemenuhan Kewajiban | Sebanyak 147 sel status pelaporan pada ZIP acuan dan 74 pada contoh Badan cocok. Perbandingan ini memakai masa dan jenis pajak yang sepadan. PBB memiliki dasar masa dan objek yang berbeda. Seluruh 91 penanda bayar pada ZIP acuan dan 67 pada contoh Badan didukung transaksi aktif dengan KAP dan masa yang sama. Pada ZIP sementara, 111 status pelaporan cocok dengan acuan, dengan nominal induk tetap kosong karena kelengkapan belum terverifikasi. Matriks memisahkan bukti pelaporan, posisi SPT, dan setoran. |
+| L-11 Ketertagihan | Tujuh dari delapan faktor mendukung, cocok dengan Studio pada setiap tahun acuan. Studio menandai kedelapan faktor mendukung. Versi 2 mencatat sisa kewajiban nol pada rincian yang terbaca. Kelengkapan buku besar belum terkonfirmasi sehingga faktor kewajiban dan kategori ketertagihan masih belum dapat dinilai. |
+
+Semua tujuan tautan Word ditemukan di Excel untuk setiap tahun uji. Pada ZIP acuan jumlahnya 18 dan pada ZIP sementara 17. Kelima tautan baru juga mengarah ke lembar yang sesuai pada empat ZIP fiktif. Jumlah baris di 30 tabel sumber tetap cocok dengan Studio. Pemasangan ZIP di Chrome dan penghitungan ulang rumus di LibreOffice lulus. Dari 371 uji otomatis, 366 lulus dan lima uji opsional dilewati. [Pembanding pemutar](../scripts/compare-players.mjs) · [Uji ekspor KKA](../tests/kka-outputs-browser.mjs)
+
+## Hasil luring 0.18.14
+
+Studio dan Versi 2 memakai ZIP VERITAX yang sama, peran AR, dan tahun 2023–2025. Pemeriksaan mencakup judul dan isi lembar Excel, ringkasan di Word, sel angka, serta tujuan tautan. Tujuh lampiran berikut sebelumnya belum tersedia di KKA Versi 2. Word kini memuat ringkasannya dan Excel memuat rincian dengan rujukan sumber.
+
+| Lampiran | Hasil pembandingan dan batas |
+| --- | --- |
+| L-2b Pemegang saham | Enam baris SPT pada 2025 cocok dengan Studio menurut identitas, nama, porsi, modal, dividen, dan negara. Pada 2023 dan 2024, Versi 2 memakai 11 baris dari induk masing-masing tahun. Studio memakai SPT terakhir dalam paket. Pencocokan registrasi memakai keadaan saat paket dibuat dan tanggalnya ditampilkan terpisah. |
+| L-2c Penyertaan | Satu baris pada contoh Badan 2025 cocok untuk delapan isian. Daftar kosong pada contoh 2024 menghasilkan nol. Pada ZIP acuan, ketiga induk tidak memuat daftar penyertaan sehingga jumlah tetap kosong. |
+| L-4a Kepatuhan formal | Tanggal lapor, batas setelah penyesuaian, dan hari terlambat cocok untuk 75 baris non-PBB yang bisa dipasangkan pada ZIP acuan dan 36 baris pada contoh Badan. Baris tanpa tanggal cukup tetap dicantumkan dengan status belum dapat dinilai. Kesetaraan penilaian ketepatan setoran masih terbuka. |
+| L-5 Ikhtisar SPT | Seluruh 24 angka yang dipasangkan untuk 2023–2025 cocok. Empat angka 2026 juga cocok dan ditampilkan sebagai subtotal masa yang terbaca. Jumlah setahun 2026 masih kosong. Lampiran menampilkan sumber setiap ukuran. |
+| L-6 Hasil analisis | Daftar pelaporan kedua ZIP menyimpan 12 versi tanpa tanggal lapor yang valid pada 2023, 36 pada 2024, dan tidak ada pada 2025. Studio juga menandai dua tahun pertama. Excel mencantumkan rincian daftar dan status telaah untuk aturan indikatif yang sudah tersedia di Versi 2. Seluruh katalog sinyal, anomali, dan modus Studio masih lebih luas. |
+| L-10 Pembanding sektoral | Keenam rasio WP cocok pada 30 nilai sampai presisi tampilan. Dengan angka acuan CTTOR yang sama, 15 hasil simulasi cocok. Versi 2 mencantumkan pembanding yang diisi petugas beserta rujukannya dan menyimpan simulasi di luar rekap pokok. Katalog acuan otomatis dan perhitungan NPM menurut rezim Studio masih terbuka. |
+| L-12 Mitra transaksi utama | 45 baris peringkat pada ZIP acuan cocok pada urutan, identitas, jumlah dokumen, DPP, dan porsi sampai presisi tampilan. Pada contoh Badan, 25 baris dengan NPWP terkonfirmasi cocok. DPP dokumen dengan identitas belum terkonfirmasi disajikan terpisah. Ketiga kelompok pada ZIP sementara belum memiliki angka yang dapat ditampilkan karena sumber A2, B2, dan bukti potong lawan belum tersedia. |
+
+Pada ZIP acuan, tujuan Word–Excel yang terverifikasi bertambah dari enam menjadi 13 di tiap tahun. Pada ZIP sementara, jumlahnya bertambah dari enam menjadi 12, sesuai lampiran yang dapat dibentuk. Ringkasan Profil WP L-1, KLU dan Probis L-3a/3b, matriks L-4b, dan penilaian ketertagihan L-11 masih memiliki perbedaan cakupan. Rincian L-8 dan L-9 juga masih memerlukan pembandingan lanjutan pada skenario yang selisih. Cek ulang rumus di LibreOffice lulus, bersama 355 uji otomatis. Lima uji opsional dilewati. [Pembanding pemutar](../scripts/compare-players.mjs) · [Uji ekspor KKA](../tests/kka-outputs-browser.mjs)
+
+## Hasil luring 0.18.13
+
+Word KKA kini menaut langsung ke lembar **L-9. Temuan indikatif** pada Excel pendamping bila petugas memilih **Berbukti + indikatif**. Jumlah tautan pendamping dari Word Versi 2 bertambah dari lima menjadi enam. Pengujian Chrome peran AR menemukan keenam tujuan dalam Excel unduhan untuk kedua ZIP aktual dan masing-masing tahun 2023–2025. Uji fiktif juga memastikan pilihan **Berbukti saja** menghasilkan Word dan Excel tanpa tujuan L-9. Daftar tujuan yang disediakan Studio dan Versi 2 masih berbeda. [Uji ekspor KKA](../tests/kka-outputs-browser.mjs)
+
+Build lokal lolos uji pemasangan. Uji otomatis mencatat 345 lulus dan lima uji opsional dilewati.
+
+## Hasil luring 0.18.12
+
+Di KKA, Tabel 4.1 tetap menyajikan subtotal bruto dan jumlah penerima PPh 21 per tahun saat cakupan bulannya sebagian. Pada contoh fiktif, Excel lama menghitung pertumbuhan bruto 80% dari dua subtotal yang berasal dari bulan berbeda. Setelah penghitungan ulang di LibreOffice, Excel baru mempertahankan kedua subtotal dan membiarkan selisih serta persentase kosong di L-13 dan Tabel 4.1.
+
+Tabel 5.3 kini memeriksa masa PPN terbaru pada daftar pelaporan dan mengikuti periode pilihan paket. Pada contoh fiktif, versi lama menjumlahkan September–November karena induk Desember belum tersedia. Versi baru menunjukkan kebutuhan induk Desember, dengan rujukan ke daftar pelaporan. Angka penyerahan baru muncul saat ketiga induk dalam jendela Oktober–Desember tersedia dan dapat diperiksa.
+
+Pengujian mencakup unduhan Chrome, penghitungan ulang Excel, lima tautan Word–Excel serta 345 uji otomatis yang lulus. Lima uji opsional dilewati.
+
+## Hasil luring 0.18.11
+
+Perbandingan menggunakan peran AR dan tahun pajak 2023–2025. ZIP acuan dibuka di Studio 1.32.0 dan Versi 2. ZIP sementara dari antrean dibuka di Versi 2. Kedua ZIP lolos pemeriksaan integritas dan pilihan 20 sumber serta enam jenis SPT cocok. Perbandingan isi tarikan memakai Januari 2023–Desember 2025, karena acuan juga memuat data 2026. [Pembanding tarikan](../scripts/compare-captures.mjs) · [Pembanding pemutar](../scripts/compare-players.mjs)
+
+| Pemeriksaan | Hasil dan batas |
+| --- | --- |
+| Menu, tabel standar dan saringan SPT | Sembilan menu dapat dibuka di kedua pemutar. Jumlah baris cocok di 30 tabel standar dari ZIP acuan. Untuk 2023, 2024 dan 2025, saringan versi terakhir menampilkan 37 formulir per tahun pada kedua pemutar. Jumlah seluruh versi berturut-turut 49, 51 dan 61. Empat paket fiktif juga diperiksa. |
+| Daftar dan cuplikan induk SPT | Seluruh 192 baris daftar dalam periode bersama cocok. Pembanding tarikan memasangkan 62 dari 161 versi, 19 induk dan 125 dari 1.087 lampiran. Pada lampiran PPh 21/26 yang dapat dipasangkan, 28.478 dari 28.781 baris cocok pada nomor bukti, kode objek, bruto dan pajak. Pemutar kini membaca 252 angka dari 18 cuplikan induk PPh 21/26 yang identitasnya dapat diperiksa. Seluruh angka cocok dengan acuan. Layar dan Excel menunjukkan letak sel sumber serta status cuplikan. Satu tanggal PPN berbeda satu hari karena sumber yang tersedia menyebut tanggal penerimaan, sementara acuan juga menyimpan tanggal lapor. |
+| Dasbor | Enam indikator pada ZIP acuan cocok dengan Studio sampai presisi angka yang ditampilkan. Di ZIP sementara, peredaran dan PPh terutang belum dapat dihitung karena induk Badan belum tersedia. Induk PPN yang tersimpan belum memuat nominal. Kedua indikator PPN menunjukkan 0 dari 12 masa memiliki angka pada tiap tahun. |
+| Buku besar dan Profil WP | Sebanyak 4.609 dari 4.629 baris cocok berdasarkan nomor dan jumlah. Sepuluh baris Januari dan sepuluh baris September 2023 belum tercakup. Setelah memasangkan pembayaran menurut periode dan tanggal pembukuan, selisih seluruhnya dapat dijelaskan oleh enam pembayaran yang belum tertarik pada 2023. Satu di antaranya juga masuk dasbor 2025 menurut tanggal pembukuan. Pembayaran 2024 dan kewajiban belum lunas ketiga tahun cocok. Profil ZIP sementara kini menampilkan 2.628 pembayaran, 1.631 baris pemindahbukuan, dan 15 riwayat registrasi serta alamat yang sebelumnya kosong. |
+| Saldo buku besar | Kolom rupiah dari tabel Coretax kini dapat dibandingkan. Sebelumnya 39 pasangan rincian dan saldo pembanding pada ZIP sementara belum dapat dihitung. Kini 35 saldo cuplikan cocok dan empat berbeda. Januari dan September 2023 kekurangan rincian. Pada Desember 2023 kedua ZIP mencatat selisih yang sama. Pada Juni 2024 jumlah rincian kedua ZIP cocok, sedangkan saldo pembandingnya berbeda. Cakupan sumber kedua bulan terakhir perlu diperiksa kembali di intranet. |
+| Kepatuhan Formal | Lembar Excel kini memakai tanggal dari daftar pelaporan saat isi SPT belum tersedia. Pada ZIP sementara, 35, 23 dan 48 baris memiliki tanggal yang dapat dibandingkan untuk 2023, 2024 dan 2025. Jumlahnya sama dengan ZIP acuan. Lembar menyebut dasar dan berkas asal tiap baris dan memasukkan setoran yang terbaca dari tabel buku besar. |
+| KKP | Kelompok yang terbentuk di Versi 2 bertambah dari 24/24/28 menjadi 26/28/28 pada ZIP acuan. ZIP sementara tetap menghasilkan 0/0/1. Penyerahan dipungut sendiri N.3 meningkat dari 12 menjadi 36 masa yang cocok dengan Excel Studio. Nilai induk pada C.2.2, G.2.2, K.2.2 dan E.2.2 cocok pada 120 baris yang dapat dibandingkan. Subtotal D1-BPU tersedia pada masa yang masih memiliki bukti aktif tanpa pasal. Subtotal tersebut diberi status sebagian. C.2.1 menampilkan 12 angka bruto induk 2025. Angka 24 masa 2023–2024 masih belum tersedia di induk. |
+| KKA | Lampiran perbandingan SPT dan rasio kini membaca variasi L1b pada ZIP acuan. Sel angka yang cocok pada tabel perbandingan bertambah dari 4/10/17 menjadi 11/31/31 untuk 2023–2025. Sebagian akun pendukung arus kas dan likuiditas tetap kosong karena isian sumber belum tersedia. Pada ZIP sementara, Tabel 5.3 menampilkan subtotal dari 354 baris pembayaran bertanggal dalam jendela 12 bulan. Total penuh masih kosong. Uji Excel dan Word mencakup tautan ke lima lembar pendamping, perhitungan yang ditautkan, dan perubahan status telaah pada contoh fiktif. |
+| Penarik dan bagian lain | Kesetaraan penarikan satu NPWP pada intranet dengan 20 sumber masih perlu dibuktikan. ZIP sementara masih memerlukan induk dan lampiran SPT, sumber profil dan registrasi yang belum masuk, dokumen WP, seluruh halaman buku besar dan bukti potong dari lawan transaksi. Kedalaman materi Probis, Peraturan, Bantuan dan kesetaraan kedua format KKA Studio masih terbuka. |
+
+Pemeriksaan otomatis dengan `node --test tests/*.test.mjs` mencatat 343 lulus dan lima uji opsional dilewati. Build ZIP lokal lolos uji pemasangan di Chrome for Testing. Pembandingan kedua pemutar berjalan tanpa permintaan jaringan atau galat halaman. Penghitungan ulang workbook pada contoh fiktif lulus di LibreOffice. Kedua ZIP data menghasilkan SHA-256 yang sama dengan awal pemeriksaan.
 
 ## Hasil prarilis 0.18.2
 

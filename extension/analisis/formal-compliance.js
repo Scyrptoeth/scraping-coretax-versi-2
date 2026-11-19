@@ -1,21 +1,44 @@
-import {receiptFields,sptDay,typeNames} from './model.js';
+import {afterWeekend,receiptFields,returnCodes,sptDay,submittedDay,typeNames} from './model.js';
+import {fieldValue} from './display-fields.js';
 import {packageLedger} from './profile.js';
+import {filingPeriod,submittedReturnRows} from './profile-filing.js';
 
 const months=['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];
 const monthlyIncomeTax=new Set(['411121','411124','411125','411126']);
+const namesByCode=new Map(Object.entries(returnCodes).map(([type,code])=>[code,typeNames[type]]));
 function lateDays(date,due){
   return date&&due?Math.max(0,(Date.parse(date)-Date.parse(due))/86400000):null;
 }
 
 export function filingAndPaymentRows(pkg,year){
+  return filingAndPaymentReport(pkg,year).rows;
+}
+
+export function filingAndPaymentReport(pkg,year){
   const forms=pkg.forms.filter(f=>f.year===String(year));
-  const rows=[['Pelaporan SPT normal'],['Jenis SPT','Masa','BPE','Tanggal lapor','Batas sumber','Batas setelah akhir pekan','Ketepatan','Terlambat (hari)','Berkas asal','Nomor penerimaan dokumen','Nomor pada BpsNo']];
-  for(const f of forms.filter(f=>f.version===0)){
-    const numbers=receiptFields(f.meta);
-    rows.push([typeNames[f.type]||f.type,f.period,numbers.BPE,f.reportDate,f.dueDate,f.filingDueDate,
-      f.filingLate==null?'Belum dinilai':f.filingLate?'Lewat batas':'Tepat',lateDays(f.reportDate,f.filingDueDate),f.reportSource,
-      numbers['Nomor penerimaan dokumen'],numbers['Nomor pada BpsNo']]);
+  const rows=[['Pelaporan SPT normal'],['Jenis SPT','Masa','BPE','Tanggal lapor','Batas sumber','Batas setelah akhir pekan','Ketepatan','Terlambat (hari)',
+    'Berkas asal','Nomor penerimaan dokumen','Nomor pada BpsNo','Dasar pelaporan']];
+  function addFiling(type,period,meta,day,due,source,basis){
+    const numbers=receiptFields(meta),adjusted=afterWeekend(due);
+    rows.push([type,period,numbers.BPE,day,due,adjusted,
+      !day||!adjusted?'Belum dinilai':day>adjusted?'Lewat batas':'Tepat',lateDays(day,adjusted),source,
+      numbers['Nomor penerimaan dokumen'],numbers['Nomor pada BpsNo'],basis]);
   }
+  const normal=forms.filter(f=>f.version===0),matched=new Set(normal.map(f=>f.listedRow).filter(Boolean));
+  for(const f of normal){
+    addFiling(typeNames[f.type]||f.type,f.period,f.meta,f.reportDate,f.dueDate,f.reportSource,
+      f.listedRow?'Daftar pelaporan dan rekaman SPT':'Rekaman SPT');
+  }
+  for(const {row,meta} of submittedReturnRows(pkg)){
+    if(meta.ReturnSheetModel!=='Normal'||matched.has(row))continue;
+    const period=filingPeriod(meta);
+    if(period?.year!==Number(year))continue;
+    const label=period.month?year+'-'+String(period.month).padStart(2,'0'):String(year);
+    const code=meta.ReturnSheetTypeCode;
+    const type=namesByCode.get(code)??fieldValue('ReturnSheetTypeCode',code);
+    addFiling(type,label,meta,submittedDay(meta),sptDay(meta.ExpectedReturnDate),meta['Berkas sumber'],'Daftar pelaporan');
+  }
+  const filings=rows.slice(2);
   rows.push([],['Versi SPT yang tersedia dalam paket'],['Jenis SPT',...months]);
   const kindPeriods=new Map();
   for(const f of forms){
@@ -32,8 +55,8 @@ export function filingAndPaymentRows(pkg,year){
   const toCheck=[];
   for(const r of ledger.filter(r=>r.AccountingTypeCode==='Payment')){
     const period=String(r.PeriodCode);
-    const date=sptDay(r.TransactionDate),due=sptDay(r.DueDate);
-    rows.push([r.RevenueCode,r.PaymentCode,period,date,sptDay(r.PostingDate),r.Amount,due,lateDays(date,due),r.ReferenceNumber,r['Berkas sumber']]);
+    const date=sptDay(r.TransactionDate),due=sptDay(r.DueDate)||sptDay(r.PaymentDueDate);
+    rows.push([r.RevenueCode,r.PaymentCode,period,date,sptDay(r.PostingDate),r.Amount,due,lateDays(date,due),r.ReferenceNumber??r.Referensi,r['Berkas sumber']]);
     const month=Number(period.slice(0,2));
     if(Number(year)<2025||period.slice(0,2)!==period.slice(2,4)||month<1||month>12||
         !monthlyIncomeTax.has(String(r.RevenueCode))||String(r.PaymentCode)!=='100')continue;
@@ -50,10 +73,10 @@ export function filingAndPaymentRows(pkg,year){
     const flags=[[r.IsUnderObjection,'Sedang keberatan'],[r.IsLegallyBound,'Berkekuatan hukum tetap']];
     const status=flags.filter(([flag])=>flag===true).map(([,name])=>name).join(' · ');
     if(!(Number.isFinite(r.AmountLeft)&&r.AmountLeft<0)&&!status)continue;
-    rows.push([String(r.PeriodCode),r.AccountingTypeCode,r.RevenueCode,r.ReferenceNumber,-r.Amount,
+    rows.push([String(r.PeriodCode),r.AccountingTypeCode,r.RevenueCode,r.ReferenceNumber??r.Referensi,-r.Amount,
       Number.isFinite(r.AmountLeft)?-r.AmountLeft:null,status,r['Berkas sumber']]);
   }
-  return rows;
+  return {rows,filings};
 }
 
 function version(value){

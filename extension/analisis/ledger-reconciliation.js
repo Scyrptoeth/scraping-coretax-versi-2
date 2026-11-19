@@ -1,4 +1,5 @@
 import {normalizeId} from '../app-data.js';
+import {displayedLedgerAmount,ledgerAnalysisRow} from './ledger-table.js';
 import {rowsOf} from './model.js';
 import {usesOtherCurrency} from './return-source.js';
 import {sourceAmount} from './withholding-forms.js';
@@ -48,7 +49,8 @@ function evidence(entry,period,owner,failed){
 function observed(rows,owner,aggregate,period){
   let sum=0n;const seen=new Set();
   const [year,month]=period.split('-');
-  for(const r of rows){
+  for(const raw of rows){
+    const r=ledgerAnalysisRow(raw);
     const n=amount(r.Amount??r.Jumlah);
     if(present(r.PeriodCode)){
       const code=String(r.PeriodCode);
@@ -74,7 +76,7 @@ export function reconcileLedgerTotals(pkg){
   const output=[];
   for(const [period,files] of [...grouped].sort(([a],[b])=>a.localeCompare(b))){
     const [detail]=files.bukubesar,[total]=files['bukubesar-total'];
-    const row={'Masa atau tahun':period,'Baris rincian':null,'Jumlah Amount (Rp)':null,'Saldo pembanding (Rp)':null,
+    const row={'Masa atau tahun':period,'Baris rincian':null,'Jumlah rincian (Rp)':null,'Saldo pembanding (Rp)':null,
       'Selisih (Rp)':null,'Baris total':null,Hasil:'Belum dapat dicocokkan',Cakupan:null,
       'Berkas sumber':[detail?.path,total?.path].filter(Boolean).join(' · ')};
     output.push(row);
@@ -90,9 +92,10 @@ export function reconcileLedgerTotals(pkg){
     row['Baris rincian']=records.length;
     const tabular=detail.pages.every(p=>{const v=p.Payload??p;return Array.isArray(v)||Array.isArray(v.Data)||Array.isArray(v.rows);});
     const sum=tabular?observed(records,owner,detailId,period):null;
-    row['Jumlah Amount (Rp)']=sum;
+    row['Jumlah rincian (Rp)']=sum;
     if(chosen.length!==1||usesOtherCurrency(chosen[0])){row.Cakupan='Saldo sumber untuk lingkup ini belum dapat dipilih.';continue;}
-    const expected=amount(chosen[0].Balance);
+    const balance=chosen[0];
+    const expected=amount(Object.hasOwn(balance,'Balance')?balance.Balance:displayedLedgerAmount(balance.Saldo));
     row['Baris total']=chosen[0].Key;row['Saldo pembanding (Rp)']=expected;
     if(!sameScope(detail,total)){row.Cakupan='Filter rincian dan filter total belum dapat dipasangkan.';continue;}
     if(sum===null||expected===null){row.Cakupan='Rincian atau saldo sumber belum memiliki angka rupiah utuh yang dapat dijumlahkan sekali per transaksi.';continue;}
