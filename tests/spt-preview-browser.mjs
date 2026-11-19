@@ -87,6 +87,7 @@ async function scenario(mode){
     if(mode==='utuh'){
       const handoff=ctx.waitForEvent('page');await ui.getByRole('button',{name:'Buka di Analisis'}).first().click();const viewer=await handoff;
       await viewer.getByText(/1 berkas diperiksa/).first().waitFor();await viewer.locator('#navigation').getByRole('button',{name:'SPT',exact:true}).click();
+      await viewer.locator('summary').getByText('Tabel SPT hasil tarikan',{exact:true}).click();
       await viewer.locator('summary').getByText('Daftar SPT dilaporkan',{exact:true}).click();
       const table=viewer.getByRole('table',{name:'Daftar SPT dilaporkan',exact:true});assert.equal(await table.locator('tbody tr').count(),4);
       await table.getByRole('cell',{name:'DI-LUAR',exact:true}).waitFor();

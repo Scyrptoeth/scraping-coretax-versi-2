@@ -19,6 +19,18 @@ test('Only explicit cancellation fields establish row status, including false an
     assert.equal(ledgerCancellation(r),'unknown');
 });
 
+test('the cancellation filter observed on a home navigation applies only when its displayed state is known',()=>{
+  for(const [choice,include,expected] of [['Yes',true,'tanpa-filter-pembatalan'],['No',false,'aktif']]){
+    const item={...source([{}]),proof:{dariBeranda:{transaksiDibatalkan:choice,filterLain:false}}};
+    const selection=selectLedgerRows(item,include).ledgerSelection;
+    assert.equal(selection.filterPembatalanSumber,expected);
+    assert.equal(selection.cakupanOpsi,'sesuai');
+    assert.equal(selection.filterLainPadaSumber,false);
+  }
+  const item={...source([{}],[filter('1')]),proof:{dariBeranda:{transaksiDibatalkan:'No'}}};
+  assert.equal(selectLedgerRows(item,false).ledgerSelection.filterPembatalanSumber,'bertentangan');
+});
+
 test('Unchecked skips only proven cancelled rows and preserves the raw input and its reported count',()=>{
   const item=source([{IsCancelled:0},{IsCancelled:true},{}],[]);
   const selected=selectLedgerRows(item,false),s=selected.ledgerSelection;

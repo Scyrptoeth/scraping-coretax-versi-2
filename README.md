@@ -1,14 +1,14 @@
 # Scraping Coretax Versi 2
 
-**Prarilis 0.17.1.** Setiap tarikan memakai satu NPWP. Pilih sumber dan periode, lalu jalankan **Mulai tarik** dari tab penarik. Ekstensi membaca sumber yang dapat dikenali dari tab Coretax yang terbuka. Berkas ekspor JSON/CSV juga dapat diproses secara luring. Di pemutar, Anda dapat membaca profil WP, memilih SPT dan memeriksa lampirannya, serta menelusuri transaksi sampai ke rincian buku besar.
+**Prarilis 0.18.0.** Setelah login di beranda Coretax, isi satu NPWP dan periode di ekstensi. **Mulai tarik** mencari WP dan membuka sumber pilihan di tab kerja. Di pemutar, Anda dapat memeriksa profil, SPT dan transaksi buku besar. Rincian mutu data menunjukkan sumber yang masih kurang.
 
-[Unduh dan pasang melalui GitHub Pages](https://scyrptoeth.github.io/scraping-coretax-versi-2/) · [Situs Vercel](https://scraping-coretax-versi-2.vercel.app/) · [Paket prarilis GitHub](https://github.com/Scyrptoeth/scraping-coretax-versi-2/releases/tag/v0.17.1)
+[Unduh dan pasang melalui GitHub Pages](https://scyrptoeth.github.io/scraping-coretax-versi-2/) · [Situs Vercel](https://scraping-coretax-versi-2.vercel.app/) · [Paket prarilis GitHub](https://github.com/Scyrptoeth/scraping-coretax-versi-2/releases/tag/v0.18.0)
 
 ## Mencoba ekstensi
 
 1. Unduh dan ekstrak ZIP. Buka `chrome://extensions`, aktifkan Mode developer, klik **Muat yang belum dipaketkan**, lalu pilih folder yang memuat `manifest.json`.
-2. Isi penugasan dan satu NPWP, pilih periode dan jenis SPT, lalu centang pernyataan kerahasiaan. Bila tab **SPT Dilaporkan** untuk WP itu sudah terbuka, pilih sumber **Daftar SPT dilaporkan** dan klik **Pratinjau WP**. Penarik mencocokkan WP pada tab dan memperlihatkan versi SPT untuk periode pilihan. Anda juga dapat menambahkan tabel atau berkas ekspor sendiri.
-3. Untuk membaca isi SPT, pilih juga sumber **Induk dan lampiran SPT**. Di pratinjau, pilih **Ambil induk dan lampiran** untuk satu versi atau **Ambil versi SPT terpilih** untuk beberapa versi. Setelah sumber masuk antrean, pilih **Mulai tarik** untuk menyusun paket.
+2. Buka beranda Coretax dan login di profil Chrome yang sama. Pada ekstensi, isi penugasan dan satu NPWP. Pilih periode, jenis SPT, serta sumber. Centang pernyataan kerahasiaan.
+3. **Pratinjau WP** memperlihatkan WP dan versi SPT dalam periode pilihan. Anda juga dapat langsung memilih **Mulai tarik**. Untuk membaca formulir, sertakan **Induk dan lampiran SPT**. Periksa catatan sumber yang belum terbaca.
 4. Pilih **Unduh paket** untuk menyimpan hasil atau **Buka di Analisis** untuk memeriksanya. Untuk paket yang sudah tersedia, buka **Buka Analisis**, lalu pilih berkas.
 5. Periksa integritas, identitas dan cakupan sebelum membaca angka. Simpan isian kerja yang diperlukan sebelum menutup pemutar.
 

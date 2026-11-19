@@ -48,7 +48,7 @@ function readProfile(wp,items,asOf){
         const g=row.GeneralInformation||row,c=rowFields(g);
         if(!ownerMatches(g,wp)){invalid=true;continue;}
         if(source==='cari2'||source==='info'){
-          for(const v of [c.name,c.namawp,c.namawajibpajak,c.taxpayername])add(sets.name,v);
+          for(const v of [c.name,c.nama,c.namawp,c.namawajibpajak,c.taxpayername])add(sets.name,v);
           for(const v of [c.taxpayertype,c.jeniswajibpajak,c.jeniswp])add(sets.type,v,typeLabels);
           for(const v of [c.taxpayerstatus,c.statuswp,c.statuswajibpajak])add(sets.status,v,statusLabels);
           for(const v of [row.MainEconomicCode?.TradeClassificationCode,c.kodekluutama,c.kluutama,c.maintradeclassificationcode])add(sets.klu,v);

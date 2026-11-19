@@ -1,6 +1,20 @@
 # Matriks kesetaraan terhadap VERITAX v1.32.0
 
-Prarilis 0.17.1, 19 November 2026 WIB. Penarik dan pemutar masih memiliki perbedaan dengan VERITAX. **Terverifikasi** berlaku untuk perilaku dan masukan yang disebutkan. **Berbeda** berarti ada selisih yang telah diketahui. **Belum teruji** berarti bukti pembandingan belum tersedia.
+Prarilis 0.18.0, 19 November 2026 WIB. **Terverifikasi** berlaku untuk perilaku dan masukan yang disebutkan. **Berbeda** berarti ada selisih yang telah diketahui. **Belum teruji** berarti bukti pembandingan belum tersedia.
+
+## Hasil prarilis 0.18.0
+
+Bab 3 panduan VERITAX 1.32.0 menjadi acuan bagi urutan kerja dari login sampai paket dibuka di pemutar. Versi 2 memproses satu NPWP per tarikan.
+
+| Langkah | Bukti pada versi ini | Batas |
+| --- | --- | --- |
+| Login, identitas, penugasan | Ekstensi mengenali nama akun yang tampil di beranda. Pengujian mencakup perubahan akun atau peran serta pemulihan ketika penanda akun tidak tersedia. [Uji akun](../tests/scraper-home-session-browser.mjs) | Jika nama akun belum terbaca, petugas mengisi nama penarik. |
+| Pratinjau dan mulai tarik | Pada Chrome pengujian, satu tab beranda cukup untuk menemukan NPWP, membaca indeks, memilih SPT dalam masa, mengunduh ZIP dan membukanya di Analisis. Uji NPWP yang tidak ditemukan selesai tanpa paket. [Uji penarik ke pemutar](../tests/scraper-home-navigation-browser.mjs) | Indeks SPT dapat berisi masa lain seperti pada ZIP acuan. Isi SPT mengikuti versi dan masa terpilih. |
+| Registrasi, profil dan buku besar | Pengujian mencakup alamat dan tempat kegiatan usaha, lima kelompok jenis pajak, login terakhir, arsip, filter transaksi dan kedua baris total pada buku besar. [Uji sumber](../tests/scraper-home-sources-browser.mjs) | Bukti baris yang tampil dan kelengkapan seluruh data pada sistem sumber perlu dibedakan. Akses rekening dan sertifikat bergantung pada sumber yang tersedia untuk WP dan peran tersebut. |
+| Lihat isi SPT | Identitas, masa, jenis dan versi pada formulir dicocokkan dengan baris yang dibuka. Uji mencakup PPN dan PPh 21/26 beserta tampilan yang harus ditolak. [Uji formulir](../tests/spt-linked-vat-browser.mjs) | Sebagian sublampiran PPh dan formulir yang belum memperlihatkan bukti versinya dicatat dalam hasil. |
+| Bukti potong yang diterima | Coretax menyediakan laporan pencarian berdasarkan NPWP penerima, tahun dan jenis bukti potong. Ekstensi merekam pilihan serta hasil per jenis dan tahun. [Uji laporan](../tests/scraper-home-withholding-browser.mjs) | Beberapa jenis memerlukan informasi tambahan atau belum memiliki padanan yang pasti pada menu laporan. |
+
+Jalur menu dan bentuk formulir diperiksa di intranet. Uji dari tombol ekstensi sampai ZIP dilakukan di Chrome for Testing. Pengambilan ulang seluruh sumber menggunakan ekstensi pada profil Chrome kantor masih memerlukan pembandingan dengan ZIP VERITAX untuk penugasan yang sama.
 
 ## Hasil prarilis 0.17.1
 

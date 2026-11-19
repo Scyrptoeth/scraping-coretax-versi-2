@@ -12,6 +12,7 @@ for(const [code,label] of selectableForms) {
 typeLabels.set('spt pph badan rupiah','ICT_RCITR');
 typeLabels.set('spt masa pph pasal 21/26','ICT_WITR');
 export const isSptList=source=>Object.hasOwn(lists,source);
+export const isWithholdingKind=value=>typeof value==='string' && /^(?:BP21|BP26|BPA1|BPA2|BPCY|BPPU|BPSP|NPMP)$/.test(value);
 
 export function listRowType(row) {
   const matched=new Set();
@@ -32,7 +33,11 @@ export function selectSptListRows(item,types) {
     else unknown++;
     if(all || selected.has(type)) included.push(row);
   }
-  if(!included.length && !(item.proof?.daftarPratinjau && item.proof.nolPadaSumber && item.page?.Payload?.TotalRecords===0)) return null;
+  const home=item.proof?.dariBeranda;
+  const homeEmpty=home?.kosongPadaSumber===true && home.rentangUtuh===true && home.filterAktif===false &&
+    home.totalTampilan===0 && home.barisSumber===0 && !rows.length;
+  if(!included.length && !(item.proof?.nolPadaSumber && (item.proof.daftarPratinjau || homeEmpty) &&
+      item.page?.Payload?.TotalRecords===0 && item.page?.IsSuccessful!==false && !item.page?.Errors?.length)) return null;
   const omitted=rows.length-included.length;
   const sptSelection={perJenisPadaSumber:byType,jenisBelumDikenali:unknown,barisSumber:rows.length,
     totalDilaporkanSumber:item.total ?? null,barisDilewati:omitted};
@@ -75,6 +80,16 @@ export function periodLabel(rows,ledger=false) {
 export function packagePath(item) {
   if(item.source==='tabelumum') return 'tabel/'+item.id+'.json';
   if(item.source==='bbsaldo') return 'bukubesar-saldo.json';
+  const home=item.proof?.dariBeranda;
+  const withheld=home?.buktiPotong;
+  if(item.source==='bplawan' && /^(19|20)\d{2}$/.test(withheld?.tahun) && isWithholdingKind(withheld?.jenis))
+    return 'bukti-potong-lawan/'+withheld.tahun+'/'+withheld.jenis+'.json';
+  const code=/^(0[1-9]|1[0-2])(0[1-9]|1[0-2])((?:19|20)\d{2})$/.exec(home?.kodeMasa);
+  if(code && ['bb','bbtotal'].includes(item.source)){
+    const [,first,last,year]=code;
+    const period=first===last ? first : (first==='01' && last==='12' ? 'setahun' : code[0]);
+    return (item.source==='bb'?'bukubesar/':'bukubesar-total/')+year+'-'+period+'.json';
+  }
   const month=item.proof?.pratinjauSumber?.masa || item.ledgerPeriod;
   if(['bb','bbtotal'].includes(item.source) && /^(?:19|20)\d{2}-(?:0[1-9]|1[0-2])$/.test(month))
     return (item.source==='bb'?'bukubesar/':'bukubesar-total/')+month+'.json';
@@ -114,6 +129,17 @@ export function appendPackageEntry(groups,item,wp) {
   if(!groups.has(path)) {
     const collectorPart=path.startsWith('spt/PPN-PEMUNGUT/') ? collectorParts[path.split('/').at(-1).replace(/\.json$/,'')] : '';
     const context={npwp:wp,periode:item.period};
+    if(item.source==='bplawan' && path.startsWith('bukti-potong-lawan/')){
+      const {tahun,jenis}=item.proof.dariBeranda.buktiPotong;
+      Object.assign(context,{tahun:Number(tahun),jenis});
+    }
+    if((item.source==='bb' || item.source==='bbtotal') && path.startsWith('bukubesar')){
+      const [year,period]=path.split('/')[1].slice(0,-5).split('-');
+      context.tahun=Number(year);
+      if(period.length===2)context.masa=Number(period);
+      else if(period!=='setahun')context.kodeMasa=period;
+      if(item.source==='bbtotal')context.totalOf=path.replace('bukubesar-total/','bukubesar/');
+    }
     if(item.source==='sptisi' && path.startsWith('spt/')) {
       const [,,period,version,filename]=path.split('/');
       const [amendment,recordId]=/^p(\d+)_(.+)$/.exec(version).slice(1);

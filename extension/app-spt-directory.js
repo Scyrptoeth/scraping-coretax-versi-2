@@ -73,12 +73,15 @@ export async function sptDirectory(ext,tabId,wp,{previewIndex=false,expectedUrl}
       if(view.tabId===tabId)advanced=false;
       return waitForIndex(checkpoint);
     }
-    // An unreadable form in the original tab must not be redirected automatically.
+    if(await candidate.navigation.recoverIndex?.(tabId,url)){
+      advanced=false;return waitForIndex(checkpoint);
+    }
+    // User-owned or unrecognised pages need fresh index evidence.
     return read();
   }
   async function turn(index,advance){
     const expected=JSON.stringify(rowsInColumnOrder(index.data.rows,index.options.labels));
-    const next=await execute({...index.options,advance,expected});
+    const next=await execute({...index.options,advance,expected,priorRange:index.data.position?.range});
     if(!next?.indexScope)throw Error('Halaman daftar belum berubah atau sumber tidak lagi cocok.');
     const fresh=await read();
     if(JSON.stringify(fresh.options.labels)!==JSON.stringify(index.options.labels) ||

@@ -17,7 +17,7 @@ function revisionOf(value) {
   const match = /^(?:(?:amendment|pembetulan)(?:\s+ke)?[\s-]*)?(\d{1,3})$/i.exec(value);
   return match ? Number(match[1]) : null;
 }
-function periodOf(value, annual) {
+export function periodOf(value, annual) {
   const input = String(value || '').trim().toLowerCase();
   let year, first, last;
   let match = /^(\d{2})(\d{2})((?:19|20)\d{2})$/.exec(input);
@@ -39,13 +39,13 @@ function periodOf(value, annual) {
     first === last ? year + '-' + two(first) : year + '-' + two(first) + '/' + two(last);
   return {label, year:Number(year), first, last};
 }
-function inPeriod(value, annual, range) {
+export function inPeriod(value, annual, range) {
   if (annual) return value.year >= range.from.y && value.year <= range.to.y;
   const monthIndex = (y,m) => y * 12 + m;
   return monthIndex(value.year, value.last) >= monthIndex(range.from.y, range.from.m) &&
     monthIndex(value.year, value.first) <= monthIndex(range.to.y, range.to.m);
 }
-function rangeIsValid(range) {
+export function rangeIsValid(range) {
   const valid = p => Number.isInteger(p?.y) && p.y >= 1900 && p.y < 2100 &&
     Number.isInteger(p.m) && p.m >= 1 && p.m <= 12;
   return valid(range?.from) && valid(range?.to) &&

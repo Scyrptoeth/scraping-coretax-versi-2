@@ -1,5 +1,9 @@
 # Riwayat Scraping Coretax Versi 2
 
+## 19 November 2026 WIB · Prarilis 0.18.0
+
+Pengguna memulai dari beranda Coretax yang sudah login. Ekstensi mencari satu WP, membuka sumber yang dipilih, dan menyusun ZIP untuk diperiksa di Analisis. Berita acara dan catatan penarikan membantu petugas melihat sumber yang masih kurang. [Hasil pengujian dan batas cakupan](KESETARAAN.md#hasil-prarilis-0180)
+
 ## 19 November 2026 WIB · Prarilis 0.17.1
 
 Nama jenis pajak pada tabel dan hasil ekspornya mengikuti tampilan Coretax. Kode asli tetap dapat diperiksa pada berkas sumber. [Pemeriksaan terhadap tabel SPT Dilaporkan](KESETARAAN.md#hasil-prarilis-0171)

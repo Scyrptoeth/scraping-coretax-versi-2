@@ -36,7 +36,14 @@ export async function readSubmittedPreview(ext,tab,wp,{checkpoint,limit,onPage})
       if(position.conflict || previous && Boolean(previous.range)!==Boolean(range) ||
           previous?.range && (range.total!==previous.range.total || range.first!==previous.range.last+1) ||
           previous && position.filterState!==previous.filterState)throw Error('Urutan, filter atau jumlah baris yang ditampilkan sumber berubah.');
-      const ordered=rowsInColumnOrder(rows,index.options.labels),keys=ordered.map(r=>JSON.stringify(r));
+      const recordColumns=index.options.labels.filter(label=>['idspt','idrekamspt','recordid','taxreturnrecordid'].includes(label.toLowerCase().replace(/[^a-z]/g,'')));
+      const ordered=rowsInColumnOrder(rows,index.options.labels),keys=ordered.flatMap(row=>{
+        const identifiers=recordColumns.map(label=>String(row[label]??'').trim()).filter(value=>value && !/^[-–—]+$/.test(value));
+        // Without a record ID, two different records may display identical cells.
+        // A contiguous range proves their separate positions in the source index.
+        if(identifiers.length)return identifiers.map(value=>'id:'+value);
+        return range?[]:['row:'+JSON.stringify(row)];
+      });
       if(keys.some(k=>seenRows.has(k)))throw Error('Sebagian atau seluruh baris halaman ini telah muncul pada halaman sebelumnya.');
       keys.forEach(k=>seenRows.add(k));
       if(!report.pages)report.fromFirst=position.atStart;

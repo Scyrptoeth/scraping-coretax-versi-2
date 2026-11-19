@@ -73,6 +73,11 @@ function sourceFilters(item,month){
     scopes.push(cancellation.size>1?'bertentangan':cancellation.size?[...cancellation][0]:'tanpa-filter-pembatalan');
   }
   const visibleFilter=item.proof?.pratinjauSumber?.filterAktif;
+  const home=item.proof?.dariBeranda;
+  if(home?.transaksiDibatalkan==='Yes' || home?.transaksiDibatalkan==='No') {
+    scopes.push(home.transaksiDibatalkan==='Yes'?'tanpa-filter-pembatalan':'aktif');
+    if(typeof home.filterLain==='boolean')other.push(home.filterLain);
+  }
   return {filterPembatalanSumber:new Set(scopes).size>1?'bertentangan':scopes[0]||'tidak-diketahui',
     filterLainPadaSumber:visibleFilter===true || other.some(Boolean)?true:other.length?false:null};
 }

@@ -1,10 +1,10 @@
 # Penarik data Coretax
 
-Buka ekstensi melalui ikon Chrome. Pada bagian **Penugasan**, isi nama penarik dan satu NPWP. Anda juga dapat memuat nomor dari berkas teks. NPWP 15 digit memperoleh awalan nol. Dua nomor yang berbeda ditolak meskipun ditempel sekaligus atau dimuat dari satu berkas. Pilih masa, jenis SPT dan sumber. Pilihan peran, jenis surat, masa, sumber, SPT dan deduplikasi diingat. Formulir baru dimulai dengan identitas penarik, nomor penugasan dan NPWP kosong.
+Login di beranda Coretax lalu buka ekstensi melalui ikon Chrome. Pada bagian **Penugasan**, periksa nama penarik dan isi satu NPWP. Nama dapat terisi dari akun yang tampil pada beranda. Anda juga dapat memuat NPWP dari berkas teks. NPWP 15 digit memperoleh awalan nol. Pilih masa, jenis SPT dan sumber.
 
 ## Mengambil sumber
 
-Setelah memilih sumber, jalankan **Mulai tarik**. Untuk membaca daftar serta formulir SPT, buka tab **SPT Dilaporkan** milik WP yang ditugaskan. **Pratinjau WP** memungkinkan Anda meninjau pilihan dan mengecualikan versi tertentu. Versi normal dan pembetulan yang masih memerlukan data dapat dipilih untuk seluruh daftar, termasuk baris yang belum ditampilkan di pratinjau.
+Setelah memilih sumber, jalankan **Mulai tarik**. Ekstensi mencari WP melalui menu SPT pada beranda, mencocokkan NPWP, lalu mengikuti tautan milik WP tersebut. Untuk bukti potong, penarik memakai laporan bukti pemotongan atau pemungutan yang diterima WP. **Pratinjau WP** memungkinkan Anda meninjau pilihan dan mengecualikan versi tertentu. Selama bekerja, biarkan beranda dan akun semula tetap aktif.
 
 Periksa **Berita acara** dalam ZIP atau **Cakupan sumber penarikan** di pemutar untuk melihat sumber mana yang menghasilkan berkas. Jumlah berkas perlu dibaca bersama catatan batas halaman, masa, serta bagian yang dapat dikenali.
 
@@ -96,11 +96,11 @@ Acuan lokal adalah VERITAX 1.32.0, khususnya bagian 1–5 pada `ekstensi-veritax
 
 | Kemampuan | Status | Bukti atau selisih |
 |---|---|---|
-| Identitas penugasan, normalisasi NPWP, daftar teks, jenis SPT dan sumber | Terverifikasi sebagian | Lima bagian utama memuat enam jenis SPT dan 21 pilihan sumber, termasuk kategori tabel umum. Normalisasi, duplikat, format salah, dan nol awal diuji. Pengguna mengisi nama petugas. |
-| Koneksi Coretax dan otorisasi penugasan | Berbeda | Indikator melaporkan keberadaan tab resmi. Nama akun dan status login tidak dibaca. Pratinjau dan perakitan mensyaratkan pernyataan kerahasiaan. |
-| Penemuan WP, estimasi tarikan dan cakupan sumber | Berbeda | Untuk satu NPWP, pratinjau dapat menemukan tab daftar yang sudah terbuka, mencocokkan panel WP dan menghitung baris sumber, masa, serta versi SPT terpilih. Penelusuran seluruh sumber mulai dari NPWP serta estimasi permintaan ke Coretax masih terbuka. |
+| Identitas penugasan, normalisasi NPWP, daftar teks, jenis SPT dan sumber | Terverifikasi sebagian | Lima bagian utama memuat enam jenis SPT dan pilihan sumber. Normalisasi, duplikat, format salah, dan nol awal diuji. |
+| Koneksi Coretax dan otorisasi penugasan | Terverifikasi sebagian | Bila akun dapat dikenali di beranda, nama penarik terisi dan penarikan memeriksa kembali akun serta peran. Pratinjau dan perakitan memerlukan pernyataan kerahasiaan. |
+| Penemuan WP, estimasi tarikan dan cakupan sumber | Terverifikasi sebagian | Pratinjau mencari satu NPWP dari beranda lalu menghitung versi SPT dalam masa pilihan. Estimasi waktu seperti pada acuan masih memerlukan pengembangan. |
 | Pengambilan, paginasi dan batas WP | Berbeda | Ada pembacaan tabel terpilih dan paginasi melalui tombol halaman berikut, pembatas halaman, jeda, penghentian dan pencocokan NPWP. Uji fixture mencakup batas pengguna, akhir tabel, tombol di luar paginator dan perpindahan WP. Navigasi produksi masih belum teruji. |
-| Pembacaan otomatis profil, registrasi, dokumen, daftar/isi SPT per versi dan seluruh lampiran, buku besar serta bukti potong | Berbeda | Versi ini membaca tabel yang dipilih pada tab Coretax atau berkas ekspor. Penelusuran otomatis seluruh modul, rincian transaksi batal dan pemilihan lampiran per masa masih terbuka. |
+| Pembacaan otomatis profil, registrasi, dokumen, daftar/isi SPT per versi dan seluruh lampiran, buku besar serta bukti potong | Terverifikasi sebagian | Dari beranda, penarik mengikuti tautan WP dan laporan bukti potong. Akses rekening, sertifikat, beberapa jenis bukti potong serta rincian formulir dan lampiran masih memiliki batas. [Rincian pengujian](KESETARAAN.md#hasil-prarilis-0180) |
 | Kecepatan jaringan adaptif, pemulihan sesi, cache SPT per versi | Berbeda | Paginasi berjalan berurutan dan deduplikasi berlaku pada isi dalam satu tarikan. Sumber untuk satu NPWP disimpan sebelum perakitan. Perilaku khusus sesi dan penjadwalan permintaan API referensi masih terbuka. |
 | Pemisahan WP, kecocokan jumlah sumber, ekspor ZIP dan pemeriksaan integritas | Terverifikasi sebagian | Uji peramban mencakup penolakan dua NPWP, penguncian NPWP antrean, deduplikasi, pembukaan ulang ZIP, dan pemulihan per WP dari antrean lama. Selisih jumlah sumber diberi keterangan. Seluruh rangkaian pemeriksaan mutu asli belum dipetakan menjadi perhitungan yang sama. |
 | Simpanan terenkripsi, buka kunci, dan log berantai | Terverifikasi sebagian | Uji browser memeriksa migrasi hasil dan jejak audit, kunci dan pembukaan ulang, penolakan sandi yang salah dan unduhan CSV dengan rantai utuh. |

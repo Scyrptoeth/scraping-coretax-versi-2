@@ -13,7 +13,7 @@
 <main>
   <section id="unlock-panel" hidden><h2>Simpanan terkunci</h2><form id="unlock-form" class="actions"><label>Kata sandi simpanan<input id="unlock-pass" type="password" autocomplete="current-password" required></label><button class="primary">Buka</button></form></section>
   <aside class="notice"><strong>Hanya untuk kepentingan dinas.</strong> Ambil data WP yang termasuk dalam penugasan Anda. Simpan berkas hasilnya di perangkat dinas.
-    <details><summary>Keterangan penggunaan</summary><p>Periksa kembali identitas WP, periode, dan isi berkas sebelum menggunakannya sebagai bahan pengawasan atau pemeriksaan. Pengguna menentukan halaman atau ekspor resmi yang akan dimasukkan.</p></details>
+    <details><summary>Keterangan penggunaan</summary><p>Pilih satu WP sesuai penugasan. Periksa identitas WP, periode, dan isi paket sebelum menggunakannya untuk pengawasan atau pemeriksaan.</p></details>
   </aside>
   <fieldset id="workspace">
     <section><h2><span>1</span>Penugasan</h2><p class="hint">Nama penarik dan dasar penugasan akan tercantum di berita acara.</p>
@@ -36,7 +36,8 @@
           <p class="hint" id="ledger-help">Pilihan ini berlaku untuk transaksi yang tersedia pada sumber. Baris dengan status pembatalan yang belum diketahui tetap disimpan. Total pembanding mengikuti filter pada sumbernya.</p></div>
       </div></div>
     </section>
-    <section><h2><span>3</span>Cara menarik</h2><p class="hint">Tambahkan tabel yang terlihat di Coretax atau berkas ekspor JSON/CSV. Jika tombol halaman berikutnya dapat dikenali, Anda bisa mengambil beberapa halaman sekaligus. Untuk tabel lain, tambahkan satu halaman setiap kali.</p>
+    <section><h2><span>3</span>Cara menarik</h2><p>Biarkan beranda Coretax terbuka setelah Anda login di Chrome ini. Ekstensi mencari NPWP dan membuka sumber pilihan di tab kerja saat Anda memilih <strong>Mulai tarik</strong>.</p>
+      <details id="manual-sources" open><summary>Tambahkan tabel atau berkas sendiri (opsional)</summary><p class="hint">Gunakan pilihan ini jika Anda ingin menyertakan tabel tambahan atau ekspor JSON/CSV.</p>
       <div class="double"><label>Sumber yang ditambahkan<select id="source"></select></label><label id="spt-field" hidden>Jenis SPT sumber<select id="spt"></select></label></div>
       <p class="hint" id="list-types-hint" hidden>Penarik membaca jenis SPT dari setiap baris daftar. Pilih jenis yang diperlukan pada bagian Data yang ditarik. Bila semua jenis dipilih, baris dengan jenis yang belum dikenali tetap disimpan sesuai sumber.</p>
       <label class="check" id="undated-field" hidden><input type="checkbox" id="undated-general">Sumber tabel umum ini tidak mencantumkan masa pajak.</label>
@@ -54,12 +55,12 @@
         <div class="actions"><button id="batch-scan">Pindai tab Coretax</button><button id="batch-add" disabled>Tambahkan tabel terpilih</button><button id="batch-pause" hidden>Jeda</button><button id="batch-stop" hidden>Hentikan</button></div>
         <div id="batch-rows"></div><p id="batch-status" role="status"></p>
       </details>
-      <div id="queue"></div><label class="check"><input id="dedupe" type="checkbox" checked>Lewati salinan identik dari sumber yang sama dalam tarikan ini.</label>
+      </details><div id="queue"></div><label class="check"><input id="dedupe" type="checkbox" checked>Lewati salinan identik dari sumber yang sama dalam tarikan ini.</label>
     </section>
     <section><h2><span>4</span>Tarik data</h2><details><summary>Bagaimana prosesnya?</summary><p>Mulai tarik membaca sumber yang dapat dicocokkan dengan penugasan dan membuat satu ZIP untuk WP ini. Anda juga bisa menggunakan berkas ekspor yang sudah ditambahkan. Berita acara mencatat sumber yang masuk ke paket.</p></details>
       <label class="check notice"><input type="checkbox" id="consent">Saya menarik data sesuai penugasan dan akan menjaga kerahasiaannya.</label>
-      <p class="hint">Gunakan Pratinjau WP untuk meninjau sumber atau mengubah versi SPT yang ingin diambil. Tab Coretax yang memuat sumber pilihan harus terbuka agar penarik dapat membacanya.</p>
-      <div id="preview-index-options" hidden><p class="hint">Pratinjau WP dapat membaca daftar SPT untuk NPWP ini dari tab Coretax yang sudah terbuka. Periode dan jenis SPT menentukan versi yang ditampilkan pada pratinjau.</p>
+      <p class="hint">Pilih Pratinjau WP untuk memeriksa identitas dan versi SPT dalam periode pilihan. Anda juga dapat langsung memilih Mulai tarik. Sumber yang belum berhasil dibaca akan tercantum dalam catatan hasil.</p>
+      <div id="preview-index-options" hidden><p class="hint">Periode dan jenis SPT menentukan versi yang ditampilkan pada pratinjau.</p>
         <label>Halaman daftar maksimal untuk pratinjau<input type="number" id="preview-index-limit" min="1" max="100" value="100"></label>
         <label class="check"><input type="checkbox" id="preview-save" autocomplete="off" aria-describedby="preview-save-hint">Simpan kemajuan pratinjau daftar SPT untuk penugasan ini di perangkat</label>
         <p class="hint" id="preview-save-hint"></p></div>
