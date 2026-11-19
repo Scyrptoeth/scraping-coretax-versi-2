@@ -7,7 +7,7 @@ import {compareDisplayed,fieldLabel,fieldValue,presentRows,sourceLabel} from '..
 const entry=(path,sumber,rows)=>({path,cap:{sumber,label:'Lampiran'},pages:[{Payload:{Data:rows}}]});
 test('Coretax tax types use the same captions in captured SPT lists and forms while retaining their source codes',()=>{
   const codes=['VAT_VAT','ICT_WIT','ICT_WT'],names=['PPN','PPh Pasal 21/26','PPh Unifikasi'];
-  for(const column of ['TaxTypeCode','TaxType','Kode Jenis Pajak','Kode jenis pajak']){
+  for(const column of ['TaxTypeCode','TaxType','Kode Jenis Pajak','Kode jenis pajak','Jenis Pajak']){
     const source=codes.map(value=>({[column]:value}));
     const item=entry('spt/daftar.json','sptdaftar',source);
     const [list]=standardTables({forms:[],entries:[item]});
@@ -20,8 +20,33 @@ test('Coretax tax types use the same captions in captured SPT lists and forms wh
   assert.equal(fieldValue('TaxType','Pajak daerah'),'Pajak daerah');
   assert.equal(fieldValue('TaxTypeCode','FUTURE_TAX'),'FUTURE_TAX');
   assert.equal(fieldValue('TaxTypeCode','ICT_WITR'),'ICT_WITR');
-  assert.equal(fieldValue('ReturnSheetTypeCode','ICT_WITR'),'SPT Masa PPh 21/26');
+  assert.equal(fieldValue('ReturnSheetTypeCode','ICT_WITR'),'SPT Masa PPh Pasal 21/26');
   assert.equal(fieldValue('OtherField','ICT_WT'),'ICT_WT');
+});
+test('home table headings and source codes give the same return context in the player',()=>{
+  const canonical=[
+    {ReturnSheetTypeCode:'ICT_RCITR',TaxPeriodCode:'01122025',ReturnSheetModel:'Amendment 02'},
+    {ReturnSheetTypeCode:'LBT_LBTR',TaxPeriodCode:'01122026',ReturnSheetModel:'Normal'},
+    {ReturnSheetTypeCode:'VAT_VATR',TaxPeriodCode:'09092026',ReturnSheetModel:'Normal'}
+  ];
+  const visible=canonical.map((r,i)=>({'Jenis Surat Pemberitahuan Pajak':['Tahunan PPh Badan','LBT_LBTR','Masa PPN'][i],
+    'Masa Pajak':['Januari - Desember 2025','Januari - Desember 2026','September 2026'][i],
+    'Model SPT':i===0?'Pembetulan ke-2':'Normal'}));
+  const expected=[
+    ['SPT Tahunan PPh Badan','2025',2],['SPT PBB','Januari–Desember 2026',0],['SPT Masa PPN','September 2026',0]
+  ];
+  for(const source of ['sptdaftar','sptarsip']){
+    for(const rows of [canonical,visible]){
+      const tables=standardTables({forms:[],entries:[entry('spt/daftar.json',source,rows)]});
+      assert.deepEqual(tables[0].rows().map(r=>[r['Jenis SPT'],r.Masa,r.Pembetulan]),expected);
+    }
+  }
+  const conflict={...visible[0],ReturnSheetModel:'Normal'};
+  assert.equal(standardTables({forms:[],entries:[entry('spt/daftar.json','sptdaftar',[conflict])]})[0].rows()[0].Pembetulan,null);
+  assert.equal(fieldValue('Jenis Surat Pemberitahuan Pajak','LBT_LBTR'),'SPT PBB');
+  assert.equal(fieldValue('Status SPT','SUBMITTED'),'Dilaporkan');
+  assert.equal(fieldValue('Kanal','TAXPAYER_PORTAL'),'Portal Wajib Pajak');
+  assert.equal(fieldValue('Masa Pajak','09092026'),'September 2026');
 });
 test('asset tables keep both return versions and all source groups with context, zeros and identifiers',()=>{
   const forms=[0,1].map(version=>{

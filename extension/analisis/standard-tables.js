@@ -1,7 +1,8 @@
 import {flatten,rowsOf,typeNames} from './model.js';
 import {combinedLedger} from './ledger-table.js';
 import {fieldLabel,fieldValue,presentRows,sourceLabel} from './display-fields.js';
-import {listRowType,periodLabel} from '../app-package-entries.js';
+import {isSptList,periodLabel} from '../app-package-entries.js';
+import {sptListContext} from '../app-spt-plan.js';
 import {periodTitle,sptFieldLabel,sptFieldValue} from './spt-forms.js';
 import {sources} from '../app-data.js';
 
@@ -52,11 +53,10 @@ function sourceTableRows(members){
       let info={};
       if(period)info={Periode:period[2]==='setahun'?'Setahun '+period[1]:periodTitle(period[1]+'-'+period[2])};
       if(slip)info={Tahun:slip[1],'Jenis bukti potong':slip[2]};
-      if(['sptdaftar','sptarsip'].includes(entry.cap.sumber)){
-        const kind=row.ReturnSheetTypeCode??(listRowType(row)||null),model=String(row.ReturnSheetModel??row.Pembetulan??'').trim();
-        const version=/^(?:Amendment|Pembetulan)\s*(\d+)$/i.exec(model);
-        info={'Jenis SPT':kind?fieldValue('ReturnSheetTypeCode',kind):null,Masa:periodTitle(periodLabel([row]))||null,
-          Pembetulan:/^Normal$/i.test(model)?0:version?Number(version[1]):/^\d+$/.test(model)?Number(model):null};
+      if(isSptList(entry.cap.sumber)){
+        const {form,period,revision,typeConflict}=sptListContext(row);
+        info={'Jenis SPT':form&&!typeConflict?fieldValue('ReturnSheetTypeCode',form):null,
+          Masa:periodTitle(period?.label||periodLabel([row]))||null,Pembetulan:revision};
       }
       context.push(info);records.push(row);
     }

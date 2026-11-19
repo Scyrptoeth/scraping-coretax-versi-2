@@ -115,11 +115,13 @@ function processLabel(key){
     {IsUnderExOfficioNonObjection:'Sedang diproses secara jabatan',IsUnderNonObjection:'Sedang diproses',WasUnderNonObjection:'Pernah diproses',IsNonObjection:'Status permohonan',DecisionRejected:'Keputusan penolakan'}[m[1]];
   return stage+' · '+article+({First:' · pertama',Second:' · kedua'}[m[3]]||'');
 }
-const formTypes={VAT_VATR:'SPT Masa PPN',VAT_VATTRNTEVATC:'SPT Masa PPN pemungut',ICT_WITR:'SPT Masa PPh 21/26',
+const formTypes={VAT_VATR:'SPT Masa PPN',VAT_VATTRNTEVATC:'SPT Masa PPN pemungut',ICT_WITR:'SPT Masa PPh Pasal 21/26',
   ICT_WTR:'SPT Masa PPh Unifikasi',ICT_RCITR:'SPT Tahunan PPh Badan',ICT_PITR:'SPT Tahunan PPh Orang Pribadi',LBT_LBTR:'SPT PBB'};
 export const taxTypes={VAT_VAT:'PPN',ICT_WIT:'PPh Pasal 21/26',ICT_WT:'PPh Unifikasi',
   ICT_RCIT:'PPh Badan',ICT_PIT:'PPh Orang Pribadi',LBT_LBT:'PBB'};
-const isTaxType=key=>key==='TaxTypeCode'||key==='TaxType'||key.toLowerCase()==='kode jenis pajak';
+const isTaxType=key=>key==='TaxTypeCode'||key==='TaxType'||/^(?:kode )?jenis pajak$/i.test(key);
+const sourceColumns={'jenis spt':'ReturnSheetTypeCode','jenis surat pemberitahuan pajak':'ReturnSheetTypeCode',
+  'status spt':'ReturnSheetStatusCode','model spt':'ReturnSheetModel','kanal':'ChannelCode','masa pajak':'TaxPeriodCode'};
 const enums={ReturnSheetTypeCode:formTypes,ChannelCode:{TAXPAYER_PORTAL:'Portal Wajib Pajak'},
   ReturnSheetStatusCode:{SUBMITTED:'Dilaporkan',DRAFT:'Konsep'},TaxpayerType:{TA002:'Badan',TA001:'Orang pribadi'},
   TaxpayerStatus:{ACTIVE:'Aktif',INACTIVE:'Tidak aktif'},AccountingTypeCode:{Payment:'Pembayaran',Liability:'Kewajiban'},
@@ -138,7 +140,9 @@ export function fieldLabel(path){
 }
 export function fieldValue(path,value){
   if(value==null||value==='')return value;
-  const key=String(path).split('.').at(-1);
+  const field=String(path).split('.').at(-1);
+  const alias=field.toLowerCase();
+  const key=has(sourceColumns,alias)?sourceColumns[alias]:field;
   if(typeof value==='boolean')return value?'Ya':'Tidak';
   if(typeof value==='object')return Array.isArray(value)?value.length+' entri':Object.keys(value).length+' isian';
   if(isTaxType(key)&&typeof value==='string'&&has(taxTypes,value))return taxTypes[value];

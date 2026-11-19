@@ -1,8 +1,8 @@
 # Scraping Coretax Versi 2
 
-**Prarilis 0.18.0.** Setelah login di beranda Coretax, isi satu NPWP dan periode di ekstensi. **Mulai tarik** mencari WP dan membuka sumber pilihan di tab kerja. Di pemutar, Anda dapat memeriksa profil, SPT dan transaksi buku besar. Rincian mutu data menunjukkan sumber yang masih kurang.
+**Prarilis 0.18.1.** Setelah login di beranda Coretax, isi satu NPWP dan periode di ekstensi. **Mulai tarik** mencari WP dan membuka sumber pilihan di tab kerja. Di pemutar, Anda dapat memeriksa profil, SPT dan transaksi buku besar. Rincian mutu data menunjukkan sumber yang masih kurang.
 
-[Unduh dan pasang melalui GitHub Pages](https://scyrptoeth.github.io/scraping-coretax-versi-2/) · [Situs Vercel](https://scraping-coretax-versi-2.vercel.app/) · [Paket prarilis GitHub](https://github.com/Scyrptoeth/scraping-coretax-versi-2/releases/tag/v0.18.0)
+[Unduh dan pasang melalui GitHub Pages](https://scyrptoeth.github.io/scraping-coretax-versi-2/) · [Situs Vercel](https://scraping-coretax-versi-2.vercel.app/) · [Paket prarilis GitHub](https://github.com/Scyrptoeth/scraping-coretax-versi-2/releases/tag/v0.18.1)
 
 ## Mencoba ekstensi
 

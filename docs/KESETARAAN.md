@@ -1,6 +1,10 @@
 # Matriks kesetaraan terhadap VERITAX v1.32.0
 
-Prarilis 0.18.0, 19 November 2026 WIB. **Terverifikasi** berlaku untuk perilaku dan masukan yang disebutkan. **Berbeda** berarti ada selisih yang telah diketahui. **Belum teruji** berarti bukti pembandingan belum tersedia.
+Prarilis 0.18.1, 19 November 2026 WIB. **Terverifikasi** berlaku untuk perilaku dan masukan yang disebutkan. **Berbeda** berarti ada selisih yang telah diketahui. **Belum teruji** berarti bukti pembandingan belum tersedia.
+
+## Hasil prarilis 0.18.1
+
+Pada menu **Data mentah**, daftar SPT menampilkan jenis pajak, masa dan pembetulan dari kolom yang terbaca di tabel Coretax maupun dari kolom asli ZIP VERITAX. SPT normal ditampilkan sebagai pembetulan 0. Bila dua kolom sumber menyebut versi yang berbeda, nomor pembetulan pada tabel standar dikosongkan dan kedua isian sumber tetap tersedia untuk diperiksa. Perbandingan di pemutar dan ekspor CSV mencakup daftar hasil penarikan dari beranda serta daftar dalam ZIP acuan. Verifikasi langsung pada profil Chrome kantor masih diperlukan untuk penarikan baru. [Uji tabel standar](../tests/standard-tables.test.mjs)
 
 ## Hasil prarilis 0.18.0
 

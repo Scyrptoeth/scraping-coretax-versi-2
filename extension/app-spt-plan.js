@@ -71,17 +71,21 @@ export function matchSptVersions(a,b){
   if(!sameRecord && (new Set(Object.values(fields)).size>1 || !a.receipt || a.receipt!==b.receipt))return null;
   return {...a,receiptFields:fields,recordVerified:sameRecord};
 }
-function readIndex(row, owner, strictReceipts) {
-  const c = columns(row), type = listRowType(row);
+export function sptListContext(row, c = columns(row)) {
+  const type = listRowType(row);
   const typeKeys = ['returnsheettypecode','taxreturntypecode','jenisspt','jenissuratpemberitahuanpajak'];
   const declaredTypes = new Set(typeKeys.filter(k => c[k]).map(k => listRowType({[k]:c[k]}) || c[k]));
   const form = type || c.returnsheettypecode || c.taxreturntypecode || c.jenisspt || c.jenissuratpemberitahuanpajak || '';
   const date = c.taxperiodcode || c.masapajak || c.periodepajak || c.taxperiod || c.tahunpajak || c.taxyear;
   const period = periodOf(date,annualTypes.has(type));
-  const amendment = c.returnsheetmodel || c.modelspt || c.jenismodelspt || c.pembetulanke || c.pembetulan || c.amendmentnumber;
-  const revision = revisionOf(amendment);
-  const revisions = new Set([c.returnsheetmodel,c.modelspt,c.jenismodelspt,c.pembetulanke,c.pembetulan,c.amendmentnumber]
-    .filter(Boolean).map(revisionOf));
+  const models = [c.returnsheetmodel,c.modelspt,c.jenismodelspt,c.pembetulanke,c.pembetulan,c.amendmentnumber].filter(Boolean);
+  const revisions = new Set(models.map(revisionOf));
+  return {type,form,date,period,amendment:models[0],revision:revisions.size === 1 ? revisionOf(models[0]) : null,
+    typeConflict:declaredTypes.size > 1,revisionConflict:revisions.size > 1};
+}
+function readIndex(row, owner, strictReceipts) {
+  const c = columns(row);
+  const {type,form,date,period,amendment,revision,typeConflict,revisionConflict} = sptListContext(row,c);
   const records = new Set([c.recordid,c.taxreturnrecordid,c.idrekamspt,c.idspt].map(referenceValue).filter(Boolean));
   const record = [...records][0] || '';
   const receiptFields={};let refsConflict=false;
@@ -95,7 +99,7 @@ function readIndex(row, owner, strictReceipts) {
   const receipt=receiptFields.document || receiptFields.bps || receiptFields.label || '';
   const fingerprint = record || receipt ? keyOf(owner,form,period?.label || date,revision ?? amendment,record,receiptFields) : null;
   return {type, period, revision, record, receipt, receiptFields, fingerprint,
-    conflict:declaredTypes.size>1 || records.size>1 || strictReceipts && refsConflict || revisions.size>1};
+    conflict:typeConflict || records.size>1 || strictReceipts && refsConflict || revisionConflict};
 }
 function partEvidence(item, wp, failed, reusable=false) {
   if (item.source === 'sptisi') {

@@ -112,8 +112,11 @@ export function vatFormSummary(form){
 }
 const monthNames=Array.from({length:12},(_,i)=>new Intl.DateTimeFormat('id-ID',{month:'long',timeZone:'UTC'}).format(Date.UTC(2000,i,1)));
 export function periodTitle(period){
-  const match=/^(\d{4})-(0[1-9]|1[0-2])$/.exec(period);
-  return match?monthNames[Number(match[2])-1]+' '+match[1]:period;
+  const match=/^(\d{4})-(0[1-9]|1[0-2])(?:\/(0[1-9]|1[0-2]))?$/.exec(period);
+  if(!match)return period;
+  const [,year,first,last]=match;
+  const range=last&&last!==first?'–'+monthNames[Number(last)-1]:'';
+  return monthNames[Number(first)-1]+range+' '+year;
 }
 export function sptFieldLabel(path){
   return path.split('.').map(s=>/^\d+$/.test(s)?'Baris '+(Number(s)+1):(sptField(s,fields)||fieldLabel(s))).join(' › ');
