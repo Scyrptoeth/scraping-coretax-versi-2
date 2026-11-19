@@ -1,4 +1,4 @@
-import {createXlsx} from '../archive/table.js';
+import {createCsv,createXlsx} from '../archive/table.js';
 import {compare, count, selectRows, serialize, worksheet} from './model.js';
 import {outputFilename} from './preferences.js';
 
@@ -51,19 +51,25 @@ export function exportSheets(sheets, filename, wp, contentsName) {
   const name=outputFilename(filename,'xlsx',wp);
   return createXlsx({sheets,contentsName}).then(blob=>download(blob,name)).catch(error=>notice('Excel gagal dibuat. '+error.message,true));
 }
-export function dataTable(rows, {name='Tabel',openRow,filename='Tabel',empty='Tidak ada baris pada sumber ini.',formatNumber=count,incremental=false,wp}={}) {
+export function dataTable(rows, {name='Tabel',openRow,decorateRow,rowAction,printRows,compareText,filename='Tabel',empty='Tidak ada baris pada sumber ini.',formatNumber=count,incremental=false,csv=false,wp}={}) {
   const root=box('table-panel');
   if (!rows.length) {root.append(el('p',empty,'hint'));return root;}
   const search=el('input');search.type='search';search.placeholder='Cari di tabel';search.setAttribute('aria-label','Cari di tabel '+name);
   const area=box('scroll');const pager=box('pager'); const pageSize=incremental?200:50;
-  let index=0,order={key:'',dir:1},visible=rows;
+  let index=0,order={key:'',dir:1,compareText},visible=rows;
   const keys=[...new Set(rows.flatMap(Object.keys))];
   const tools=box('toolbar',search,button('Excel bagian ini',()=>exportSheets([{name,rows:worksheet(selectRows(rows,search.value,order))}],filename,wp)));
+  if(printRows)tools.append(button('Cetak daftar ini (PDF)',()=>printRows(visible)));
+  if(csv)tools.append(button('CSV',()=>{
+    const values=worksheet(selectRows(rows,search.value,order));
+    download(createCsv(values),outputFilename(filename,'csv',wp));
+  }));
   root.append(tools,area,pager);
   function appendRows(body,from,to) {
     const fragment=document.createDocumentFragment();
     for(const row of visible.slice(from,to)){
       const tr=el('tr');
+      if(rowAction){const cell=el('td');cell.append(rowAction.control(row));tr.append(cell);}
       if(openRow){const cell=el('td');cell.append(button('Buka',()=>openRow(row)));tr.append(cell);}
       for(const key of keys){
         const td=el('td');const value=row[key];const txt=typeof value==='number'?formatNumber(value):(serialize(value)||'—');
@@ -72,6 +78,7 @@ export function dataTable(rows, {name='Tabel',openRow,filename='Tabel',empty='Ti
         }else td.textContent=txt;
         tr.append(td);
       }
+      decorateRow?.(tr,row);
       fragment.append(tr);
     }
     body.append(fragment);
@@ -80,10 +87,11 @@ export function dataTable(rows, {name='Tabel',openRow,filename='Tabel',empty='Ti
     visible=selectRows(rows,search.value,order);
     const last=Math.max(0,Math.ceil(visible.length/pageSize)-1);index=Math.min(index,last);
     const table=el('table');table.setAttribute('aria-label',name);const headings=el('tr');const head=el('thead');const body=el('tbody');
+    if(rowAction)headings.append(el('th',rowAction.title));
     if(openRow)headings.append(el('th','Rincian'));
     for(const key of keys){
       const th=el('th');th.scope='col';th.setAttribute('aria-sort',order.key===key?(order.dir===1?'ascending':'descending'):'none');
-      th.append(button(key+(order.key===key?(order.dir===1?' ↑':' ↓'):''),()=>{order={key,dir:order.key===key?-order.dir:1};index=0;render();},''));headings.append(th);
+      th.append(button(key+(order.key===key?(order.dir===1?' ↑':' ↓'):''),()=>{order={...order,key,dir:order.key===key?-order.dir:1};index=0;render();},''));headings.append(th);
     }
     head.append(headings);
     appendRows(body,index*pageSize,(index+1)*pageSize);
@@ -95,8 +103,15 @@ export function dataTable(rows, {name='Tabel',openRow,filename='Tabel',empty='Ti
         const end=Math.min(shown+1000,visible.length);
         appendRows(body,shown,end);shown=end;update();
       });
-      function update(){progress.textContent=count(shown)+' dari '+count(visible.length)+' baris ditampilkan';more.hidden=shown>=visible.length;}
-      update();pager.replaceChildren(progress,more);return;
+      const all=button('Tampilkan semua',async()=>{
+        all.disabled=more.disabled=true;
+        while(body.isConnected && shown<visible.length){
+          const end=Math.min(shown+500,visible.length);appendRows(body,shown,end);shown=end;update();
+          await new Promise(resolve=>requestAnimationFrame(resolve));
+        }
+      });
+      function update(){progress.textContent=count(shown)+' dari '+count(visible.length)+' baris ditampilkan';more.hidden=shown>=visible.length;all.hidden=!csv||shown>=visible.length;}
+      update();pager.replaceChildren(progress,more,all);return;
     }
     const prev=button('Sebelumnya',()=>{index--;render();});prev.disabled=index===0;
     const next=button('Berikutnya',()=>{index++;render();});next.disabled=index===last;

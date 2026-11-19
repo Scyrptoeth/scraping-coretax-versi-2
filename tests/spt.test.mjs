@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import {financialPosition,findFields,formSheets,indicativeDates,partRows} from '../extension/analisis/spt-forms.js';
+import {emptyAnnexes,financialPosition,findFields,formSheets,indicativeDates,partRows,partTitle,sptFieldLabel,sptFieldValue,vatFormSummary} from '../extension/analisis/spt-forms.js';
 
 const entry=(path,body)=>({path,pages:[{Payload:body}]});
 function form(type,data,version=0){
@@ -52,6 +52,40 @@ test('Content search covers annexes, source codes and Indonesian names without l
   assert.equal(findFields(f,'tidak')[0].Nilai,'Tidak');
   assert.equal(partRows(f,'induk').find(r=>r['Kode isian']==='TaxPeriodYear').Nilai,'2025');
   assert.equal(partRows(f,'a2',true)[0].TIN,'00000007');
+});
+test('Indonesian captions preserve source fields, account codes, unknown values and zero',()=>{
+  const data={TaxType:'ICT_RCIT',L1AFormData:{DebtMonth2:0},Status:'NORMAL',SignerTin:'0000000000000001',FutureEntry:null};
+  const f=form('BADAN',data);
+  f.parts.set('l1',Object.assign(entry('l1.json',{Data:[{TaxType:'ICT_RCIT',Status:'AMENDMENT'}]}),
+    {cap:{konteks:{labelBagian:'Lampiran laporan keuangan'}}}));
+  assert.equal(partTitle(f,'l1'),'Lampiran laporan keuangan');
+  assert.equal(sptFieldLabel('L1AFormData.DebtMonth2'),'Lampiran 1A › Saldo utang bulan ke-2');
+  assert.equal(sptFieldValue('ReturnSheetStatus','SUBMITTED'),'Dilaporkan');
+  assert.equal(sptFieldValue('TaxType','FUTURE_TAX'),'Pilihan lain pada sumber');
+  const visible=partRows(f,'induk'),raw=partRows(f,'induk',true);
+  assert.ok(visible.every(row=>!Object.keys(row).includes('Kode isian')));
+  assert.equal(visible.find(row=>row.Isian.endsWith('Saldo utang bulan ke-2')).Nilai,0);
+  assert.equal(visible.find(row=>row.Isian==='NPWP penanda tangan').Nilai,data.SignerTin);
+  assert.equal(visible.find(row=>row['Kode isian']==='FutureEntry').Nilai,null);
+  assert.equal(raw.find(row=>row['Kode isian']==='TaxType').Nilai,'ICT_RCIT');
+  assert.deepEqual(partRows(f,'l1'),[{'Jenis pajak':'PPh Badan',Status:'Pembetulan'}]);
+});
+test('Only annexes with an explicit empty table and matching zero count are grouped',()=>{
+  const f=form('PPN',{});
+  for(const [key,rows,total,cap] of [['a1',[],0,{}],['a2',[],8,{}],['b1',[{VAT:0}],0,{}],
+    ['b2',[],null,{}],['b3',[],null,{lengkap:true,baris:0}],['c',[],0,{lengkap:false}],['c-total',[],0,{}]]){
+    f.parts.set(key,{...entry(key,{Data:rows,TotalRecords:total}),cap});
+  }
+  f.parts.set('invalid',{pages:[{IsSuccessful:false,Payload:{Data:[],TotalRecords:0}}]});
+  assert.deepEqual(emptyAnnexes(f),['a1','b3']);
+});
+test('VAT summary reads amounts in the selected return without rounding or interpreting missing values',()=>{
+  const data={TotalDeliveryOfGoodsAndServices:{SellingPrice:976,OtherTaxBase:null,VAT:'17.25'},
+    VATUnderOrOverPaid:{VAT:-35},ImportOfTaxableGoods:{VAT:0},IsDraft:true,Skipped:[{VAT:140}]};
+  assert.deepEqual(vatFormSummary(form('PPN',data)),[
+    {Uraian:'Jumlah penyerahan','Harga jual':976,'DPP nilai lain':null,PPN:'17.25'},
+    {Uraian:'PPN kurang atau lebih bayar',PPN:-35},{Uraian:'Impor barang kena pajak',PPN:0}]);
+  assert.deepEqual(vatFormSummary(form('PPH2126',data)),[]);
 });
 test('Combined sheets label each revision and source, and preserve the taxpayer identifier as text',()=>{
   const a=form('PPN',{VATUnderOrOverPaid:{VAT:0}}),b=form('PPN',{VATUnderOrOverPaid:{VAT:-42}},1);

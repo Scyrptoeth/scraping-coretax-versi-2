@@ -1,13 +1,14 @@
-import {compare,count,flatten,issues,label,payloads,periodFacts,receiptFields,rowsOf,typeNames,worksheet} from './model.js';
-import {box,button,card,dataTable,detail,el,exportSheets,select,toggleSet} from './ui.js';
+import {compare,count,issues,label,payloads,periodFacts,rowsOf,typeNames} from './model.js';
+import {box,button,card,dataTable,detail,el,select,toggleSet} from './ui.js';
 import {renderProfile} from './profile.js';
 import {renderComparison,renderFinancialRatios} from './comparison.js';
 import {renderAdvanced} from './advanced-dashboard.js';
-import {combinedLedger} from './ledger-table.js';
-import {ledgerSelectionText} from '../ledger-status.js';
+import {renderDataTables} from './read-tables.js';
 import {dashboardMetrics} from './dashboard-metrics.js';
+import {dashboardFollowUp} from './dashboard-follow-up.js';
 import {dashboardIndicationReview} from './work.js';
-import {exportControls,financialPosition,indicativeDates,openForm,summaryPanels} from './spt-forms.js';
+import {exportControls,financialPosition,formPanel,formReceipts,indicativeDates,openForm,periodTitle,printSptList,summaryPanels} from './spt-forms.js';
+import {fieldValue,presentRows} from './display-fields.js';
 
 function yearPicker(state,show) {
   if (!state.pkg.years.length) return el('span','Periode mengikuti isi paket.','hint');
@@ -54,7 +55,8 @@ export function renderDashboard(target,state) {
   const mode=modes.some(x=>x[0]===state.section)?state.section:'ringkasan';
   const facts=periodFacts(pkg,state.year), current=pkg.forms.filter(f=>f.year===state.year && f.latest);
   const issuesFound=issues(pkg,state.year);
-  target.append(card('Dasbor',box('toolbar',yearPicker(state,state.repaint),printer()),toggleSet(modes,mode,s=>state.go('ringkas',s))));
+  const scope=el('p',[wp?.nama,wp?.npwp&&'NPWP '+wp.npwp,state.year&&'Tahun pajak '+state.year,state.role&&'Peran '+state.role].filter(Boolean).join(' · '),'hint');
+  target.append(card('Dasbor',scope,box('toolbar',yearPicker(state,state.repaint),printer()),toggleSet(modes,mode,s=>state.go('ringkas',s))));
   if(mode==='banding'){renderComparison(target,state);return;}
   if(mode==='lanjutan'){renderAdvanced(target,state);return;}
   if(mode==='ringkasan'){
@@ -74,6 +76,7 @@ export function renderDashboard(target,state) {
       target.append(card('Ringkasan '+(state.year||''),signature,box('grid',
         integerCard('PPh terutang tahunan',annualFact?.['PPh terutang']),integerCard('Penyerahan PPN pada induk yang tersedia',summation(facts,'Penyerahan')),...coverage)));
     }
+    target.append(dashboardFollowUp(state));
     target.append(card('Butir yang dapat ditelusuri',el('p','Pemeriksaan ini mencakup pembetulan, tanggal pelaporan pada paket, dan kelengkapan berkas.','hint'),dataTable(issuesFound,{wp,name:'Butir',filename:'Butir-'+state.year})));
   } else if(mode==='butir'){
     target.append(card('Butir dari data sumber',dataTable(issuesFound,{wp,name:'Butir',filename:'Butir-'+state.year})),dashboardIndicationReview(state));
@@ -102,64 +105,26 @@ export function renderDashboard(target,state) {
   }
 }
 export function renderEntries(target,state,profile=false) {
-  if(profile) return renderProfile(target,state);
-  const pkg=state.pkg,wp=pkg.manifest.wp;
-  const entries=pkg.entries.filter(e=>!e.path.startsWith('spt/'));
-  if(!entries.length){target.append(card('Data mentah',el('p','Paket ini belum memuat sumber untuk bagian ini.')));return;}
-  const combined=combinedLedger(entries);
-  const allLedger=combined && {path:'bukubesar/gabungan',cap:{label:'Buku besar gabungan'}};
-  const tables=combined?[allLedger,...entries]:entries;
-  const dataFor=e=>e===allLedger?combined.rows:rowsOf(e);
-  const query=el('input');query.type='search';query.placeholder='Cari bagian atau berkas';query.setAttribute('aria-label',query.placeholder);
-  const rail=box('rail'),panel=card('');let active=tables.find(e=>e.path===state.selectedEntry)||entries.find(e=>e.path==='profil/informasi-umum.json')||tables[0];
-  const show=()=>{
-    const filtered=tables.filter(e=>(e.path+' '+(e.cap?.label||'')).toLowerCase().includes(query.value.toLowerCase()));
-    rail.replaceChildren(...filtered.map(e=>button(e.cap?.label||label(e.path),()=>{active=e;state.selectedEntry=e.path;show();},e===active?'':'secondary')));
-    if(!filtered.length){rail.append(el('small','Tidak ada berkas yang cocok.'));panel.replaceChildren();return;}
-    if(!filtered.includes(active)){active=filtered[0];state.selectedEntry=active.path;}
-    const rows=dataFor(active);
-    const presentation=active.path==='profil/informasi-umum.json' ? rows.flatMap(r=>[...flatten(r)].map(([k,v])=>({Isian:k,Nilai:v}))) : rows;
-    panel.replaceChildren(el('h2',active.cap?.label||label(active.path)),
-      el('p',active===allLedger?combined.sourceCount+' berkas bulanan. '+combined.omitted+' salinan identik dengan ID yang sama digabung. '+combined.conflicting+' ID mempunyai isi berbeda.':active.path,'hint'),
-      dataTable(presentation,{wp,name:label(active.path),filename:'Data-'+label(active.path),incremental:true}));
-    if(active!==allLedger){
-      const source=active,pre=el('pre'),raw=detail('Respons sumber',pre);
-      if(['bb','bbtotal'].includes(source.cap?.sumber)){
-        const selections=[...(source.cap.halamanSumber||[]).map(p=>[p,'Tersimpan']),
-          ...(source.cap.sumberSalinanIdentik||[]).map(p=>[p,'Salinan identik'])].filter(([p])=>p.pemilihanBukuBesar);
-        if(selections.length){
-          const audit=selections.map(([p,usage])=>{
-            const s=p.pemilihanBukuBesar;
-            return {Sumber:p.asal||source.path,Pemakaian:usage,'Sertakan transaksi batal':s.ikutkanBatal?'Ya':'Tidak',
-              'Baris sumber':s.barisSumber,'Baris terpilih':s.barisTersimpan,'Keterangan penarik':ledgerSelectionText(s)};
-          });
-          panel.append(detail('Pemilihan transaksi pada penarik',dataTable(audit,{wp,name:'Cakupan transaksi buku besar',filename:'Cakupan-buku-besar'})));
-        }
-      }
-      raw.ontoggle=()=>{if(raw.open && !pre.textContent)pre.textContent=JSON.stringify(source.pages,null,2);};
-      panel.append(raw);
-    }
-  };
-  query.oninput=show;show();
-  target.append(card('Data mentah',box('toolbar',query,button('Excel semua bagian',()=>exportSheets(tables.map(e=>({name:e===allLedger?'Buku besar gabungan':label(e.path),rows:worksheet(dataFor(e))})),'Bagian-data',wp)),printer())),box('split',rail,panel));
+  if(profile)return renderProfile(target,state);
+  return renderDataTables(target,state);
 }
 export function renderSpt(target,state) {
   const pkg=state.pkg,wp=pkg.manifest.wp,mode=state.section==='ringkasan'?'ringkasan':'daftar';
-  target.append(card('SPT',box('toolbar',mode==='ringkasan'?yearPicker(state,state.repaint):null,button('Kertas Kerja',()=>state.go('kerja')),printer()),toggleSet([['daftar','Daftar & isi SPT'],['ringkasan','Ringkasan SPT']],mode,key=>state.go('spt',key))));
+  target.append(card('SPT',box('toolbar',mode==='ringkasan'?yearPicker(state,state.repaint):null,button('KKP',()=>state.go('kerja','kkp')),button('KKA',()=>state.go('kerja','kka')),printer()),toggleSet([['daftar','Daftar & isi SPT'],['ringkasan','Ringkasan SPT']],mode,key=>state.go('spt',key))));
   const native=pkg.entries.filter(e=>/^spt(daftar|arsip|belum|isi)\//.test(e.path) ||
     /^spt\/(?:daftar|arsip|belum-dilaporkan)\.json$/.test(e.path));
-  if(native.length){
-    target.append(card('Tabel SPT hasil tarikan',el('p','Tabel sumber mencakup seluruh periode dalam berkas. Filter tahun berlaku pada daftar formulir di bawah.','hint'),...native.map(e=>detail(e.cap?.label||e.path,box('',el('p',e.path,'hint'),dataTable(rowsOf(e),{wp,name:e.cap?.label||label(e.path)}))))));
-  }
+  const archiveTables=native.length?detail('Tabel SPT hasil tarikan',box('',el('p','Tabel sumber mencakup seluruh periode dalam berkas.','hint'),...native.map(e=>detail(e.cap?.label||label(e.path),dataTable(presentRows(rowsOf(e)),{wp,name:e.cap?.label||label(e.path)}))))):null;
   if(mode==='ringkasan'){
     const forms=pkg.forms.filter(f=>!state.year||f.year===state.year);
     const types=[...new Set(forms.map(f=>f.type))];
     const summary=types.map(kind=>{const items=forms.filter(f=>f.type===kind);return {Jenis:typeNames[kind]||kind,'Masa tersedia':new Set(items.map(f=>f.period)).size,Versi:items.length,Pembetulan:items.filter(f=>f.amended).length,'Lewat batas pada sumber':items.filter(f=>f.late).length};});
-    target.append(card('Ringkasan pelaporan',dataTable(summary,{wp,name:'Pelaporan'})),card('Angka induk per masa · versi terakhir',dataTable(periodFacts(pkg,state.year),{wp,name:'Angka induk'})),...summaryPanels(forms,state.year,wp).filter(Boolean));return;
+    target.append(card('Ringkasan pelaporan',dataTable(summary,{wp,name:'Pelaporan'})),card('Angka induk per masa · versi terakhir',dataTable(periodFacts(pkg,state.year),{wp,name:'Angka induk'})),...summaryPanels(forms,state.year,wp).filter(Boolean));
+    if(archiveTables)target.append(archiveTables);
+    return;
   }
   const forms=pkg.forms;
   if(!forms.length){
-    target.append(card('Daftar dan isi SPT',el('p','Paket ini belum memuat induk atau lampiran SPT yang bisa dibuka.','hint')));
+    target.append(card('Daftar dan isi SPT',el('p','Paket ini belum memuat induk atau lampiran SPT yang bisa dibuka.','hint'),archiveTables));
     return;
   }
   const filters=state.sptFilters;const results=box('');
@@ -184,19 +149,51 @@ export function renderSpt(target,state) {
     const shortlist=byYear.filter(f=>!filters.type||f.type===filters.type);
     const links=new Map();const rows=shortlist.map(f=>{
       const {status,amount,basis}=balance(f);
-      const r={Jenis:typeNames[f.type]||f.type,Masa:f.period,Versi:f.version?'Pembetulan '+f.version:'Normal','Status pelaporan':f.meta.ReturnSheetStatusCode||null,'Status nilai':status,'Nilai pada induk':amount,'Dasar nilai':basis,...receiptFields(f.meta),'Tanggal lapor':f.reportDate,'Batas pada sumber':f.dueDate,'Batas setelah akhir pekan':f.filingDueDate,Ketepatan:f.filingLate==null?'—':f.filingLate?'Lewat batas':'Tepat',Kanal:f.meta.ChannelCode||null};
+      const r={Jenis:typeNames[f.type]||f.type,Masa:f.period,Versi:f.version?'Pembetulan '+f.version:'Normal','Status nilai':status,'Nilai pada induk':amount,
+        ...formReceipts(f.meta),'Status pelaporan':fieldValue('ReturnSheetStatusCode',f.meta.ReturnSheetStatusCode)||null,'Dasar nilai':basis,
+        'Tanggal lapor':f.reportDate,'Batas pada sumber':f.dueDate,'Batas setelah akhir pekan':f.filingDueDate,
+        Ketepatan:f.filingLate==null?'—':f.filingLate?'Lewat batas':'Tepat',Kanal:fieldValue('ChannelCode',f.meta.ChannelCode)||null};
       if(dates.has(f))r['Tanggal setoran indikatif']=dates.get(f);
       links.set(r,f);return r;
     });
     for(const key of ['Kanal','Tanggal lapor','Batas pada sumber'])if(!rows.some(r=>r[key]))for(const r of rows)delete r[key];
-    results.replaceChildren(exportControls(shortlist,pkg),dataTable(rows,{wp,name:'Daftar SPT',filename:'Daftar-SPT-'+(yr||'semua-tahun'),openRow:row=>openForm(links.get(row),pkg)}));
+    const panel=el('section',null,'spt-preview-panel'),list=box('spt-result-list');
+    panel.setAttribute('aria-label','Formulir SPT pilihan');panel.id='spt-selected-form';panel.tabIndex=-1;
+    const mark=form=>{
+      filters.active=form.key;
+      for(const control of list.querySelectorAll('.spt-period'))control.setAttribute('aria-pressed',String(control.dataset.key===form.key));
+    };
+    function preview(form,fromList=false){
+      const back=button('Kembali ke daftar SPT',()=>list.querySelector('.spt-period[aria-pressed="true"]')?.focus(),'spt-back');
+      mark(form);panel.replaceChildren(back,el('h3',(typeNames[form.type]||form.type)+' · '+periodTitle(form.period)),formPanel(form,pkg,mark));
+      if(fromList&&window.matchMedia('(max-width:900px)').matches)panel.focus();
+    }
+    const full=el('input');full.type='checkbox';full.checked=Boolean(filters.columns);
+    const columns=el('label',null,'spt-list-columns');columns.append(full,document.createTextNode(' Tampilkan semua kolom'));
+    full.onchange=()=>{filters.columns=full.checked;list.classList.toggle('spt-compact-list',!full.checked);};
+    list.classList.toggle('spt-compact-list',!full.checked);
+    const table=dataTable(rows,{wp,name:'Daftar SPT',filename:'Daftar-SPT-'+(yr||'semua-tahun'),
+      printRows:items=>printSptList(items,wp),
+      openRow:row=>{const form=links.get(row);preview(form);openForm(form,pkg);},
+      decorateRow:(tr,row)=>{
+        const form=links.get(row),cell=tr.cells[2],pick=button(periodTitle(form.period),()=>preview(form,true),'spt-period');
+        pick.dataset.key=form.key;pick.dataset.period=form.period;pick.setAttribute('aria-controls',panel.id);pick.setAttribute('aria-pressed',String(filters.active===form.key));
+        pick.title='Tampilkan '+row.Jenis+' · '+periodTitle(form.period)+' · '+row.Versi;
+        cell.replaceChildren(pick);
+        tr.addEventListener('click',e=>{if(!e.target.closest('button,a,input'))preview(form,true);});
+      }});
+    if(rows.length){
+      list.append(columns,table);
+      preview(shortlist.find(f=>f.key===filters.active)||shortlist[0]);
+      results.replaceChildren(exportControls(shortlist,pkg),box('spt-workspace',list,panel));
+    }else results.replaceChildren(el('p','Tidak ada formulir yang cocok dengan filter.','hint'));
   };
   const controls=box('toolbar',select([['','Semua nilai'],'Nihil','Kurang bayar','Lebih bayar','Belum tersedia'],filters.balance||'',v=>{filters.balance=v;repaint();},'Status nilai pada induk'));
   for(const [key,text] of [['latest','Versi terakhir'],['late','Lewat batas setelah akhir pekan'],['amended','Pembetulan'],['revised','Masa yang pernah dibetulkan']]){
     const cb=el('input');cb.type='checkbox';cb.checked=filters[key];cb.onchange=()=>{filters[key]=cb.checked;repaint();};const title=el('label');title.append(cb,document.createTextNode(' '+text));controls.append(title);
   }
   const basisNote=forms.some(f=>f.type==='UNIFIKASI')?el('p','Untuk PPh Unifikasi, kolom nilai memakai jumlah yang disetor pada induk. Periksa buku besar untuk menentukan sisa kewajiban.','hint'):null;
-  target.append(card('Daftar dan isi SPT',years.element,types.element,controls,basisNote,dates.size?el('p','Tanggal setoran berasal dari pembayaran dengan KAP dan masa yang sama dengan kewajiban SPT di buku besar. Periksa alokasi pembayaran pada dokumen sumber.','hint'):null,results));repaint();
+  target.append(card('Daftar dan isi SPT',years.element,types.element,controls,results,basisNote,dates.size?el('p','Tanggal setoran berasal dari pembayaran dengan KAP dan masa yang sama dengan kewajiban SPT di buku besar. Periksa alokasi pembayaran pada dokumen sumber.','hint'):null,archiveTables));repaint();
 }
 
 function filterCounts(title,all,values,change){

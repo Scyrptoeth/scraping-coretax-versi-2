@@ -5,6 +5,7 @@ import {indexPackage,count,label,receiptFields,rowsOf,typeNames} from './model.j
 import {indexedProfileSections} from './profile.js';
 import {openForm} from './spt-forms.js';
 import {qualityNotes,renderQuality} from './quality.js';
+import {sourceName} from './read-tables.js';
 import {activeRateUpdate,hasSavedRates} from './rate-updates.js';
 import {rateUpdateTools} from './rate-updates-ui.js';
 import {buildIndex} from './kkp-index.js';
@@ -29,7 +30,7 @@ const $=id=>document.getElementById(id);
 const state={packages:new Map(),pkg:null,tab:'muat',section:'',year:'',role:'Pemeriksa',selectedEntry:'',query:'',work:new Map(),sptFilters:{type:'',latest:true,late:false,amended:false},go,repaint:render};
 const validRole=readPref('role');if(['AR','Penelaah','Pemeriksa'].includes(validRole))state.role=validRole;
 $('role').value=state.role;$('role').onchange=()=>{state.role=$('role').value;setPref('role',state.role);render();};
-function selectPackage(key){state.pkg=state.packages.get(key)||null;state.year=state.pkg?.years[0]||'';state.selectedEntry='';state.sptFilters.type='';state.sptFilters.allYears=false;}
+function selectPackage(key){state.pkg=state.packages.get(key)||null;state.year=state.pkg?.years[0]||'';state.selectedEntry='';state.sptFilters.type='';state.sptFilters.active='';state.sptFilters.allYears=true;}
 $('taxpayer').onchange=()=>{selectPackage($('taxpayer').value);if(formSection.test(state.section)&&state.tab==='spt')go('spt');else render();};
 $('close-dialog').onclick=()=>$('dialog').close();
 $('dialog').addEventListener('close',()=>{
@@ -98,7 +99,7 @@ function search(){
         aliases:[f.type,'P'+f.version,monthName,...Object.values(receiptFields(f.meta))].join(' '),
         act:()=>go('spt','form-'+pkg.formNamespace+'-'+(i+1))});
     }
-    for(const e of pkg.entries.filter(e=>!e.path.startsWith('spt/')))routes.push({title:'Data mentah · '+(e.cap?.label||e.path),aliases:e.path,act:()=>{state.selectedEntry=e.path;go('tabel');}});
+    for(const e of pkg.entries.filter(e=>!e.path.startsWith('spt/')))routes.push({title:'Data mentah · '+sourceName(e),aliases:e.path,act:()=>{state.selectedEntry=e.path;go('tabel');}});
   }
   const norm=text=>text.toLocaleLowerCase('id').replace(/[^\p{L}\p{N}]+/gu,' ').trim();
   for(const route of routes){route.name=norm(route.title);route.terms=norm(route.title+' '+(route.aliases||''));}

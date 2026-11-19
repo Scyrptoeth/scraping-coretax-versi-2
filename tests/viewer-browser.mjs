@@ -56,12 +56,13 @@ try{
   await page.getByLabel('Cari di tabel Panjang').fill('baris-1208');
   await large.getByRole('cell',{name:'baris-1208'}).waitFor();assert.equal(await large.locator('tbody tr').count(),1);
   await page.locator('#taxpayer').selectOption({label:'WP Fiktif Uji · 0000000000000007'});
-  await nav('Profil WP').click();await page.getByRole('cell',{name:'GeneralInformation.Name',exact:true}).waitFor();
+  await nav('Profil WP').click();await page.getByRole('heading',{name:'Identitas',exact:true}).waitFor();
+  assert.equal(await page.locator('.profile-facts dt').filter({hasText:/^Nama$/}).count(),1);
   await nav('SPT').click();await page.getByLabel('Versi terakhir').check();
   await page.getByRole('button',{name:'Buka',exact:true}).click();await page.getByRole('dialog').getByRole('cell',{name:'50',exact:true}).waitFor();
   const drawer=await page.getByRole('dialog').boundingBox();
   assert.ok(drawer.x>0 && Math.abs(drawer.x+drawer.width-1366)<2 && drawer.height>=848);
-  await page.getByRole('button',{name:'Bandingkan versi'}).click();await page.getByRole('dialog').getByRole('cell',{name:'100',exact:true}).waitFor();await page.keyboard.press('Escape');
+  await page.getByRole('dialog').getByRole('button',{name:'Bandingkan versi'}).click();await page.getByRole('dialog').getByRole('cell',{name:'100',exact:true}).waitFor();await page.keyboard.press('Escape');
   await nav('Kertas Kerja').click();await page.getByRole('button',{name:'Tambah butir',exact:true}).click();await page.getByLabel('Butir pengujian').fill('Uji selisih fiktif');await page.getByLabel('Menurut WP').fill('0');await page.getByLabel('Menurut petugas').fill('50');await page.getByRole('button',{name:'Simpan butir'}).click();
   await page.getByRole('cell',{name:'Uji selisih fiktif'}).waitFor();
   const exported=page.waitForEvent('download');await page.getByRole('button',{name:'Excel kertas kerja'}).click();assert.match((await exported).suggestedFilename(),/\.xlsx$/);

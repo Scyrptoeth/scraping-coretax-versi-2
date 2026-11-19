@@ -1,6 +1,20 @@
 # Pemutar paket dan kertas kerja
 
-Pilih **Buka di Analisis** sesudah penarikan atau buka beberapa paket ZIP lokal dari tab **Muat paket**. Pilih **WP aktif**, periksa periode dan hasil pemeriksaan integritas, lalu pilih tahun pada bagian yang akan digunakan. Paket dan isian kerja berada di memori tab. Unduh berkas kerja jika isian perlu dibuka kembali bersama paket yang sama. [Format dan pemeriksaan integritas](FORMAT.md)
+Pilih **Buka di Analisis** sesudah penarikan atau buka beberapa paket ZIP lokal dari tab **Muat paket**. Pilih **WP aktif**, periksa periode dan hasil pemeriksaan integritas, lalu pilih tahun pada bagian yang akan digunakan. Paket dibaca di memori tab. Unduh berkas kerja untuk membuka kembali isian kertas kerja bersama paket yang sama. [Format dan pemeriksaan integritas](FORMAT.md)
+
+Di **SPT**, pilih satu masa pada daftar untuk membaca induk dan lampirannya. Pilihan awal menampilkan versi terakhir pada semua tahun. Gunakan saringan tahun, versi atau jenis SPT untuk mempersempit daftar. **Cetak daftar ini (PDF)** mencetak semua baris yang lolos pencarian dan saringan. Pada induk PPN, pilih uraian untuk melihat isian sumbernya. Lampiran yang dipastikan kosong dapat dibuka lewat kelompok lampiran kosong.
+
+Di **Data mentah → Tabel data standar**, pilih nama tabel untuk melihat gabungan data dari berkas yang sesuai. Gunakan **Berkas sumber** untuk memeriksa respons asli. **CSV** dan **Excel bagian ini** mengikuti pencarian serta urutan tabel aktif. **Excel semua tabel** memuat seluruh data di setiap tabel. Tombol **+** pada kolom Catatan membuka isian bebas. Setelah Anda memilih **Simpan**, catatan tersimpan di browser itu dan dapat dibuka kembali bersama paket yang sama. Untuk menghapusnya, kosongkan catatan lalu simpan.
+
+Di **Buku besar gabungan**, kolom **Jumlah rincian** menghitung baris anak transaksi. **Status hukum/penagihan** merangkum status yang ditandai aktif pada sumber. Centang **Tampilkan setiap penanda hukum dan penagihan** untuk memeriksa masing-masing isian. Tanggal dari sumber yang mencantumkan jam pembukuan tetap menampilkan jam dan zona waktunya.
+
+### Bandingkan dua pemutar pada satu paket
+
+Dengan Playwright dan Chrome for Testing terpasang, jalankan perintah berikut dari folder proyek. Berikan folder ekstensi Studio yang memuat `manifest.json` dan nama laporan baru. Gunakan `--player` bila versi yang ingin diperiksa berada di folder lain. Proses membuka kedua ekstensi di profil Chrome sementara secara luring. Laporan mencatat sidik jari ZIP, versi pemutar, menu yang terbuka, dan jumlah baris tiap tabel standar yang dikenali. Jika suatu nama belum dapat dipasangkan, laporan menandainya untuk diperiksa. Untuk memeriksa nilai transaksi, cocokkan juga isi ekspor tabel dari kedua pemutar.
+
+```sh
+node scripts/compare-players.mjs --zip "/lokasi/paket.zip" --studio "/lokasi/ekstensi-studio" --out "/lokasi/laporan-pemutar.json"
+```
 
 ## Profil, SPT dan data mentah
 

@@ -1,6 +1,7 @@
 import {assessLine,completeIndexBook,documentRows,documentStatuses,indexSheets,indexStatus,reviewDecisions,reviewRefundCode,validateIndexDocuments} from './kkp-index.js';
 import {probisSourceFields} from '../probis-guide.js';
-import {button,box,card,dataTable,el,exportSheets,field,notice,select,showDialog} from './ui.js';
+import {button,box,card,dataTable,detail,el,exportSheets,field,notice,select,showDialog} from './ui.js';
+import {sourceLabel} from './display-fields.js';
 import {count} from './model.js';
 import {clearIndexReview,markEdit,nextIndexDocumentNumber,rowIdentity} from './team-work.js';
 import {companyProvisionalSupport} from './kkp-company-without-return.js';
@@ -57,7 +58,7 @@ function editRefundCode(line,work,repaint,wp){
   const form=el('form'),reference=el('input'),note=el('textarea'),officer=el('input'),status=el('p',null,'error');
   status.setAttribute('role','alert');
   reference.value=saved?.document||'';note.value=saved?.kkpNote||'';officer.value=saved?.petugas||'';
-  form.append(el('p','Kode pada induk · '+(line.refundCode??'Tidak tercantum')),el('p','Sumber · '+line.source));
+  form.append(el('p','Kode pada induk · '+(line.refundCode??'Tidak tercantum')),el('p','Sumber · '+sourceLabel(line.source)),detail('Rujukan asli dalam paket',el('pre',line.source)));
   const old=saved?.legacyOptionReview;
   if(old){
     form.append(el('h3','Riwayat pengujian dari berkas lama'),el('p',saved.simpulan),
@@ -109,7 +110,7 @@ export function editIndexLine(line,work,repaint,wp){
     }else if(line.prefill!==null)form.append(button('Salin nilai awal ke isian pengujian',()=>{value.value=line.prefill;preview();}));
   }
   form.append(el('p','Masa '+line.period+' · '+(line.withoutReturn?'Tanpa SPT pada daftar':'P'+line.version)+' · '+line.topic),
-    el('p','Sumber · '+line.source),el('p',(line.withoutReturn?'Pembanding KKP':'Menurut SPT/WP')+' · '+(line.amount===null?'Tidak tersedia':count(line.amount))),
+    el('p','Sumber · '+sourceLabel(line.source)),detail('Rujukan asli dalam paket',el('pre',line.source)),el('p',(line.withoutReturn?'Pembanding KKP':'Menurut SPT/WP')+' · '+(line.amount===null?'Tidak tersedia':count(line.amount))),
     field('Nilai setelah pengujian',value),feedback,field('Dokumen atau rujukan bukti',evidence),field('Penjelasan hasil uji',explanation),
     field('Nama penguji',officer),choose,field('Pokok berdasarkan pengujian (Rp, opsional)',principal),status);
   if(linked.length)form.append(select([['','Pilih dokumen'],...linked.map(d=>[String(d.number),'DOK.'+d.number+' · '+d.name+' · '+d.status])],'',v=>{
@@ -203,7 +204,7 @@ export function renderIndex(target,state,work,index){
     const r=reviewed.get(l.id);
     return {Masa:l.period,'Versi SPT':l.withoutReturn?'Tanpa SPT pada daftar':'P'+l.version,Uraian:l.topic,
       [l.withoutReturn?'Pembanding KKP':'Menurut SPT/WP']:l.amount,...(l.withoutReturn?{[l.prefillLabel||'Nilai awal dari bukti potong']:l.prefill}:{}),'Menurut petugas':r?.menurutPetugas??null,
-      Koreksi:r&&l.amount!==null?r.menurutPetugas-l.amount:null,Status:r?.simpulan||'Belum diuji',Sumber:l.source,
+      Koreksi:r&&l.amount!==null?r.menurutPetugas-l.amount:null,Status:r?.simpulan||'Belum diuji',Sumber:sourceLabel(l.source),
       'Cakupan sumber':l.partial?'Ditandai belum lengkap':'','Rujukan bukti':r?.document||'',
       ...(Object.hasOwn(l,'refundCode')?{'Kode pilihan pengembalian':l.refundCode}:{})};
   });

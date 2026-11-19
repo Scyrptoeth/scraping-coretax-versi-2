@@ -1,6 +1,17 @@
 # Matriks kesetaraan terhadap VERITAX v1.32.0
 
-Prarilis 0.16.0, 19 November 2026 WIB. Penarik dan pemutar masih memiliki perbedaan dengan VERITAX. **Terverifikasi** berlaku untuk perilaku dan masukan yang disebutkan. **Berbeda** berarti ada selisih yang telah diketahui. **Belum teruji** berarti bukti pembandingan belum tersedia.
+Prarilis 0.17.0, 19 November 2026 WIB. Penarik dan pemutar masih memiliki perbedaan dengan VERITAX. **Terverifikasi** berlaku untuk perilaku dan masukan yang disebutkan. **Berbeda** berarti ada selisih yang telah diketahui. **Belum teruji** berarti bukti pembandingan belum tersedia.
+
+## Hasil prarilis 0.17.0
+
+Studio 1.32.0 dan pemutar dibuka secara luring pada paket serta peran yang sama. Pemeriksaan mencakup sembilan menu utama. Tabel berikut merinci bagian yang ditelusuri lebih jauh.
+
+| Bagian | Hasil perbandingan | Batas pengujian |
+| --- | --- | --- |
+| Profil WP | Identitas dan alamat, rekening, objek PBB, identitas lain, isi dokumen, status pelaporan bulanan dan keterlambatan diperiksa dari sumber. Label dan nilai yang ditampilkan dapat dibaca kembali dalam Excel. [Uji profil](../tests/profile-presentation.test.mjs) | Tanggal akhir identitas yang kosong ditampilkan dengan tanda kosong. Studio menulis “sekarang”. |
+| Daftar dan isi SPT | Jumlah versi terakhir dan seluruh versi cocok untuk PPh 21/26, PPh Unifikasi, PPN dan PPh Badan. Pemilihan masa, cetak, lampiran dan navigasi ponsel juga diuji. [Uji navigasi SPT](../tests/spt-filters-browser.mjs) | Susunan visual formulir dan tata letak cetak setiap jenis SPT masih memerlukan pembandingan tersendiri. |
+| Data mentah | Seluruh 28 tabel yang muncul di Studio pada paket pembanding memiliki padanan. CSV yang diunduh dari kedua pemutar dibandingkan menurut kunci rekaman dan arti kolom. Uji terpisah pada empat paket fiktif mencocokkan jumlah baris seluruh tabel yang muncul, berturut-turut 19, 13, 19 dan 23 tabel. [Uji tabel standar](../tests/standard-tables.test.mjs) · [Pembanding pemutar luring](../scripts/compare-players.mjs) | Urutan dan nama kolom dapat berbeda. Tanggal penanda pada sumber diberi keterangan tersendiri. Kecocokan ekspor data sumber belum membuktikan rumus pada semua keluaran kertas kerja. |
+| Catatan dan tindak lanjut | Catatan dapat dibuka kembali bersama paket yang sama. Dasbor membuka pelaporan, mutu data, Probis, temuan dan simulasi sesuai pilihan. Kertas Kerja memberi pintasan untuk AR, Penelaah dan Pemeriksa. [Uji catatan baris](../tests/table-notes-browser.mjs) · [Uji dasbor](../tests/dashboard-follow-up-browser.mjs) · [Uji pintasan peran](../tests/work-role-navigation-browser.mjs) | Kesetaraan dua format KKA yang dinamai SE-08 dan ND-306 di Studio, materi pengujian tiap sektor, serta seluruh isi Peraturan masih terbuka. |
 
 ## Hasil prarilis 0.16.0
 

@@ -1,5 +1,9 @@
 # Riwayat Scraping Coretax Versi 2
 
+## 19 November 2026 WIB · Prarilis 0.17.0
+
+Pemutar menyajikan profil WP dan formulir SPT dengan nama isian dalam bahasa Indonesia. Daftar SPT menampilkan versi terakhir untuk seluruh tahun saat paket dibuka. Di Data mentah, petugas dapat memilih tabel lintas berkas, memeriksa rincian buku besar, menulis catatan pada baris dan mengekspor hasil. [Hasil perbandingan dengan Studio](KESETARAAN.md#hasil-prarilis-0170)
+
 ## 19 November 2026 WIB · Prarilis 0.16.0
 
 Penarik dapat mengikuti rentang halaman pada tabel profil dan registrasi untuk satu WP. Excel KKA Badan memuat lembar pengurus dan pihak terkait. Setoran pada Tabel 5.3 mengikuti tanggal transaksi dan menjelaskan cakupan pembayaran yang terbaca. Dua ZIP dari WP yang sama dapat dibandingkan kembali di laptop dengan program yang disertakan di repositori. [Hasil pengujian dan batas cakupan](KESETARAAN.md#hasil-prarilis-0160)

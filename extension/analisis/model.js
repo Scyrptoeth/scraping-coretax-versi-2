@@ -45,7 +45,8 @@ export function selectRows(rows, query, order) {
   const filtered = q ? rows.filter(row => Object.values(row).some(v => serialize(v).toLocaleLowerCase('id').includes(q))) : rows.slice();
   if (order?.key) filtered.sort((a, b) => {
     const x = a[order.key], y = b[order.key];
-    return order.dir * (typeof x === 'number' && typeof y === 'number' ? x - y : compare(serialize(x), serialize(y)));
+    const left=serialize(x),right=serialize(y);
+    return order.dir * (typeof x === 'number' && typeof y === 'number' ? x - y : (order.compareText?.(left,right)??compare(left,right)));
   });
   return filtered;
 }
@@ -84,7 +85,7 @@ export function receiptFields(row) {
 export function ledgerDocumentReference(row) {
   return numberText(row?.DocumentReceiptNumber) || numberText(row?.BpsNo);
 }
-function afterWeekend(day) {
+export function afterWeekend(day) {
   if (!day) return '';
   const utc = new Date(day + 'T00:00:00Z');
   const weekday = utc.getUTCDay();

@@ -1,7 +1,7 @@
 import {createDocx} from '../archive/document.js';
 import {count,issues,worksheet} from './model.js';
 import {printOutput,renderDrafts} from './drafts.js';
-import {validateDrafts} from './draft-model.js';
+import {allowedDrafts,validateDrafts} from './draft-model.js';
 import {renderSanksi,validateSimulation} from './sanksi.js';
 import {validateSchedule} from './inspection-schedule.js';
 import {renderInspectionSchedule} from './inspection-schedule-ui.js';
@@ -71,7 +71,7 @@ function edit(parent,work,row,idx,repaint){
   };
   showDialog(idx===null?'Tambah butir':'Ubah butir',form);
 }
-function yearWork(state,pkg,year){
+export function yearWork(state,pkg,year){
   const key=JSON.stringify([pkg.report.manifestHash||pkg.fileKey,year]);
   if(!state.work.has(key))state.work.set(key,{rows:[],drafts:[]});
   return state.work.get(key);
@@ -135,9 +135,15 @@ export function renderWork(target,state) {
   work.analysis??={};
   work.dispositions??={};
   work.simulation??=validateSimulation();
-  const modes=[['kkp','KKP'],['kka','KKA'],['sim','Simulasi sanksi'],['ba','Berita acara']];
+  const draftTypes=allowedDrafts(state.role);
+  const papers=state.role==='Pemeriksa'?[['kkp','KKP'],['kka','KKA']]:[['kka','KKA'],['kkp','KKP']];
+  const modes=[...papers,['sim','Simulasi sanksi']];
+  if(draftTypes.length)modes.push(['ba','Berita acara']);
+  const reviewOnly=state.section==='telaah';
   const isOutput=Object.hasOwn(outputMenus,state.section);
-  const mode=isOutput||modes.some(([k])=>k===state.section)?state.section:(state.role==='Pemeriksa'?'kkp':'kka');
+  let mode=papers[0][0];
+  if(reviewOnly)mode='kka';
+  else if(isOutput||state.section==='ba'||modes.some(([k])=>k===state.section))mode=state.section;
   const setYear=select(pkg.years,state.year,v=>{state.year=v;state.repaint();},'Tahun pajak');
   const save=()=>download(new Blob([JSON.stringify({format:'SCV2-KERJA',versi:1,paket:pkg.report.manifestHash,tahun:state.year,rows:work.rows,drafts:work.drafts,
     scopes:work.scopes,analysis:work.analysis,dispositions:work.dispositions,simulation:work.simulation,indexNotes:work.indexNotes,indexDocuments:work.indexDocuments,
@@ -185,7 +191,16 @@ export function renderWork(target,state) {
       }else apply(data);
     }catch(e){notice('Berkas kerja gagal dibuka. '+e.message,true);}finally{picker.value='';}
   };
-  target.append(card('Kertas Kerja',box('toolbar',setYear,button('Unduh berkas kerja',save),button('Buka berkas kerja',()=>picker.click()),picker),toggleSet(modes,isOutput?'kkp':mode,s=>state.go('kerja',s))));
+  const navigation=toggleSet(modes,isOutput?'kkp':mode,s=>state.go('kerja',s));
+  const shortcuts=box('toolbar');
+  for(const type of draftTypes)shortcuts.append(button('Susun '+type,()=>{
+    state.draftType=type;
+    state.go('kerja','ba');
+  }));
+  if(state.role==='Penelaah')shortcuts.append(button('Telaah temuan KKA',()=>state.go('kerja','telaah')));
+  shortcuts.setAttribute('role','group');
+  shortcuts.setAttribute('aria-label','Pintasan '+state.role);
+  target.append(card('Kertas Kerja',box('toolbar',setYear,button('Unduh berkas kerja',save),button('Buka berkas kerja',()=>picker.click()),picker),navigation,shortcuts));
   if(!pkg.report.valid){target.append(card('Integritas paket perlu diperiksa',el('p','Buka rincian pada Muat paket sebelum menyusun kertas kerja.')));return;}
   const progress=progressReport(pkg,state.year,work,index());
   const showAudit=()=>showDialog('Jejak audit berkas kerja',dataTable(workAuditRows(work),{wp,name:'Riwayat perubahan',empty:'Belum ada perubahan tercatat.'}));
@@ -199,6 +214,10 @@ export function renderWork(target,state) {
     target.append(button('Kembali ke daftar indeks',()=>state.go('kerja','kkp')));
     const renderOutput={jadwal:renderInspectionSchedule,dok:renderDocumentRequestsOutput,ts:renderTemporaryFindings,'simulasi-kkp':renderAssessmentSimulation,tl:renderFindingReport,ti:renderFindingReport};
     renderOutput[mode](target,state,work,index(),mode);return;
+  }
+  if(reviewOnly){
+    const doc=workpaper(pkg,state.year,work,'kka',state.role,index());
+    target.append(reviewPanel(doc,work,wp,state));return;
   }
   if(mode==='kkp'){
     renderIndex(target,state,work,index());
@@ -243,9 +262,13 @@ export function renderWork(target,state) {
   target.append(card('Lingkup keluaran '+mode.toUpperCase(),choice,
     el('p',doc.selected.length+' butir disertakan. '+doc.excluded.length+' butir indikatif dikeluarkan.'+omittedAmount),
     dataTable(doc.summary,{wp,name:'Potensi pokok per jenis',empty:'Belum ada butir dalam pilihan ini.'})));
+  target.append(reviewPanel(doc,work,wp,state));
+  const facts=issues(pkg,state.year);target.append(card('Gunakan fakta dari paket',dataTable(facts,{wp,name:'Fakta sumber',openRow:r=>edit(target,work,{topik:r.Butir,sumber:r.Sumber,fakta:r.Fakta+' · '+r.Periode},null,state.repaint)})));
+}
+function reviewPanel(doc,work,wp,state){
   const audit=doc.all.map(f=>({Klasifikasi:f.status,Jenis:f.kind,Periode:f.period,Rincian:f.detail,Sumber:f.source,
     'Potensi pokok (Rp)':f.amount===''?null:f.amount,Penelaahan:findingReview(work,f)}));
-  target.append(card('Rincian dan penelaahan temuan',dataTable(audit,{wp,name:'Daftar temuan',openRow:r=>{
+  return card('Rincian dan penelaahan temuan',dataTable(audit,{wp,name:'Daftar temuan',openRow:r=>{
     const finding=doc.all[audit.indexOf(r)],id=findingKey(finding);
     const picker=select(reviewOptions,r.Penelaahan,v=>{
       if(finding.indicationRuleId){
@@ -259,6 +282,5 @@ export function renderWork(target,state) {
       }
       document.getElementById('dialog').close();state.repaint();},'Hasil penelaahan');
     showDialog('Penelaahan temuan',box('stack',el('p',r.Rincian),el('p',r.Sumber),picker));
-  }})));
-  const facts=issues(pkg,state.year);target.append(card('Gunakan fakta dari paket',dataTable(facts,{wp,name:'Fakta sumber',openRow:r=>edit(target,work,{topik:r.Butir,sumber:r.Sumber,fakta:r.Fakta+' · '+r.Periode},null,state.repaint)})));
+  }}));
 }

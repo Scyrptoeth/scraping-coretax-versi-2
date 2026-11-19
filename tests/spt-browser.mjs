@@ -6,6 +6,7 @@ import {resolve} from 'node:path';
 import {createPackage,readPackage} from '../extension/archive/package.js';
 import {decodeText,readZip} from '../extension/archive/zip.js';
 import {indexPackage,rowsOf} from '../extension/analisis/model.js';
+import {periodTitle} from '../extension/analisis/spt-forms.js';
 
 const dir=process.env.VERITAX_FIXTURES;
 if(!dir)throw Error('Set VERITAX_FIXTURES to the directory containing the four fictitious packages.');
@@ -42,15 +43,32 @@ try{
       await page.getByRole('combobox',{name:'Tahun pajak'}).selectOption(form.year);
       await page.getByRole('combobox',{name:'Jenis',exact:true}).selectOption(kind);
       const table=page.getByRole('table',{name:'Daftar SPT',exact:true});
-      await table.getByRole('row').filter({has:page.getByRole('cell',{name:form.period,exact:true})})
+      await table.getByRole('row').filter({has:page.getByRole('button',{name:periodTitle(form.period),exact:true})})
         .filter({has:page.getByRole('cell',{name:form.version?'Pembetulan '+form.version:'Normal',exact:true})}).getByRole('button',{name:'Buka'}).click();
       const dialog=page.getByRole('dialog');await dialog.getByRole('heading',{name:'Induk',exact:true}).waitFor();
       const part=dialog.getByRole('combobox',{name:'Induk / lampiran'});assert.equal(await part.locator('option').count(),form.parts.size);
+      if(kind==='PPN'){
+        const summary=dialog.getByRole('table',{name:'Ringkasan induk PPN',exact:true});
+        const parent=rowsOf(form.parts.get('induk'))[0],amount=parent.VATUnderOrOverPaid?.VAT;
+        if(typeof amount==='number'){
+          const line=summary.getByRole('row').filter({has:page.getByRole('cell',{name:'PPN kurang atau lebih bayar',exact:true})});
+          await line.getByRole('cell',{name:amount.toLocaleString('id-ID'),exact:true}).waitFor();
+          await line.getByRole('button',{name:'Lihat isian'}).click();
+          await dialog.getByRole('table',{name:'Induk',exact:true}).waitFor();
+          await dialog.getByRole('button',{name:'Kembali ke ringkasan induk PPN'}).click();
+        }
+      }
+      const empty=dialog.locator('details').filter({has:page.locator('summary').filter({hasText:/^\d+ lampiran kosong$/})});
+      if(await empty.count()){
+        await empty.locator('summary').click();await empty.getByRole('button').first().click();
+        assert.notEqual(await part.inputValue(),'induk');await part.selectOption('induk');
+      }
       if(kind==='PPH2126'||kind==='UNIFIKASI'){
         const parent=rowsOf(form.parts.get('induk'))[0],unified=kind==='UNIFIKASI';
         const main=dialog.getByRole('table',{name:'Ringkasan induk',exact:true});
         const key=unified?'TotalWithholding':'A21IncomeTaxWithheld';
-        const amount=main.getByRole('row').filter({has:page.getByRole('cell',{name:key,exact:true})});
+        const amount=main.getByRole('row').filter({has:page.getByRole('cell',{name:unified?'Jumlah dipotong':'PPh 21 · Dipotong',exact:true})});
+        assert.equal(await main.getByRole('cell',{name:key,exact:true}).count(),0);
         await amount.getByRole('cell',{name:parent[key].toLocaleString('id-ID'),exact:true}).waitFor();
         const name=unified?'PPh per pasal dan rincian objek':'Bruto dan PPh menurut lampiran pada induk';
         const detail=dialog.getByRole('table',{name,exact:true});
@@ -69,7 +87,7 @@ try{
       await dialog.getByRole('table',{name:'Induk'}).waitFor();
       const annex=[...form.parts.keys()].find(k=>k!=='induk');
       assert.ok(annex);await part.selectOption(annex);
-      await dialog.getByRole('button',{name:'Kode field & lampiran lengkap'}).click();
+      await dialog.getByRole('button',{name:'Lihat data asli'}).click();
       assert.equal(await part.inputValue(),annex);
       const selected=page.waitForEvent('download');await dialog.getByRole('button',{name:'Excel data mentah'}).click();
       const download=await selected;const wb=await readZip(await readFile(await download.path()));
@@ -123,7 +141,7 @@ try{
   await dialog.getByLabel('Bagian yang dibandingkan').selectOption('a2');
   const changes=dialog.getByRole('table',{name:'Perubahan',exact:true}),row=changes.locator('tbody tr');
   assert.equal(await row.count(),1);
-  for(const v of ['FAK-B','VAT','220','225'])await row.getByRole('cell',{name:v,exact:true}).waitFor();
+  for(const v of ['FAK-B','PPN','220','225'])await row.getByRole('cell',{name:v,exact:true}).waitFor();
   const totals=dialog.getByRole('table',{name:'Nominal lampiran'}).getByRole('row').filter({has:page.getByRole('cell',{name:'PPN',exact:true})});
   for(const v of ['330','335','5'])await totals.getByRole('cell',{name:v,exact:true}).waitFor();
   const [download]=await Promise.all([page.waitForEvent('download'),dialog.getByRole('button',{name:'Excel perbandingan lampiran'}).click()]);

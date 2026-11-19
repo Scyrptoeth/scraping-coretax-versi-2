@@ -1,0 +1,13 @@
+.data-rail{align-self:start;max-height:72vh;overflow-y:auto;scrollbar-width:thin}
+.data-rail h3{padding:.65rem .3rem .2rem;margin:0}
+.data-rail button{text-align:left;overflow-wrap:anywhere;min-height:2.15rem}
+.data-rail button small{display:block;font-size:.78rem;font-weight:normal}
+.data-split>.card{min-width:0;align-self:start}
+.data-picker{display:none}
+@media(max-width:760px){
+  .data-rail{display:none}
+  .data-picker{display:block}
+  .data-picker select{max-width:100%;width:100%}
+  .data-split{display:block}
+}
+@media print{.data-rail,.data-picker{display:none}}

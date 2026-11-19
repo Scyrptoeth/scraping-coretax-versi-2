@@ -81,6 +81,7 @@ try{
   await page.keyboard.press('Escape');await page.waitForURL(u=>u.hash==='#/spt');
   assert.equal(await page.getByRole('combobox',{name:'Tahun pajak'}).inputValue(),'2024');
   await page.getByRole('checkbox',{name:'Versi terakhir'}).uncheck();
+  await page.getByRole('checkbox',{name:'Tampilkan semua kolom'}).check();
   await page.getByRole('searchbox',{name:'Cari di tabel Daftar SPT'}).fill('00000000123');
   const list=page.getByRole('table',{name:'Daftar SPT',exact:true});
   assert.equal(await list.locator('tbody tr').count(),1);

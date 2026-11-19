@@ -1,7 +1,11 @@
 import {lookupKbliCorrespondence} from '../kbli-correspondence.js';
+import {normalizeId} from '../app-data.js';
 import {ledgerCancellation} from '../ledger-status.js';
 import {flatten, ledgerDocumentReference, receiptFields, rowsOf, sptDay, submittedDay, typeNames, worksheet} from './model.js';
 import {box, button, card, dataTable, detail, el, exportSheets} from './ui.js';
+import {fieldLabel,fieldValue,presentRows,sourceLabel} from './display-fields.js';
+import {profileOverview,registryTable} from './profile-overview.js';
+import {filingCalendar,lateFilings} from './profile-filing.js';
 
 const first = rows => rows[0] || {};
 const list = value => Array.isArray(value)?value:[];
@@ -178,11 +182,17 @@ export function annualBusinessCodes(registry, years, captured) {
 }
 
 export function profileSections(pkg) {
-  const files=Object.fromEntries(Object.entries(sourceNames).map(([k,v])=>[k,pkg.entries.filter(e=>e.cap?.sumber===k || e.path==='profil/'+v+'.json')]));
+  const wp=normalizeId(pkg.manifest.wp?.npwp);
+  const files=Object.fromEntries(Object.entries(sourceNames).map(([k,v])=>[k,pkg.entries.filter(e=>(e.cap?.sumber===k || e.path==='profil/'+v+'.json')&&
+      (!wp||!e.cap?.konteks?.npwp||normalizeId(e.cap.konteks.npwp)===wp))]));
   const input=Object.fromEntries(Object.entries(files).map(([k,arr])=>[k,sourceRows(arr)]));
+  if(wp)input.info=input.info.filter(r=>{
+    const id=(r.GeneralInformation||r).UniqueIdentificationNumber;
+    return !id||normalizeId(id)===wp;
+  });
   const forms=pkg.forms||[], latest=forms.filter(f=>f.latest);
   const annual=latest.filter(f=>f.type==='BADAN').sort((a,b)=>b.period.localeCompare(a.period));
-  const op=latest.filter(f=>f.type==='OP'), general=first(input.info).GeneralInformation || {};
+  const op=latest.filter(f=>f.type==='OP'), general=first(input.info).GeneralInformation || first(input.info);
   const isOp=general.TaxpayerType==='TA001' || (!general.TaxpayerType && (general.TaxpayerCategory==='I_IN'||(op.length>0 && !annual.length)));
   const last=annual[0], body=first(rowsOf(last?.parts.get('induk'))), owned=body.ListOfOwnership;
   const sections=[];
@@ -195,21 +205,20 @@ export function profileSections(pkg) {
     for(const [Isian,Nilai] of flatten(data)) summary.push({Isian,Nilai,'Berkas sumber':path});
   }
   add('utama',reg,'Profil utama',summary,'',fpaths(['info','flag','login']));
-  const registeredVat=input.jenispajak.filter(r=>r.TaxTypeCode==='VAT_VAT').map(r=>date(r.RegistrationDate)).filter(Boolean);
-  sections[0].cards=[
-    ['Status WP',general.TaxpayerStatus],['Status PKP pada profil',general.TaxablePersonForVATPurposesStatus],
-    ['Tanggal registrasi PPN',[...new Set(registeredVat)].join(', ')],['Risiko CRM',general.RiskProfileCode],
-    ['Jumlah pegawai',general.NumberofStaff],['Perkiraan peredaran',general.ForecastedAnnualTurnover],
-    ['Penanda',input.flag.map(r=>[r.FlagType,r.FlagValue].filter(v=>v!=null).join(' · ')).filter(Boolean).join(', ')],
-    ['Dalam penagihan',general.IsUnderEnforcement===true?'Ya':general.IsUnderEnforcement===false?'Tidak':general.IsUnderEnforcement]
-  ];
+  const overview=profileOverview(input,pkg.manifest);
+  Object.assign(sections[0],{cards:overview.cards,blocks:overview.groups,
+    count:overview.groups.reduce((sum,block)=>sum+block.rows.length,0),refs:fpaths(['info','flag','login','jenispajak','bank','alamat','klu'])});
   add('identitas',reg,'Identitas lain, sertifikat dan dokumen',[...input.nomorlain,...input.sertel,...input.dokumen],'',fpaths(['nomorlain','sertel','dokumen']));
+  sections.at(-1).blocks=[['nomorlain','Nomor identitas lain'],['sertel','Sertifikat elektronik'],['dokumen','Dokumen WP di Coretax']]
+    .map(([key,title])=>({title,rows:registryTable(key,input[key],presentRows),empty:files[key].length?'Tidak ada isian yang dapat ditampilkan dari berkas ini.':'Berkas ini belum tersedia di dalam paket.'}));
   add('waktu',reg,'Garis waktu',timeline([['KLU',input.klu,['ValidFrom','ValidTo']],['Alamat',input.alamat,['ValidFrom','ValidTo']],['Pihak terkait',input.pihak,['ValidFrom','ValidTo']],['Jenis pajak',input.jenispajak,['RegistrationDate','DeregistrationDate']],['Dokumen',input.dokumen,['DocumentDate']]]));
   add('cabang',reg,'Cabang dan tempat kegiatan usaha',input.alamat.filter(r=>r.TypeOfAddress==='TKU'||r.ActivityType==='BRNCH'),'Alamat pusat dan alamat identitas disajikan pada Histori alamat.',fpaths(['alamat']));
   add('alamat',reg,'Histori alamat',input.alamat,'',fpaths(['alamat']));
-  add('klu',reg,'Klasifikasi lapangan usaha',input.klu.map(r=>({...r,...registeredCorrespondence(r.TradeClassificationCode)})),
-    'Tanggal berlaku mengikuti registrasi. Pilih kolom padanan menurut edisi kode sumber. Satu kode dapat mempunyai beberapa padanan.',fpaths(['klu']));
-  add('klu-tahun',reg,'KLU utama per tahun SPT',annualBusinessCodes(input.klu,forms.map(f=>f.year),date(pkg.manifest.dibuat)),
+  const mainCode=first(input.info).MainEconomicCode;
+  const klu=input.klu.length||!mainCode?.TradeClassificationCode?input.klu:[{...mainCode,'Berkas sumber':first(input.info)['Berkas sumber']}];
+  add('klu',reg,'Klasifikasi lapangan usaha',klu.map(r=>({...r,...registeredCorrespondence(r.TradeClassificationCode)})),
+    'Tanggal berlaku mengikuti registrasi. Padanan dapat berbeda menurut edisi KBLI.',input.klu.length?fpaths(['klu']):fpaths(['klu','info']));
+  add('klu-tahun',reg,'KLU utama per tahun SPT',annualBusinessCodes(klu,forms.map(f=>f.year),date(pkg.manifest.dibuat)),
     'Baris ditampilkan jika paket memuat SPT tahun bersangkutan dan KLU utama dengan tanggal mulai registrasi.');
   add('kewajiban',reg,'Registrasi jenis pajak',input.jenispajak,'',fpaths(['jenispajak']));
   if(!isOp){
@@ -229,11 +238,20 @@ export function profileSections(pkg) {
   const filed=sourceRows(pkg.entries.filter(e=>e.cap?.sumber==='sptdaftar'||e.path==='spt/daftar.json'));
   const dates=filed.map(row=>{
     const reported=submittedDay(row), deadline=sptDay(row.ExpectedReturnDate);
-    return {Jenis:row.ReturnSheetTypeCode,Masa:row.TaxPeriodCode,Model:row.ReturnSheetModel,...receiptFields(row),'Tanggal lapor':reported,'Batas pada sumber':deadline,
+    return {Jenis:row.ReturnSheetTypeCode==='LBT_LBTR'?'SPT PBB':fieldValue('ReturnSheetTypeCode',row.ReturnSheetTypeCode),
+      Masa:fieldValue('TaxPeriodCode',row.TaxPeriodCode),Model:String(row.ReturnSheetModel||'').replace(/^Amendment\s+0*(\d+)$/i,'Pembetulan $1'),...receiptFields(row),'Tanggal lapor':reported,'Batas pada sumber':deadline,
       'Posisi tanggal':row.ReturnSheetModel!=='Normal'?'Pembetulan / model lain':!reported||!deadline?'Belum dapat dibandingkan':reported>deadline?'Lewat tanggal pada sumber':'Dalam tanggal pada sumber','Berkas sumber':row['Berkas sumber']};
   });
   add('lapor',obligations,'Pemenuhan pelaporan',dates,'Perbandingan memakai tanggal yang disimpan dalam paket. Masa tanpa data memerlukan pemeriksaan ketersediaan sumber.');
+  const calendar=filingCalendar(filed,led,pkg.manifest.opsi?.periode);
+  if(calendar.length)Object.assign(sections.at(-1),{blocks:[...calendar,{title:'Rincian pelaporan dalam berkas',fold:true,rows:readableRows(dates)}],
+    note:'Kalender memakai SPT normal per masa. Batas yang jatuh pada Sabtu atau Minggu digeser ke Senin. “Ada setoran” berarti buku besar memuat pembayaran untuk masa dan jenis pajak itu. Periksa alokasinya sebelum menyimpulkan pelunasan.',
+    count:calendar.reduce((n,b)=>n+b.rows.length,0)});
   add('terlambat',obligations,'Pengawasan keterlambatan lapor',dates.filter(r=>r['Posisi tanggal']==='Lewat tanggal pada sumber'),'Cocokkan hari libur, pengecualian dan STP sebelum menilai sanksi.');
+  const late=lateFilings(pkg,filed,led);
+  Object.assign(sections.at(-1),{count:late.length,blocks:[{title:'SPT normal yang melewati batas lapor',rows:late},
+    {title:'Rincian berdasarkan tanggal batas asli, semua masa',fold:true,rows:readableRows(sections.at(-1).rows)}],
+    note:'Perbandingan mengikuti periode paket dan menyesuaikan Sabtu atau Minggu. Periksa hari libur, relaksasi, dan STP sebelum menilai sanksi Pasal 7 KUP. Potensi denda hanya ditampilkan bila pengujian memiliki bukti yang cukup.'});
   add('bank',payment,'Rekening bank',input.bank,'',fpaths(['bank']));
   add('tagihan',payment,'Sisa tagihan',led.filter(r=>number(r.AmountLeft)!==null && r.AmountLeft<0));
   add('kredit',payment,'Saldo kredit dan pengembalian',led.filter(r=>r.AccountingTypeCode==='Refund'||number(r.AmountLeft)>0));
@@ -248,7 +266,8 @@ export function profileSections(pkg) {
   add('pemenuhan-bayar',payment,'Pemenuhan pembayaran',reconcilePayments(forms,led),'Hanya kewajiban buku besar yang merujuk SPT versi terakhir yang dibandingkan dengan setoran pada KAP dan masa yang sama. Kesesuaian jumlah perlu dikonfirmasi dengan alokasi pembayaran.');
   add('pbk',payment,'Pemindahbukuan',led.filter(r=>r.AccountingTypeDetailCode==='BT'||/^Balance Transfer/.test(r.ReferenceType)));
   add('produk-hukum',payment,'Produk hukum',led.filter(r=>r.AccountingTypeCode==='TaxNotice'||['NoticeOfTaxCollection','TaxAssessment'].includes(r.ReferenceType)));
-  add('pbb',assets,'Objek tanah dan bangunan',input.pbb,'',fpaths(['pbb']));
+  add('pbb',reg,'Objek pajak (PBB)',input.pbb,'',fpaths(['pbb']));
+  sections.at(-1).blocks=[{title:'Daftar objek PBB',rows:registryTable('pbb',input.pbb,presentRows)}];
   if(!isOp){
     add('harta',assets,'Harta SPT Badan',annual.flatMap(f=>sourceRows([...f.parts].filter(([p])=>/^l9-\d/.test(p)).map(([,e])=>e)).map(r=>({'Tahun SPT':f.year,...r}))));
   } else {
@@ -274,6 +293,25 @@ export function indexedProfileSections(pkg) {
   if(!cachedSections.has(pkg))cachedSections.set(pkg,profileSections(pkg));
   return cachedSections.get(pkg);
 }
+function readableRows(rows){
+  const data=rows.map(row=>{
+    const out={};
+    for(const [key,value] of Object.entries(row)){
+      if(['RecordId','AggregateIdentifier','AggregateVersion','RelatedPersonRecordId','CaseAggregateIdentifier','TaxpayerAggregateIdentifier','Berkas sumber'].includes(key))continue;
+      if(value===null||value===''||value===undefined)continue;
+      if(key==='Peristiwa')out[key]=fieldLabel(value);
+      else if(key==='Sumber'&&typeof value==='string')out[key]=sourceLabel(value);
+      else if(key==='Nomor pada BpsNo')out['Nomor bukti lain']=value;
+      else out[key]=value;
+    }
+    return out;
+  });
+  return presentRows(data);
+}
+function blockSheets(section){
+  const blocks=section.blocks||[{title:section.title,rows:readableRows(section.rows)}];
+  return blocks.flatMap((block,i)=>[...(i?[[]]:[]),[block.title],...(block.rows.length?worksheet(block.rows):[[block.empty||'Belum ada data.']])]);
+}
 export function renderProfile(target,state) {
   const wp=state.pkg.manifest.wp;
   const sections=indexedProfileSections(state.pkg), groups=[...new Set(sections.map(s=>s.group))];
@@ -281,29 +319,51 @@ export function renderProfile(target,state) {
   const active=sections.find(s=>s.id===state.section)||sectionFromEntry||sections[0];
   const panel=card(''),rail=box('rail'),mobile=el('select');
   mobile.setAttribute('aria-label','Bagian profil WP');
-  const view=matchMedia('(max-width:780px)');
+  mobile.className='profile-mobile';
   for(const group of groups) {
     const groupOptions=el('optgroup');groupOptions.label=group;mobile.append(groupOptions);
     for(const s of sections.filter(s=>s.group===group)){
-      const option=el('option',s.title+' ('+s.rows.length+')');option.value=s.id;groupOptions.append(option);
+      const option=el('option',s.title+' ('+(s.count??s.rows.length)+')');option.value=s.id;groupOptions.append(option);
     }
   }
   function paint() {
     rail.replaceChildren();
     for(const group of groups){
       rail.append(el('strong',group));for(const s of sections.filter(s=>s.group===group)){
-        const b=button(s.title+' ('+s.rows.length+')',()=>state.go('profil',s.id),s===active?'':'secondary');
+        const b=button(s.title+' ('+(s.count??s.rows.length)+')',()=>state.go('profil',s.id),s===active?'':'secondary');
         b.setAttribute('aria-current',s===active?'page':'false');rail.append(b);
       }
     }
     mobile.value=active.id;
-    const refs=active.refs.length?detail('Berkas sumber',el('pre',active.refs.join('\n'))):null;
+    const paths=active.refs.length?active.refs:[...new Set(active.rows.flatMap(r=>String(r['Berkas sumber']||'').split('\n')).filter(Boolean))];
+    const entries=new Set(state.pkg.entries.map(e=>e.path));
+    const matched=paths.filter(path=>entries.has(path));
+    const refs=matched.length?detail('Lihat sumber di Data mentah',box('toolbar',...matched.map(path=>button(sourceLabel(path),()=>{
+      state.selectedEntry=path;state.go('tabel');
+    })))):null;
     const summary=active.cards && box('grid',...active.cards.map(([name,value])=>box('kpi',el('small',name),
       el('b',value==null || value===''?'—':typeof value==='number'?value.toLocaleString('id-ID'):value))));
-    panel.replaceChildren(el('h2',active.title),...(summary?[summary]:[]),...(active.note?[el('p',active.note,'hint')]:[]),
-      dataTable(active.rows,{wp,name:active.title,filename:'RAHASIA-Profil-'+active.id,empty:'Belum ada baris yang dapat ditampilkan dari sumber dalam paket ini.'}),...(refs?[refs]:[]));
+    const options={wp,filename:'RAHASIA-Profil-'+active.id,empty:'Belum ada baris yang dapat ditampilkan dari sumber dalam paket ini.'};
+    const title=box('profile-heading',el('h2',active.title));
+    if(active.blocks)title.append(button('Excel bagian ini',()=>exportSheets([{name:active.title,rows:blockSheets(active)}],options.filename,wp)));
+    panel.replaceChildren(title,...(summary?[summary]:[]),...(active.note?[el('p',active.note,'hint')]:[]));
+    if(active.blocks){
+      const area=box(active.id==='utama'?'profile-facts-grid':'profile-blocks');
+      for(const block of active.blocks){
+        if(block.layout==='facts'){
+          const list=el('dl');
+          for(const row of block.rows)list.append(el('dt',row.Isian),el('dd',typeof row.Nilai==='number'?row.Nilai.toLocaleString('id-ID'):row.Nilai));
+          area.append(box('profile-facts',el('h3',block.title),list));
+        }else{
+          const table=dataTable(block.rows,{...options,name:block.title,empty:block.empty||options.empty});
+          area.append(block.fold?detail(block.title,table):box('profile-block',el('h3',block.title+' ('+block.rows.length+')'),table));
+        }
+      }
+      panel.append(area);
+    }else panel.append(dataTable(readableRows(active.rows),{...options,name:active.title}));
+    if(refs)panel.append(refs);
   }
   mobile.onchange=()=>state.go('profil',mobile.value);
-  const actions=box('toolbar',button('Excel semua bagian',()=>exportSheets(sections.map(s=>({name:s.title,rows:worksheet(s.rows)})),'RAHASIA-Profil-WP',wp)),button('Cetak / PDF',()=>window.print()));
-  paint();target.append(card('Profil WP',actions),box('split',view.matches?mobile:rail,panel));
+  const actions=box('toolbar',button('Excel semua bagian',()=>exportSheets(sections.map(s=>({name:s.title,rows:blockSheets(s)})),'RAHASIA-Profil-WP',wp)),button('Cetak / PDF',()=>window.print()));
+  paint();target.append(card('Profil WP',actions),box('split',box('profile-navigation',rail,mobile),panel));
 }
