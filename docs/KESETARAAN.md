@@ -1,6 +1,10 @@
 # Matriks kesetaraan terhadap VERITAX v1.32.0
 
-Prarilis 0.17.0, 19 November 2026 WIB. Penarik dan pemutar masih memiliki perbedaan dengan VERITAX. **Terverifikasi** berlaku untuk perilaku dan masukan yang disebutkan. **Berbeda** berarti ada selisih yang telah diketahui. **Belum teruji** berarti bukti pembandingan belum tersedia.
+Prarilis 0.17.1, 19 November 2026 WIB. Penarik dan pemutar masih memiliki perbedaan dengan VERITAX. **Terverifikasi** berlaku untuk perilaku dan masukan yang disebutkan. **Berbeda** berarti ada selisih yang telah diketahui. **Belum teruji** berarti bukti pembandingan belum tersedia.
+
+## Hasil prarilis 0.17.1
+
+Jenis pajak PPN, PPh Pasal 21/26 dan PPh Unifikasi kini mengikuti nama yang tampil di Coretax dan ekspor resmi tabel SPT Dilaporkan. Pemeriksaan langsung menggunakan satu WP dan satu masa pajak. Ketiga baris dipasangkan berdasarkan nomor bukti penerimaan dan diperiksa pada 13 kolom. Pengujian ini mencakup sumber Coretax, Excel resminya, dan data yang dibaca pemutar. Penarikan dari tab Coretax dengan ekstensi pada profil Chrome kantor masih perlu diverifikasi tersendiri. [Uji bahasa dan nilai sumber](../tests/standard-tables.test.mjs)
 
 ## Hasil prarilis 0.17.0
 

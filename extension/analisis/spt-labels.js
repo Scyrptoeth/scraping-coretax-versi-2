@@ -1,3 +1,5 @@
+import {taxTypes} from './display-fields.js';
+
 // Field names come from the return itself. These captions affect presentation only.
 const captions={
   Action:'Tindakan',Address:'Alamat',Average:'Rata-rata',Cellphone:'Nomor ponsel',Children:'Rincian',children:'Rincian',Data:'Data',data:'Data',
@@ -94,7 +96,7 @@ const captions={
   PaymentWithSP2D:'Pembayaran dengan SP2D',CarryForward:'Kompensasi',CarryForwardPeriodMonth:'Bulan kompensasi',CarryForwardPeriodYear:'Tahun kompensasi'
 };
 const choices={
-  TaxType:{ICT_WIT:'PPh potong atau pungut',VAT_VAT:'PPN',ICT_RCIT:'PPh Badan',ICT_PIT:'PPh Orang Pribadi'},
+  TaxType:taxTypes,
   Status:{NORMAL:'Normal',AMENDMENT:'Pembetulan'},ReturnSheetModel:{NORMAL:'Normal',AMENDMENT:'Pembetulan'},
   ReturnSheetStatus:{CREATED:'Dibuat',DRAFT:'Konsep',SUBMITTED:'Dilaporkan'},
   AskedTo:{CARRY_FORWARD:'Dikompensasikan ke masa berikutnya'},AskedToPrevious:{CARRY_FORWARD:'Dikompensasikan ke masa berikutnya'},

@@ -20,7 +20,7 @@ const labels={
   Percentage:'Persentase',TaxObjectNumber:'Nomor objek pajak',TaxObjectName:'Nama objek pajak',PropertyTypeCode:'Jenis objek',PropertySize:'Luas objek',
   TaxPeriodCode:'Masa pajak',PeriodCode:'Masa pajak',TaxPeriod:'Masa pajak',TaxYear:'Tahun pajak',FiscalYear:'Tahun pajak',
   ReturnSheetTypeCode:'Jenis SPT',ReturnSheetStatusCode:'Status pelaporan',ReturnSheetModel:'Model SPT',ReturnSheetVersionCode:'Versi SPT',
-  ChannelCode:'Saluran pelaporan',TaxTypeCode:'Jenis pajak',ExpectedReturnDate:'Batas pelaporan',ReturnDate:'Tanggal lapor',ReceiptDate:'Tanggal diterima',
+  ChannelCode:'Saluran pelaporan',ExpectedReturnDate:'Batas pelaporan',ReturnDate:'Tanggal lapor',ReceiptDate:'Tanggal diterima',
   BpsNo:'Nomor bukti penerimaan',DocumentReceiptNumber:'Nomor penerimaan dokumen',DocumentTitle:'Judul dokumen',DocumentTypeName:'Jenis dokumen',
   DocumentTypeCode:'Kode jenis dokumen',DocumentStatus:'Status dokumen',DocumentNumber:'Nomor dokumen',DocumentDate:'Tanggal dokumen',FileName:'Nama berkas',
   CreationDate:'Tanggal dibuat',Description:'Uraian',Remarks:'Keterangan',Notes:'Catatan',Status:'Status',Index:'Urutan',Action:'Tindakan',
@@ -66,7 +66,7 @@ Object.assign(labels,{
   IsRelatedToPersonEntity:'Terkait orang atau badan',FileFormat:'Format berkas',TimesSigned:'Jumlah tanda tangan',IsPortal:'Dari portal',IsDeleted:'Dihapus',
   DocumentTypeConfigurationName:'Nama jenis dokumen',SignedProgressStatus:'Status penandatanganan',SignedReturnMessage:'Pesan hasil penandatanganan',
   UserAccessDocumentCode:'Kode akses dokumen',CreatedByNip18:'NIP pembuat',DocumentCaseStatus:'Status kasus dokumen',IsSuccessful:'Berhasil',
-  ArchiveDate:'Tanggal arsip',TaxMonth:'Bulan pajak',TaxType:'Jenis pajak',NadineDocumentId:'ID dokumen NADINE',AssessmentType:'Jenis ketetapan',DocumentDescription:'Uraian dokumen',WetSigned:'Sudah ditandatangani basah',
+  ArchiveDate:'Tanggal arsip',TaxMonth:'Bulan pajak',NadineDocumentId:'ID dokumen NADINE',AssessmentType:'Jenis ketetapan',DocumentDescription:'Uraian dokumen',WetSigned:'Sudah ditandatangani basah',
   FlagType:'Jenis penanda',FlagValue:'Nilai penanda',ValidForTaxOfficer:'Berlaku untuk petugas pajak',AppointmentNumber:'Nomor penunjukan',AppointmentDate:'Tanggal penunjukan',TaxReturnType:'Jenis SPT',
   RequestedDate:'Tanggal permohonan',RejectedDate:'Tanggal penolakan',TransactionStartDate:'Tanggal mulai transaksi',DeregistrationDate:'Tanggal pencabutan registrasi',TaxStatusCode:'Status registrasi pajak',
   RelatedPersonRecordId:'ID pihak terkait',BusinessRoleType:'Peran dalam usaha',IsRelatedPerson:'Merupakan orang terkait',IsRelatedTaxPayer:'Merupakan wajib pajak terkait',IsExternalData:'Berasal dari sumber luar',RelatedPersonSubType:'Rincian jenis hubungan',
@@ -117,6 +117,9 @@ function processLabel(key){
 }
 const formTypes={VAT_VATR:'SPT Masa PPN',VAT_VATTRNTEVATC:'SPT Masa PPN pemungut',ICT_WITR:'SPT Masa PPh 21/26',
   ICT_WTR:'SPT Masa PPh Unifikasi',ICT_RCITR:'SPT Tahunan PPh Badan',ICT_PITR:'SPT Tahunan PPh Orang Pribadi',LBT_LBTR:'SPT PBB'};
+export const taxTypes={VAT_VAT:'PPN',ICT_WIT:'PPh Pasal 21/26',ICT_WT:'PPh Unifikasi',
+  ICT_RCIT:'PPh Badan',ICT_PIT:'PPh Orang Pribadi',LBT_LBT:'PBB'};
+const isTaxType=key=>key==='TaxTypeCode'||key==='TaxType'||key.toLowerCase()==='kode jenis pajak';
 const enums={ReturnSheetTypeCode:formTypes,ChannelCode:{TAXPAYER_PORTAL:'Portal Wajib Pajak'},
   ReturnSheetStatusCode:{SUBMITTED:'Dilaporkan',DRAFT:'Konsep'},TaxpayerType:{TA002:'Badan',TA001:'Orang pribadi'},
   TaxpayerStatus:{ACTIVE:'Aktif',INACTIVE:'Tidak aktif'},AccountingTypeCode:{Payment:'Pembayaran',Liability:'Kewajiban'},
@@ -127,6 +130,7 @@ const families={PPN:'PPN','PPN-PEMUNGUT':'PPN pemungut',BADAN:'PPh Badan',OP:'PP
 const has=(o,k)=>Object.hasOwn(o,k);
 export function fieldLabel(path){
   const key=String(path).split('.').at(-1);
+  if(isTaxType(key))return 'Jenis pajak';
   if(has(labels,key))return labels[key];
   const process=processLabel(key);if(process)return process;
   if(/^[a-z]+_[a-z_]+$/.test(key)||/[a-z][A-Z]/.test(key)||/^[A-Z][A-Z0-9_]{7,}$/.test(key))return 'Isian tambahan';
@@ -137,6 +141,7 @@ export function fieldValue(path,value){
   const key=String(path).split('.').at(-1);
   if(typeof value==='boolean')return value?'Ya':'Tidak';
   if(typeof value==='object')return Array.isArray(value)?value.length+' entri':Object.keys(value).length+' isian';
+  if(isTaxType(key)&&typeof value==='string'&&has(taxTypes,value))return taxTypes[value];
   if(has(enums,key)&&has(enums[key],value))return enums[key][value];
   if(key==='ReturnSheetModel'&&typeof value==='string')return value.replace(/^(?:Amendment|Pembetulan)\s+0*(\d+)$/i,'Pembetulan $1');
   if(['PeriodCode','TaxPeriodCode','TaxPeriod'].includes(key)){

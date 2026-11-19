@@ -1,8 +1,8 @@
 # Scraping Coretax Versi 2
 
-**Prarilis 0.17.0.** Setiap tarikan memakai satu NPWP. Pilih sumber dan periode, lalu jalankan **Mulai tarik** dari tab penarik. Ekstensi membaca sumber yang dapat dikenali dari tab Coretax yang terbuka. Berkas ekspor JSON/CSV juga dapat diproses secara luring. Di pemutar, Anda dapat membaca profil WP, memilih SPT dan memeriksa lampirannya, serta menelusuri transaksi sampai ke rincian buku besar.
+**Prarilis 0.17.1.** Setiap tarikan memakai satu NPWP. Pilih sumber dan periode, lalu jalankan **Mulai tarik** dari tab penarik. Ekstensi membaca sumber yang dapat dikenali dari tab Coretax yang terbuka. Berkas ekspor JSON/CSV juga dapat diproses secara luring. Di pemutar, Anda dapat membaca profil WP, memilih SPT dan memeriksa lampirannya, serta menelusuri transaksi sampai ke rincian buku besar.
 
-[Unduh dan pasang melalui GitHub Pages](https://scyrptoeth.github.io/scraping-coretax-versi-2/) · [Situs Vercel](https://scraping-coretax-versi-2.vercel.app/) · [Paket prarilis GitHub](https://github.com/Scyrptoeth/scraping-coretax-versi-2/releases/tag/v0.17.0)
+[Unduh dan pasang melalui GitHub Pages](https://scyrptoeth.github.io/scraping-coretax-versi-2/) · [Situs Vercel](https://scraping-coretax-versi-2.vercel.app/) · [Paket prarilis GitHub](https://github.com/Scyrptoeth/scraping-coretax-versi-2/releases/tag/v0.17.1)
 
 ## Mencoba ekstensi
 

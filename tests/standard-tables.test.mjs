@@ -1,9 +1,28 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {standardTables} from '../extension/analisis/standard-tables.js';
+import {partRows} from '../extension/analisis/spt-forms.js';
 import {compareDisplayed,fieldLabel,fieldValue,presentRows,sourceLabel} from '../extension/analisis/display-fields.js';
 
 const entry=(path,sumber,rows)=>({path,cap:{sumber,label:'Lampiran'},pages:[{Payload:{Data:rows}}]});
+test('Coretax tax types use the same captions in captured SPT lists and forms while retaining their source codes',()=>{
+  const codes=['VAT_VAT','ICT_WIT','ICT_WT'],names=['PPN','PPh Pasal 21/26','PPh Unifikasi'];
+  for(const column of ['TaxTypeCode','TaxType','Kode Jenis Pajak','Kode jenis pajak']){
+    const source=codes.map(value=>({[column]:value}));
+    const item=entry('spt/daftar.json','sptdaftar',source);
+    const [list]=standardTables({forms:[],entries:[item]});
+    assert.deepEqual(list.rows().map(r=>r['Jenis pajak']),names);
+    const form={parts:new Map([['a1',item]])};
+    assert.deepEqual(partRows(form,'a1').map(r=>r['Jenis pajak']),names);
+    assert.deepEqual(partRows(form,'a1',true).map(r=>r[column]),codes);
+  }
+  assert.equal(fieldValue('TaxType','PBB'),'PBB');
+  assert.equal(fieldValue('TaxType','Pajak daerah'),'Pajak daerah');
+  assert.equal(fieldValue('TaxTypeCode','FUTURE_TAX'),'FUTURE_TAX');
+  assert.equal(fieldValue('TaxTypeCode','ICT_WITR'),'ICT_WITR');
+  assert.equal(fieldValue('ReturnSheetTypeCode','ICT_WITR'),'SPT Masa PPh 21/26');
+  assert.equal(fieldValue('OtherField','ICT_WT'),'ICT_WT');
+});
 test('asset tables keep both return versions and all source groups with context, zeros and identifiers',()=>{
   const forms=[0,1].map(version=>{
     const part='l9-1-'+(version+1);
@@ -37,6 +56,7 @@ test('translated columns retain separate source fields when their labels coincid
   assert.equal(fieldValue('PostingDate','2025-02-30'),'2025-02-30');
   assert.equal(fieldValue('PostingDate','0001-01-01T00:00:00'),'Tanggal belum ditetapkan');
   assert.equal(fieldValue('ReturnSheetTypeCode','LBT_LBTR'),'SPT PBB');
+  assert.equal(fieldValue('TaxTypeCode','LBT_LBT'),'PBB');
   assert.equal(fieldLabel('WasUnderNonObjectionArt361BFirstRequestedDate'),'Tanggal permohonan · Pasal 36 ayat (1) huruf b · pertama');
   assert.equal(sourceLabel('spt/PPN/2025-01/p01_demo/induk.json · header.x'),'Induk SPT · PPN · Januari 2025 · pembetulan 1');
 });
