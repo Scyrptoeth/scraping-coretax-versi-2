@@ -11,11 +11,10 @@ concurrency:
   group: github-pages
   cancel-in-progress: false
 jobs:
-  publish:
+  build_site:
     runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deploy.outputs.page_url }}
+    outputs:
+      artifact_name: ${{ format('github-pages-{0}-{1}', github.run_id, github.run_attempt) }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/configure-pages@v5
@@ -39,10 +38,20 @@ jobs:
           done < "$RUNNER_TEMP/published-zips"
       - uses: actions/upload-pages-artifact@v3
         with:
+          name: github-pages-${{ github.run_id }}-${{ github.run_attempt }}
           path: dist/site
+  publish:
+    needs: build_site
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
       - name: Deploy site
         id: deploy
         uses: actions/deploy-pages@v4
+        with:
+          artifact_name: ${{ needs.build_site.outputs.artifact_name }}
   prerelease:
     if: >-
       github.event_name == 'push' && startsWith(github.event.head_commit.message, 'release: v')
