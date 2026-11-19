@@ -1,6 +1,10 @@
 # Matriks kesetaraan terhadap VERITAX v1.32.0
 
-Prarilis 0.18.1, 19 November 2026 WIB. **Terverifikasi** berlaku untuk perilaku dan masukan yang disebutkan. **Berbeda** berarti ada selisih yang telah diketahui. **Belum teruji** berarti bukti pembandingan belum tersedia.
+Prarilis 0.18.2, 19 November 2026 WIB. **Terverifikasi** berlaku untuk perilaku dan masukan yang disebutkan. **Berbeda** berarti ada selisih yang telah diketahui. **Belum teruji** berarti bukti pembandingan belum tersedia.
+
+## Hasil prarilis 0.18.2
+
+Pada beranda kantor, tautan **SPT per Wajib Pajak** dan kolom pencarian pada halaman tujuannya telah diperiksa. Ekstensi membuka halaman tersebut langsung di tab kerja untuk pratinjau dan penarikan. Pengujian di Chrome mencakup menu yang tetap tertutup, pemeriksaan sesi oleh Coretax, kecocokan satu NPWP, serta pembacaan ZIP hasilnya di Analisis. Penarikan menggunakan ekstensi yang dimuat ulang pada profil Chrome kantor masih memerlukan uji langsung. [Uji navigasi](../tests/scraper-home-navigation-browser.mjs)
 
 ## Hasil prarilis 0.18.1
 

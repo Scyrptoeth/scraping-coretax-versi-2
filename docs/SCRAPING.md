@@ -4,7 +4,7 @@ Login di beranda Coretax lalu buka ekstensi melalui ikon Chrome. Pada bagian **P
 
 ## Mengambil sumber
 
-Setelah memilih sumber, jalankan **Mulai tarik**. Ekstensi mencari WP melalui menu SPT pada beranda, mencocokkan NPWP, lalu mengikuti tautan milik WP tersebut. Untuk bukti potong, penarik memakai laporan bukti pemotongan atau pemungutan yang diterima WP. **Pratinjau WP** memungkinkan Anda meninjau pilihan dan mengecualikan versi tertentu. Selama bekerja, biarkan beranda dan akun semula tetap aktif.
+Setelah memilih sumber, jalankan **Mulai tarik**. Ekstensi membuka halaman **SPT per Wajib Pajak** di tab kerja, menunggu kolom pencarian tersedia, mencocokkan NPWP, lalu mengikuti tautan milik WP tersebut. Untuk bukti potong, penarik memakai laporan bukti pemotongan atau pemungutan yang diterima WP. **Pratinjau WP** memungkinkan Anda meninjau pilihan dan mengecualikan versi tertentu. Selama bekerja, biarkan beranda dan akun semula tetap aktif.
 
 Periksa **Berita acara** dalam ZIP atau **Cakupan sumber penarikan** di pemutar untuk melihat sumber mana yang menghasilkan berkas. Jumlah berkas perlu dibaca bersama catatan batas halaman, masa, serta bagian yang dapat dikenali.
 

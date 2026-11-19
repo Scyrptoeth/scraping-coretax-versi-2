@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
-import {readHomeMenu,searchTaxpayer,submittedLink} from '../extension/app-home-navigation.js';
+import {searchTaxpayer,submittedLink} from '../extension/app-home-navigation.js';
 import {readPackage} from '../extension/archive/package.js';
 import {home,search,list,draft,wp,other,otherId,launchHomeFixture} from './scraper-home-fixture.mjs';
 
@@ -14,8 +14,16 @@ async function configure(app,identifier) {
   await app.locator('#consent').check();
 }
 
-const {ctx,blocked,visited,close} = await launchHomeFixture();
+const {ctx,routes,blocked,visited,close} = await launchHomeFixture();
 try {
+  // The search page is available even when the home dropdown stays collapsed in a background tab.
+  routes.set(home,'<button type="button" aria-expanded="false" aria-haspopup="true" onclick="if(event.isTrusted)document.querySelector(\'nav\').hidden=false">SPT</button>'+
+    '<nav hidden><a href="'+search+'">SPT per Wajib Pajak</a></nav>');
+  const callback=new URL('auth-callback',search).href;
+  const searchPage=routes.get(search);
+  routes.set(search,'<script>if(!sessionStorage.getItem("ready"))location.replace('+JSON.stringify(callback)+');else document.write('+
+    JSON.stringify(searchPage).replaceAll('<','\\u003c')+');</script>');
+  routes.set(callback,'<p>Memeriksa sesi</p><script>sessionStorage.setItem("ready","1");location.replace('+JSON.stringify(search)+');</script>');
   const worker = ctx.serviceWorkers()[0] || await ctx.waitForEvent('serviceworker');
   const source = await ctx.newPage();
   await source.goto(home);
@@ -31,10 +39,11 @@ try {
     } finally { for (const id of managed) await chrome.tabs.remove(id); }
   },{home,wp});
   assert.deepEqual(success,{url:list,managed:true});
+  assert.ok(visited.includes(callback));
   assert.equal(source.url(),home);
-  assert.deepEqual(await source.evaluate(readHomeMenu),{hasMenu:true});
   assert.equal(await source.locator('nav').isHidden(),true);
   await source.goto(search);
+  await source.locator('#ObjectPermitNumber').waitFor();
   await source.evaluate(searchTaxpayer,{step:'enter',wp});
   await source.evaluate(()=>document.querySelector('tbody').append(document.querySelector('#match').cloneNode(true)));
   assert.match((await source.evaluate(searchTaxpayer,{step:'select',wp})).error,/beberapa baris/);

@@ -13,30 +13,6 @@ function localPath(url) {
   return '';
 }
 
-// Chrome injects this function into the working tab. Keep the menu action
-// separate from entering an identifier on the taxpayer-search screen.
-export function readHomeMenu(expand = false) {
-  if (location.origin !== 'https://coretax.intranet.pajak.go.id' || !/^\/home\/id-ID\/?$/.test(location.pathname)) return null;
-  const visible = el => el.getClientRects().length > 0 && el.checkVisibility({visibilityProperty:true,opacityProperty:true});
-  const label = el => (el.getAttribute('aria-label') ||
-    (el.getAttribute('aria-labelledby') || '').split(/\s+/).map(id=>document.getElementById(id)?.textContent).filter(Boolean).join(' ') ||
-    el.innerText || el.title || '').replace(/\s+/g,' ').trim();
-  const links = [...document.querySelectorAll('a[href]')].filter(a =>
-    visible(a) && label(a) === 'SPT per Wajib Pajak' && a.origin === location.origin && !a.username && !a.password &&
-    a.pathname === '/returnsheets/id-ID/taxpayer-search' && !a.search && !a.hash);
-  if (links.length) return {url:links[0].href};
-  const controls = [...document.querySelectorAll('button,[role=button],a[aria-haspopup]')].filter(el =>
-    visible(el) && label(el) === 'SPT' && !el.matches(':disabled,[aria-disabled=true]') &&
-    (!el.matches('a[href]') || el.getAttribute('href') === '#'));
-  const menuButtons = controls.filter(el=>el.matches('button'));
-  const targets = menuButtons.length ? menuButtons : controls;
-  if (targets.length === 1) {
-    if (expand && targets[0].getAttribute('aria-expanded') !== 'true') targets[0].click();
-    return {hasMenu:true};
-  }
-  return null;
-}
-
 // Runs only in the normal SPT taxpayer-search page. Returning a match never
 // exposes the other rows or their identifiers to the extension.
 export function searchTaxpayer({wp,step}) {
@@ -104,7 +80,8 @@ export async function openHomeModule({ext,homeTab,wp,module='spt',checkpoint=()=
   await checkpoint();
   const original = await ext.tabs.get(homeTab.id);
   if (!homePath.test(localPath(original.url))) throw Error('Tab beranda sudah berpindah. Buka kembali beranda Coretax.');
-  const work = await ext.tabs.create({url:origin + '/home/id-ID/',active:false,
+  // Open the same page as the SPT menu link; background tabs need not render its dropdown.
+  const work = await ext.tabs.create({url:origin + searchPath,active:false,
     ...(Number.isInteger(original.windowId)?{windowId:original.windowId}:{})});
   await onTab?.(work.id);
   const read = async(func,...args) => {
@@ -131,17 +108,8 @@ export async function openHomeModule({ext,homeTab,wp,module='spt',checkpoint=()=
     } while (Date.now() < until);
     throw Error(message);
   }
-  const menu = await waitFor(tab=>homePath.test(localPath(tab.url)) && read(readHomeMenu,true),
-    'Menu SPT belum tersedia di beranda. Pastikan sesi Coretax masih aktif.');
-  const search = menu.url ? menu : await waitFor(async()=>{
-    const view=await read(readHomeMenu,false);
-    return view?.url ? view : null;
-  },'Tautan SPT per Wajib Pajak belum tersedia di menu SPT.');
-  if (localPath(search.url) !== searchPath) throw Error('Alamat pencarian Wajib Pajak belum dapat dipastikan.');
-  await checkpoint();
-  await ext.tabs.update(work.id,{url:search.url});
   await waitFor(tab=>localPath(tab.url) === searchPath && read(searchTaxpayer,{wp:owner,step:'enter'}),
-    'Kolom pencarian NIK/NPWP belum tersedia di Coretax.');
+    'Formulir SPT per Wajib Pajak belum terbuka. Periksa apakah sesi Coretax masih aktif dan akun Anda dapat membuka menu tersebut.');
   await waitFor(tab=>localPath(tab.url) === searchPath && read(searchTaxpayer,{wp:owner,step:'select'}),
     'Coretax belum menampilkan satu hasil dengan NPWP yang diminta.');
   const target = await waitFor(async tab => listPath.test(localPath(tab.url)) ? {url:tab.url} : read(submittedLink),
